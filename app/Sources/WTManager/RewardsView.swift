@@ -43,7 +43,7 @@ struct CleanupScoreCard: View {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(store.history.rank).font(.system(size: 16, weight: .bold, design: .rounded))
-                        Text("\(Store.human(store.history.reclaimedKb)) reclaimed · \(store.history.cleanups) cleanup\(store.history.cleanups == 1 ? "" : "s")")
+                        Text("\(store.history.reclaimedKb == 0 ? "0 B" : Store.human(store.history.reclaimedKb)) reclaimed · \(store.history.cleanups) cleanup\(store.history.cleanups == 1 ? "" : "s")")
                             .font(.system(size: 11)).foregroundStyle(Palette.muted)
                     }
                     Spacer(minLength: 0)

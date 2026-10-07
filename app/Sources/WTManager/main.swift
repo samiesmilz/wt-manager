@@ -47,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         openWindow()
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        store.prepareToQuit() ? .terminateNow : .terminateCancel
+    }
+
     /// An accessory app has no menu bar to hang key equivalents on, so the
     /// shortcuts are matched here — and only while our own window has focus, or
     /// they would fire over whatever the person is actually typing in.

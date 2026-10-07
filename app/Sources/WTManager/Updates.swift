@@ -4,7 +4,7 @@ import WTManagerKit
 @MainActor
 final class UpdateChecker: ObservableObject {
     static let repository = URL(string: "https://github.com/samiesmilz/wt-manager")!
-    static let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.0"
+    static let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.1"
     @Published private(set) var release: PublishedRelease?
     @Published private(set) var checking = false
     @Published var showStatus = false

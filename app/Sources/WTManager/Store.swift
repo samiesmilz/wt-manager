@@ -39,6 +39,12 @@ final class Store: ObservableObject {
     func saveHistory() {
         if let data = try? JSONEncoder().encode(history) { UserDefaults.standard.set(data, forKey: historyKey) }
     }
+    func prepareToQuit() -> Bool {
+        guard plan?.stage != .committing else { return false }
+        timers.forEach { $0.invalidate() }
+        engine.shutdown()
+        return true
+    }
     func quit() {
         guard plan?.stage != .committing else { return }
         NSApplication.shared.terminate(nil)
