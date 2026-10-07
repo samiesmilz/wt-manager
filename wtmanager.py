@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.6.1"
+VERSION = "0.7.1"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -467,6 +467,7 @@ class Worktree:
     is_base: bool = False
     landed: bool = False    # HEAD is inside the commit a merged PR landed; see landed()
     pr: Optional[PR] = None
+    pr_activity: Optional[PR] = None
     status: str = "?"
     size_kb: int = -1
     reclaim_kb: int = -1
@@ -1145,7 +1146,7 @@ def fetch_prs(workdir: str, gitdir: str, ttl: int = PR_TTL) -> Tuple[Dict[str, P
 MergedRef = Dict[str, object]     # number, url, merged_at, author, head_oid
 
 
-def fetch_merged_refs(workdir: str, gitdir: str, ttl: int = 600) -> Dict[str, MergedRef]:
+def fetch_merged_refs(workdir: str, gitdir: str, ttl: int = PR_TTL) -> Dict[str, MergedRef]:
     """Branch names whose PR merged, with the commit that merged.
 
     `ahead == 0` cannot by itself tell "this landed" from "this never had a
@@ -1195,6 +1196,72 @@ def fetch_merged_refs(workdir: str, gitdir: str, ttl: int = 600) -> Dict[str, Me
         except OSError:
             pass
     return refs
+
+
+def attach_closed_pr(w: Worktree, gitdir: str, workdir: str, ttl: int = PR_TTL) -> None:
+    """Read only the closed history of this local branch, without check rollups.
+
+    A reused branch name is not enough: only attach a closed PR whose head
+    exactly matches this checkout. A closed PR never proves commits landed.
+    """
+    if w.pr or not w.branch or w.primary or w.is_base or not have("gh"):
+        return
+    origin = repo_facts(gitdir)[1]
+    if "github.com" not in origin or known_unseen(origin):
+        return
+    key = hashlib.sha1(("closed:" + origin + ":" + w.branch).encode()).hexdigest()[:16]
+    ck = cache_dir() / f"pr-{key}.json"
+    rows = None
+    if ttl > 0 and ck.exists() and time.time() - ck.stat().st_mtime < ttl:
+        try:
+            data = json.loads(ck.read_text())
+            if isinstance(data, list): rows = data
+        except (OSError, ValueError): pass
+    if rows is None:
+        rc, out, err, _ = gh_json(["gh", "pr", "list", "--state", "closed", "--head", w.branch,
+            "--limit", "100", "--json", "number,state,headRefOid,url,author"], workdir, origin, timeout=30)
+        if rc != 0 or not out:
+            NOTICES.append(("other", w.repo, "closed PR history unavailable; linked PR counts may be incomplete"))
+            return
+        try:
+            rows = json.loads(out)
+            if not isinstance(rows, list): raise ValueError("not a list")
+        except ValueError:
+            NOTICES.append(("other", w.repo, "unreadable closed PR history"))
+            return
+        if ttl > 0:
+            try:
+                ck.write_text(json.dumps(rows)); os.chmod(ck, 0o600)
+            except OSError: pass
+    if len(rows) >= 100:
+        NOTICES.append(("other", w.repo, "closed branch history capped at 100; linked PR counts may be incomplete"))
+    rc, head, _ = git(["rev-parse", "HEAD"], cwd=w.path)
+    if rc != 0 or not head: return
+    candidates = [r for r in rows if isinstance(r, dict) and r.get("state") == "CLOSED"
+                  and r.get("headRefOid") == head and isinstance(r.get("number"), int)]
+    if not candidates: return
+    r = max(candidates, key=lambda r: r["number"])
+    w.pr = PR(number=r["number"], state="CLOSED", draft=False, checks="none", review="none",
+              url=r.get("url") or "", head_oid=head,
+              author=(r["author"].get("login", "") if isinstance(r.get("author"), dict) else ""))
+    w.pr_activity = w.pr
+
+
+def merged_activity(w: Worktree, ref: Optional[MergedRef], gitdir: str) -> Optional[PR]:
+    """A PR can have merged while this checkout contains newer work.
+
+    Keep that activity separate from the destructive-action classification.
+    Ancestry connects this head to the merged tip; a reused name alone does not.
+    """
+    if not ref or not ref.get("head_oid"): return None
+    rc, head, _ = git(["rev-parse", "HEAD"], cwd=w.path)
+    if rc != 0 or not head: return None
+    tip = str(ref["head_oid"])
+    if head != tip and git(["merge-base", "--is-ancestor", tip, head], gitdir=gitdir)[0] != 0:
+        return None
+    return PR(number=int(ref["number"]), state="MERGED", draft=False, checks="none", review="none",
+              url=str(ref.get("url", "")), merged_at=str(ref.get("merged_at", "")),
+              author=str(ref.get("author", "")), head_oid=tip)
 
 
 def landed(gitdir: str, head: str, merged_oid: str, merge_oid: str = "") -> bool:
@@ -2007,6 +2074,7 @@ def probe_worktree(gitdir: str, repo: str, main_wt: str, path: str,
         rc, modules, _ = git(["ls-files", "--stage"], cwd=path)
         w.has_submodules = rc == 0 and any(l.startswith("160000 ") for l in modules.splitlines())
 
+    w.pr_activity = w.pr or merged_activity(w, merged, gitdir)
     w.status = derive_status(w, int(cfg.get("stale_days", 14)))
     return w
 
@@ -2040,6 +2108,9 @@ def scan_repo(gitdir: str, cfg: dict, want_ignored: bool = False) -> List[Worktr
                                      pr_bases, prs, merged_refs, want_ignored),
             entries)
     rows = [w for w in results if w is not None]
+    if have("gh"):
+        with futures.ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(lambda w: attach_closed_pr(w, gitdir, w.path), rows))
     locks = {}
     for block in out.strip().split("\n\n"):
         lines = block.splitlines()
@@ -3212,7 +3283,8 @@ def cmd_agent(wts: List[Worktree], args) -> int:
              # work and reports "nothing to do" when it is pressed.
              "is_base": w.is_base,
              "size_kb": w.size_kb, "reclaim_kb": w.reclaim_kb,
-             "pr": (asdict(w.pr) if w.pr else None)}
+             "pr": (asdict(w.pr) if w.pr else None),
+             "pr_activity": (asdict(w.pr_activity) if w.pr_activity else None)}
             for w in wts],
     }))
     return 0

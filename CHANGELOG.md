@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1
+
+- Include the PR-engine changes in the tagged source release. The prebuilt 0.7.0 app already contained these changes; source builds now match the app.
+
 ## 0.7.0
 
 - Add Mallow, a pearl orb, and Bop, a red antenna character, with different silhouettes and idle gestures.
