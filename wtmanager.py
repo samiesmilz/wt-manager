@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -425,6 +425,7 @@ class PR:
     merged_at: str = ""     # ISO8601. "merged" is a claim; this is the evidence
     head_oid: str = ""      # the commit the forge merged. Names are reused; this is not
     author: str = ""
+    title: str = ""
     base: str = ""          # the branch this PR targets: this branch's own base
     failing: List[str] = field(default_factory=list)   # failing check names, raw
     distinct_failing: List[str] = field(default_factory=list)  # minus repo baseline
@@ -1113,7 +1114,7 @@ def fetch_prs(workdir: str, gitdir: str, ttl: int = PR_TTL) -> Tuple[Dict[str, P
 
     rc, out, err, _ = gh_json([
         "gh", "pr", "list", "--limit", "100", "--state", "open", "--json",
-        "headRefName,baseRefName,number,state,isDraft,statusCheckRollup,reviewDecision,url,author",
+        "headRefName,baseRefName,number,state,isDraft,statusCheckRollup,reviewDecision,url,author,title",
     ], workdir, origin)
     if rc != 0 or not out:
         if expects_forge:
@@ -1176,12 +1177,13 @@ def fetch_merged_refs(workdir: str, gitdir: str, ttl: int = PR_TTL) -> Dict[str,
         except Exception:
             pass
     rc, out, _, _ = gh_json(["gh", "pr", "list", "--limit", "100", "--state", "merged",
-                             "--json", "headRefName,headRefOid,mergeCommit,number,url,mergedAt,author"],
+                             "--json", "headRefName,headRefOid,mergeCommit,number,url,mergedAt,author,title"],
                             workdir, origin, timeout=30)
     if rc != 0 or not out:
         return {}
     try:
         refs = {r["headRefName"]: {"number": int(r["number"]), "url": r.get("url", ""),
+                                   "title": r.get("title") or "",
                                    "merged_at": r.get("mergedAt", ""),
                                    "author": (r.get("author") or {}).get("login", ""),
                                    "head_oid": r.get("headRefOid", ""),
@@ -1219,7 +1221,7 @@ def attach_closed_pr(w: Worktree, gitdir: str, workdir: str, ttl: int = PR_TTL) 
         except (OSError, ValueError): pass
     if rows is None:
         rc, out, err, _ = gh_json(["gh", "pr", "list", "--state", "closed", "--head", w.branch,
-            "--limit", "100", "--json", "number,state,headRefOid,url,author"], workdir, origin, timeout=30)
+            "--limit", "100", "--json", "number,state,headRefOid,url,author,title"], workdir, origin, timeout=30)
         if rc != 0 or not out:
             NOTICES.append(("other", w.repo, "closed PR history unavailable; linked PR counts may be incomplete"))
             return
@@ -1242,7 +1244,7 @@ def attach_closed_pr(w: Worktree, gitdir: str, workdir: str, ttl: int = PR_TTL) 
     if not candidates: return
     r = max(candidates, key=lambda r: r["number"])
     w.pr = PR(number=r["number"], state="CLOSED", draft=False, checks="none", review="none",
-              url=r.get("url") or "", head_oid=head,
+              url=r.get("url") or "", head_oid=head, title=r.get("title") or "",
               author=(r["author"].get("login", "") if isinstance(r.get("author"), dict) else ""))
     w.pr_activity = w.pr
 
@@ -1261,7 +1263,7 @@ def merged_activity(w: Worktree, ref: Optional[MergedRef], gitdir: str) -> Optio
         return None
     return PR(number=int(ref["number"]), state="MERGED", draft=False, checks="none", review="none",
               url=str(ref.get("url", "")), merged_at=str(ref.get("merged_at", "")),
-              author=str(ref.get("author", "")), head_oid=tip)
+              author=str(ref.get("author", "")), head_oid=tip, title=str(ref.get("title") or ""))
 
 
 def landed(gitdir: str, head: str, merged_oid: str, merge_oid: str = "") -> bool:
@@ -1325,7 +1327,7 @@ def decode_prs(rows) -> Tuple[Dict[str, PR], Counter, Counter, int]:
             number=r["number"], state=r.get("state", "OPEN"),
             draft=bool(r.get("isDraft")), checks=verdict,
             review=r.get("reviewDecision") or "none", failing=failing,
-            url=r.get("url", ""),
+            url=r.get("url", ""), title=r.get("title") or "",
             author=(r.get("author") or {}).get("login", ""),
             base=r.get("baseRefName") or "",
         )
@@ -2068,7 +2070,7 @@ def probe_worktree(gitdir: str, repo: str, main_wt: str, path: str,
             w.pr = PR(number=int(merged["number"]), state="MERGED", draft=False,
                       checks="none", review="none", url=str(merged["url"]),
                       merged_at=str(merged["merged_at"]), author=str(merged["author"]),
-                      head_oid=merged_oid)
+                      head_oid=merged_oid, title=str(merged.get("title") or ""))
 
     if os.path.isfile(os.path.join(path, ".gitmodules")):
         rc, modules, _ = git(["ls-files", "--stage"], cwd=path)

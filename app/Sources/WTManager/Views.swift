@@ -750,24 +750,59 @@ struct CompletionBanner: View {
 
 struct LinkedPRCard: View {
     @ObservedObject var store: Store
+    @State private var selectedState = "OPEN"
     var body: some View {
-        let stats = LinkedPRStats(worktrees: store.envelope?.worktrees ?? [])
+        let worktrees = store.envelope?.worktrees ?? []
+        let stats = LinkedPRStats(worktrees: worktrees)
+        let rows = LinkedPRSummary.groups(worktrees).filter { $0.pr.state == selectedState }
         Card(title: "PRs linked to local worktrees", tint: .accentColor, symbol: "arrow.triangle.pull") {
-            HStack(spacing: 24) {
-                metric("Open", stats.open, .blue)
-                metric("Merged", stats.merged, .green)
-                metric("Closed, not merged", stats.closed, .secondary)
+            HStack(spacing: 16) {
+                metric("Open", stats.open, .blue, state: "OPEN")
+                metric("Merged", stats.merged, .green, state: "MERGED")
+                metric("Closed, not merged", stats.closed, .secondary, state: "CLOSED")
                 Spacer(minLength: 0)
             }
-            Text("Known PRs, counted once each. \(stats.unconfirmed) checkouts have no confirmed linked PR. GitHub access warnings appear below.")
+            if rows.isEmpty {
+                Text("No confirmed \(selectedState.lowercased()) PRs linked to these checkouts.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            ForEach(rows) { row in
+                HStack(alignment: .top, spacing: 8) {
+                    if let url = row.webURL {
+                        Link(destination: url) {
+                            Label("#\(row.pr.number) \(title(row))", systemImage: "arrow.up.forward.square")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }.help("Open \(url.absoluteString)")
+                    } else {
+                        Text("#\(row.pr.number) \(title(row)) · link unavailable")
+                            .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Text(row.worktrees.first?.repo ?? "")
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+            }
+            Text("Known PRs, counted once each. Click a count to see its PRs; click a PR to open GitHub. \(stats.unconfirmed) checkouts have no confirmed linked PR.")
                 .font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
-    private func metric(_ title: String, _ value: Int, _ tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("\(value)").font(.system(size: 22, weight: .bold, design: .monospaced)).foregroundStyle(tint)
-            Text(title).font(.system(size: 11)).foregroundStyle(.secondary)
-        }
+    private func title(_ row: LinkedPRSummary) -> String {
+        if let title = row.pr.title, !title.isEmpty { return title }
+        return row.worktrees.first?.branch ?? "Pull request"
+    }
+    private func metric(_ title: String, _ value: Int, _ tint: Color, state: String) -> some View {
+        Button { selectedState = state } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(value)").font(.system(size: 22, weight: .bold, design: .monospaced)).foregroundStyle(tint)
+                Text(title).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .padding(7).background(selectedState == state ? tint.opacity(0.10) : Color.clear,
+                                   in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(selectedState == state ? tint.opacity(0.5) : Color.clear))
+        }.buttonStyle(.plain)
+        .accessibilityLabel("Show \(value) \(title.lowercased()) pull requests")
+        .accessibilityAddTraits(selectedState == state ? .isSelected : [])
     }
 }
 
@@ -785,6 +820,10 @@ struct MergeSpeechBanner: View {
                 HStack {
                     Button("Review checkout") { store.preview(Store.Action(kind: .reap, paths: nudge.paths)); onReview?() }
                         .controlSize(.small).disabled(store.busy || store.plan != nil)
+                    if let row = LinkedPRSummary.groups(store.envelope?.worktrees ?? []).first(where: { $0.id == nudge.id }),
+                       let url = row.webURL {
+                        Link("Open PR", destination: url).controlSize(.small)
+                    }
                     Button("Dismiss") { store.dismissMerge(nudge.id) }.controlSize(.small)
                 }
             }

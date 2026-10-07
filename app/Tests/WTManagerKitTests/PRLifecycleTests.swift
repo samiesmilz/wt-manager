@@ -8,6 +8,16 @@ final class PRLifecycleTests: XCTestCase {
         """
         return try JSONDecoder().decode(Worktree.self, from: Data(json.utf8))
     }
+    func testDrillDownMatchesCountersAndRejectsConflictingStates() throws {
+        let rows = [try tree("OPEN"), try tree("OPEN", path: "/tmp/duplicate")]
+        let groups = LinkedPRSummary.groups(rows)
+        XCTAssertEqual(groups.count, LinkedPRStats(worktrees: rows).open)
+        XCTAssertEqual(groups.first?.worktrees.count, 2)
+        XCTAssertEqual(groups.first?.webURL?.absoluteString, "https://github.com/example/repo/pull/7")
+        XCTAssertNil(groups.first?.pr.title) // older envelopes remain compatible
+        XCTAssertTrue(LinkedPRSummary.groups([try tree("OPEN"), try tree("MERGED")]).isEmpty)
+    }
+
     func testBaselineIsQuietAndDuplicateCheckoutsCountOnce() throws {
         let rows = [try tree("MERGED"), try tree("MERGED",path:"/tmp/other")]
         var tracker = PRLifecycle(); tracker.observe(rows)

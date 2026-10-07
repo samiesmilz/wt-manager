@@ -1,20 +1,39 @@
 import Foundation
 
+/// The same unique, confirmed PR set drives counters and their drill-down links.
+public struct LinkedPRSummary: Identifiable {
+    public let id: String
+    public let pr: PRInfo
+    public let worktrees: [Worktree]
+    public static func groups(_ worktrees: [Worktree]) -> [LinkedPRSummary] {
+        Dictionary(grouping: worktrees.filter { $0.linkedPR != nil }, by: PRLifecycle.key)
+            .compactMap { key, rows in
+                guard let pr = rows.first?.linkedPR,
+                      Set(rows.compactMap { $0.linkedPR?.state }).count == 1,
+                      ["OPEN", "MERGED", "CLOSED"].contains(pr.state) else { return nil }
+                return LinkedPRSummary(id: key, pr: pr, worktrees: rows.sorted { $0.path < $1.path })
+            }.sorted { $0.id < $1.id }
+    }
+    public var webURL: URL? {
+        guard let url = URL(string: pr.url), url.scheme == "https", url.host != nil else { return nil }
+        return url
+    }
+}
+
 public struct LinkedPRStats {
     public let open: Int
     public let merged: Int
     public let closed: Int
     public let unconfirmed: Int
     public init(worktrees: [Worktree]) {
-        let groups = Dictionary(grouping: worktrees.filter { $0.linkedPR != nil }, by: PRLifecycle.key)
-        var o=0, m=0, c=0, unknown=0
-        for rows in groups.values {
-            let states = Set(rows.compactMap { $0.linkedPR?.state })
-            if states.count != 1 { unknown += rows.count; continue }
-            switch states.first { case "OPEN": o += 1; case "MERGED": m += 1; case "CLOSED": c += 1; default: unknown += rows.count }
-        }
-        open=o; merged=m; closed=c
-        unconfirmed=unknown + worktrees.filter { !$0.primary && !$0.isBase && $0.linkedPR == nil }.count
+        let groups = LinkedPRSummary.groups(worktrees)
+        open = groups.filter { $0.pr.state == "OPEN" }.count
+        merged = groups.filter { $0.pr.state == "MERGED" }.count
+        closed = groups.filter { $0.pr.state == "CLOSED" }.count
+        let unconfirmedLinked = worktrees.filter { $0.linkedPR != nil }.count
+            - groups.reduce(0) { $0 + $1.worktrees.count }
+        unconfirmed = unconfirmedLinked
+            + worktrees.filter { !$0.primary && !$0.isBase && $0.linkedPR == nil }.count
     }
 }
 

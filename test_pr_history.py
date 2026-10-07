@@ -9,8 +9,9 @@ class ClosedPRHistory(unittest.TestCase):
             T.attach_closed_pr(w,'gitdir','workdir',ttl=0)
         return w
     def test_exact_closed_commit_is_attached_without_claiming_it_landed(self):
-        w=self.run_lookup([{'number':7,'state':'CLOSED','headRefOid':'current','url':'https://github.com/example/repo/pull/7','author':None}])
+        w=self.run_lookup([{'number':7,'state':'CLOSED','headRefOid':'current','url':'https://github.com/example/repo/pull/7','author':None,'title':'Keep useful work'}])
         self.assertEqual(w.pr.state,'CLOSED');self.assertFalse(w.landed)
+        self.assertEqual(w.pr.title, 'Keep useful work')
     def test_reused_branch_and_merged_history_cannot_be_mislabeled_closed(self):
         self.assertIsNone(self.run_lookup([{'number':7,'state':'CLOSED','headRefOid':'old'}]).pr)
         self.assertIsNone(self.run_lookup([{'number':7,'state':'MERGED','headRefOid':'current'}]).pr)
@@ -32,3 +33,10 @@ class MergedActivity(unittest.TestCase):
         self.assertNotEqual(T.derive_status(w,14),T.MERGED)
         with patch.object(T,'git',side_effect=[(0,'unrelated-head',''),(1,'','')]):
             self.assertIsNone(T.merged_activity(w,ref,'gitdir'))
+
+class PRPresentation(unittest.TestCase):
+    def test_open_title_survives_and_old_cache_has_a_fallback(self):
+        rows = [{'headRefName': 'feature', 'number': 7, 'title': 'Useful improvement'}]
+        self.assertEqual(T.decode_prs(rows)[0]['feature'].title, 'Useful improvement')
+        del rows[0]['title']
+        self.assertEqual(T.decode_prs(rows)[0]['feature'].title, '')

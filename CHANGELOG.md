@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2
+
+- Make PR counters reveal their matching PR links; fetch titles and offer Open PR in merge messages and checkout details.
+
+- Open the window immediately by clicking the desktop or menu-bar mascot; right-click retains maintenance actions.
+- Select mascots with one click on always-visible portraits; the header mascot cycles characters.
+- Preserve drag-to-move and make the accessibility press action open the window.
+
 ## 0.7.1
 
 - Include the PR-engine changes in the tagged source release. The prebuilt 0.7.0 app already contained these changes; source builds now match the app.

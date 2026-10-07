@@ -308,6 +308,12 @@ final class Store: ObservableObject {
     /// this window anybody discovers without being told, and a coat is the
     /// safest thing a stray click can change — it means nothing, it is
     /// visible immediately, and one more click undoes it.
+    func nextCharacter() {
+        guard let figures = mascot?.figures, !figures.isEmpty else { return }
+        let next = figures.firstIndex(where: { $0.id == figure }).map { ($0 + 1) % figures.count } ?? 0
+        figure = figures[next].id
+    }
+
     func nextSkin() {
         guard let names = mascot?.skins.keys.sorted(), !names.isEmpty else { return }
         let i = names.firstIndex(of: skin).map { $0 + 1 } ?? 0
@@ -1091,7 +1097,7 @@ extension Store {
     }
 
     func openPR(_ w: Worktree) {
-        guard let url = w.pr?.url, let u = URL(string: url) else { return }
+        guard let url = w.linkedPR?.url, let u = URL(string: url), u.scheme == "https", u.host != nil else { return }
         NSWorkspace.shared.open(u)
     }
 }

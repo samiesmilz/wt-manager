@@ -224,34 +224,24 @@ struct PixelWordmark: View {
 struct Header: View {
     @ObservedObject var store: Store
 
-    /// Two rows, and only two.
-    ///
-    /// The first is the state: Wity, a headline that never wraps, the
-    /// controls. The second is the facts that live nowhere else on this
-    /// window — at most three, on one line, never wrapping either.
-    ///
-    /// It used to be four rows: a headline, eight tags across two rows, and an
-    /// inventory strip. Five of the eight tags repeated a count already
-    /// showing in the sidebar, one repeated the headline word for word ("One
-    /// thing needs you" over a tag reading "1 needs you"), and the strip
-    /// repeated the status bar at the bottom of the same window. Everything
-    /// was on screen twice and nothing was emphasised, which is the definition
-    /// of noise. What is left is the two or three things that are only here.
+    /// Keep status and direct character selection available above the scrolling content.
+    /// Unique facts remain a compact final row.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 13) {
-                Menu {
+                Button { store.nextCharacter() } label: {
+                    WityView(store: store, height: 44).frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Next mascot")
+                .help("Click for the next mascot; choose a portrait below for a specific character")
+                .contextMenu {
                     Button("Change coat") { store.nextSkin() }.disabled(store.usingOwnImage)
                     Button("Check for updates…") { store.updates.check(manual: true) }
                     Divider()
                     Button("Quit wt-manager") { store.quit() }
                         .disabled(store.plan?.stage == .committing)
-                } label: {
-                    WityView(store: store, height: 44).frame(width: 44)
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Mascot menu · change coat, check updates, or quit")
                 VStack(alignment: .leading, spacing: 1) {
                     Text(headline)
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -273,6 +263,7 @@ struct Header: View {
                 Spacer(minLength: 8)
                 controls
             }
+            MascotSwitcher(store: store)
             if !tags.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(tags) { tag in InsightTag(tag: tag) { store.section = tag.target } }
@@ -319,27 +310,6 @@ struct Header: View {
                     Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
                 }
                 if let mascot = store.mascot {
-                    // Two axes, and they are not the same axis. The character
-                    // is *who* is on the perch; the coat is what colour they
-                    // are. Folding them into one list of twenty entries was
-                    // the first draft and nobody could find anything in it.
-                    Picker("Character", selection: $store.figure) {
-                        ForEach(mascot.figures) { f in
-                            Label {
-                                Text("\(f.name) — \(f.tell)")
-                            } icon: {
-                                if let image = mascot.image(figure: f.id, gauge: 0, eyes: "open", frame: 0,
-                                    skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][f.id] ?? store.skin,
-                                    tint: "#3fb27f", fitting: 22) {
-                                    Image(nsImage: image).interpolation(.none)
-                                }
-                            }.tag(f.id)
-                        }
-                        if OwnFace.exists {
-                            Divider()
-                            Text("Your own picture").tag(Store.ownFigure)
-                        }
-                    }
                     Picker("Coat", selection: $store.skin) {
                         ForEach(mascot.skins.keys.sorted(), id: \.self) { Text($0).tag($0) }
                     }
@@ -358,6 +328,58 @@ struct Header: View {
             .menuStyle(.borderlessButton).fixedSize().help("Appearance")
         }
         .buttonStyle(.borderless).font(.system(size: 12))
+    }
+}
+
+/// Always-visible portraits: one press selects the exact character, with no menu or confirmation.
+struct MascotSwitcher: View {
+    @ObservedObject var store: Store
+    private let coats = ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut",
+                         "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"]
+
+    var body: some View {
+        if let mascot = store.mascot {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 40), spacing: 4)], spacing: 4) {
+                ForEach(mascot.figures) { figure in
+                    portrait(id: figure.id, name: figure.name, help: figure.tell) {
+                        if let image = mascot.image(figure: figure.id, gauge: 0, eyes: "open", frame: 0,
+                            skin: coats[figure.id] ?? "acorn", tint: "#3fb27f", fitting: 26) {
+                            Image(nsImage: image).interpolation(.none)
+                        }
+                    }
+                }
+                if OwnFace.exists {
+                    portrait(id: Store.ownFigure, name: "Yours", help: "Your own picture") {
+                        if let image = OwnFace.image(fitting: 26, tint: nil) {
+                            Image(nsImage: image).interpolation(.none)
+                        }
+                    }
+                }
+            }
+            .accessibilityLabel("Choose a mascot")
+        }
+    }
+
+    private func portrait<Content: View>(id: String, name: String, help: String,
+                                         @ViewBuilder image: () -> Content) -> some View {
+        let selected = store.figure == id
+        return Button { store.figure = id } label: {
+            VStack(spacing: 2) {
+                image().frame(height: 26)
+                Text(name).font(.system(size: 10, weight: selected ? .semibold : .regular))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 5)
+            .background(selected ? Palette.brand.opacity(0.12) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7)
+                .stroke(selected ? Palette.brand : Color.clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("\(name) — \(help)")
+        .accessibilityLabel("Choose \(name)")
+        .accessibilityValue(selected ? "Selected" : "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

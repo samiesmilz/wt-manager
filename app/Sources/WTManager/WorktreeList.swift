@@ -147,12 +147,12 @@ struct WorktreeRow: View {
 
             if !worktree.soloLog.isEmpty { soloCommits }
 
-            if let pr = worktree.pr { prProof(pr) }
+            if let pr = worktree.linkedPR { prProof(pr) }
 
             HStack(spacing: 7) {
                 small("Reveal", "folder") { store.reveal(worktree) }
                 small("Terminal", "terminal") { store.openInTerminal(worktree) }
-                if worktree.pr?.url.isEmpty == false {
+                if worktree.linkedPR?.url.isEmpty == false {
                     small("Pull request", "arrow.up.forward.square") { store.openPR(worktree) }
                 }
                 Spacer(minLength: 8)
@@ -254,7 +254,7 @@ struct WorktreeRow: View {
             }
             Spacer(minLength: 0)
             if !pr.url.isEmpty {
-                Button("Check") { store.openPR(worktree) }
+                Button("Open PR") { store.openPR(worktree) }
                     .buttonStyle(.link).font(.system(size: 10.5))
             }
         }

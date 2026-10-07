@@ -104,6 +104,8 @@ Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Moti
 
 Overview counts **known PRs linked to local worktrees**, with separate Open, Merged, and Closed-not-merged counters. One PR counts once even when several checkouts reference it. Unconfirmed checkouts and GitHub access warnings stay visible; these are not repository-wide or lifetime totals. Closed PRs are associated only when their head commit matches the local checkout. Historic query limits can leave older PRs unconfirmed.
 
+**Click an Open, Merged or Closed counter to see its linked PRs**, then click a PR number and title to open it on GitHub. Open PRs appear immediately. Titles fall back to the local branch name while older cached data refreshes. Merge messages also offer **Open PR**.
+
 After wt-manager has observed a PR open, a later verified merge produces a mascot speech message. It appears in the window, or beside the floating companion when the window is closed. **Review checkout** opens the engine's safety preview; merging a PR never automatically deletes files. New local commits, protected files, locked worktrees and unreadable folders can still prevent removal. Occupied disk space is labelled separately from safely reclaimable space.
 
 The first scan quietly establishes a baseline. Messages and dismissals persist locally, partial scans preserve known state, and duplicate checkouts do not duplicate alerts. Turn them off using **Appearance → Mascot merge messages**. PR reads use your existing `gh` session and short local caches; detection follows periodic refreshes, rather than real-time GitHub push events.
@@ -136,9 +138,9 @@ Each companion has its own idle gesture: Byte scans its signal lights, Cooper pe
 
 ![Individual idle gestures: signal lights, pecks, ear folds, scarf and twig wave, and palm fronds](docs/images/motions.gif)
 
-Pick a character and coat in **Appearance**. You can also use your own picture, reduced to the same pixel grid and stored locally.
+Choose a character with **one click on its portrait beneath the window headline**. The selected portrait is highlighted. Clicking the large header mascot cycles to the next character. Coats are available in **Appearance**. You can also use your own picture, reduced to the same pixel grid and stored locally.
 
-**Tap the large mascot for its menu: change coat, check for updates, or quit.** The compact floating desktop mascot is shown by default. Drag it anywhere; its position survives restarting the app. Click or right-click it for the same menu-bar actions, including Open window and Quit. Hide/show it using **Appearance → Show floating mascot** or the menu-bar mascot. **Reset mascot position** brings it back if needed. It stays available when you close the main window, and follows your Mac's Spaces. Saved positions are recovered onto a connected display when the display layout changes.
+**Click the desktop or menu-bar mascot to open wt-manager immediately.** Right-click either mascot for less frequent actions, including Quit. The compact floating desktop mascot is shown by default. Drag it anywhere without opening the window; its position survives restarting the app. Right-click the large header mascot for coat, update and Quit actions. Hide/show the desktop companion using **Appearance → Show floating mascot** or its right-click menu. **Reset mascot position** brings it back if needed. It stays available when you close the main window and follows your Mac's Spaces. Saved positions are recovered onto a connected display when the display layout changes.
 
 The menu-bar mascot also offers Open window, Refresh, Watched folders, updates, and Quit. Quit is unavailable while a destructive operation is running. Closing the window leaves the menu-bar companion running; quitting stops the app until you open it again or the next configured login launch.
 

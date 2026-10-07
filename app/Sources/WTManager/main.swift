@@ -22,10 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         store = Store(mascot: mascot)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.delegate = self
-        statusItem.menu = menu
+        // Primary click opens immediately; secondary click keeps maintenance actions.
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusMascotClicked(_:))
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         // Redrawing the status item is the one thing SwiftUI does not do for us.
         observer = NotificationCenter.default.addObserver(
@@ -135,7 +135,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             button.image = nil
             button.title = n > 0 ? "wt-manager \(n)" : "wt-manager"
         }
-        button.toolTip = store.error ?? store.face?.meaning
+        button.toolTip = "\(store.error ?? store.face?.meaning ?? "wt-manager") · click to open; right-click for more actions"
+    }
+
+    @objc private func statusMascotClicked(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            let menu = NSMenu(); menu.autoenablesItems = false
+            menuNeedsUpdate(menu)
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY), in: sender)
+        } else {
+            openWindow()
+        }
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -392,6 +402,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             window = w
         }
         NSApp.activate(ignoringOtherApps: true)
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
         window?.makeKeyAndOrderFront(nil)
     }
 

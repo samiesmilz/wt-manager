@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import WTManagerKit
 
-/// An optional companion, using the same image and menu as the other surfaces.
+/// An optional companion, with a direct window shortcut and a secondary context menu.
 /// The window stays nonactivating so moving it never steals keyboard focus.
 @MainActor
 final class FloatingMascot {
@@ -33,11 +33,12 @@ final class FloatingMascot {
         view = FloatingMascotView(frame: NSRect(origin: .zero, size: size))
         panel.contentView = view
         view.makeMenu = menu
+        view.openWindow = openWindow
         view.didMove = { [weak self] in self?.keepReachableAndSave() }
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.button)
-        view.setAccessibilityLabel("Floating mascot menu")
-        view.setAccessibilityHelp("Drag to move. Click for Open window, Show floating mascot, and Quit.")
+        view.setAccessibilityLabel("Open wt-manager")
+        view.setAccessibilityHelp("Click to open wt-manager. Drag to move. Right-click for more actions.")
         restorePosition()
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -54,7 +55,7 @@ final class FloatingMascot {
         if key != drawn {
             drawn = key
             view.image = store.image(height: 69, frame: pulse.wag, blinking: pulse.blinking, detailed: true)
-            view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · drag to move; click for menu"
+            view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · click to open wt-manager; drag to move; right-click for more actions"
             view.needsDisplay = true
         }
         if !panel.isVisible { panel.orderFrontRegardless() }
@@ -114,6 +115,7 @@ final class FloatingMascot {
 private final class FloatingMascotView: NSView {
     var image: NSImage?
     var makeMenu: (() -> NSMenu)?
+    var openWindow: (() -> Void)?
     var didMove: (() -> Void)?
     private var pressPoint: NSPoint?
     private var pressOrigin: NSPoint?
@@ -144,13 +146,13 @@ private final class FloatingMascotView: NSView {
         window?.setFrameOrigin(NSPoint(x: pressOrigin.x + dx, y: pressOrigin.y + dy))
     }
     override func mouseUp(with event: NSEvent) {
-        if moved { didMove?() } else { showMenu(event) }
+        if moved { didMove?() } else { openWindow?() }
         pressPoint = nil; pressOrigin = nil
     }
     override func rightMouseDown(with event: NSEvent) { showMenu(event) }
     override func accessibilityPerformPress() -> Bool {
-        guard let menu = makeMenu?() else { return false }
-        menu.popUp(positioning: nil, at: NSPoint(x: bounds.midX, y: bounds.midY), in: self)
+        guard let openWindow else { return false }
+        openWindow()
         return true
     }
     private func showMenu(_ event: NSEvent) {

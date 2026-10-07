@@ -10,6 +10,7 @@ import Foundation
 
 public struct PRInfo: Decodable {
     public let number: Int
+    public let title: String?
     public let state: String
     public let draft: Bool
     public let checks: String
@@ -20,7 +21,7 @@ public struct PRInfo: Decodable {
     public let mergedAt: String
     public let author: String
     public enum CodingKeys: String, CodingKey {
-        case number, state, draft, checks, review, url, author
+        case number, title, state, draft, checks, review, url, author
         case mergedAt = "merged_at"
         case distinctFailing = "distinct_failing"
         case endemic
