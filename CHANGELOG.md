@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- A folder that cannot be read during the secret check — one a running build deletes mid-scan, say — no longer ends the whole scan with "scan refused". That worktree alone is marked unverified and refuses removal until a later scan reads it; everything else still refreshes.
+- Installed-package folders (`node_modules`, `.pnpm`, `vendor`, `Pods`, `Carthage`, `site-packages`, `bower_components`) are checked for secrets at their top level only. A package's own `credentials.js` is no longer mistaken for yours, which had turned every `node_modules` into "unknown" and kept `clean` from removing it.
+
 ## 0.4.1
 
 - Give Byte scanning signal lights, Cooper a double peck, Pip folding ears, Flurry a hat-tip and twig wave, and Coco independently reshaped fronds.

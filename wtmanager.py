@@ -179,7 +179,18 @@ def record_ignored(w: Worktree, entry: str) -> str:
     if kind == PRECIOUS:
         w.precious_hits.append(entry)
     elif kind == UNKNOWN:
-        hidden = hidden_precious(w.path, entry)
+        try:
+            hidden = hidden_precious(w.path, entry)
+        except OSError as e:
+            # One worktree that cannot be read through is one worktree that
+            # cannot be removed — not a scan that cannot finish. Raising here
+            # ended every repo's refresh with "scan refused" whenever a build
+            # deleted a folder mid-walk; the app showed an error instead of
+            # fifty worktrees. The folder is kept whole and the worktree
+            # refuses removal until a later scan reads it cleanly.
+            w.uncertain = w.uncertain or str(e)
+            w.unknown_paths.append(entry)
+            return kind
         w.precious_hits.extend(hidden)
         # A known output folder with secrets needs those secrets archived,
         # not a backup of gigabytes that a build will recreate. Clean still
@@ -189,23 +200,39 @@ def record_ignored(w: Worktree, entry: str) -> str:
     return kind
 
 
+# Folders of installed third-party packages. What is inside was published by
+# someone else and comes back with an install, so a name that looks like a
+# secret there is that package's source: measured, every pnpm store here held
+# ~160 such names — `@aws-sdk/types/.../credentials.js`, Firebase's
+# `user_credential.d.ts` — and walking into them turned every `node_modules`
+# into "unknown" and its SDK files into "secrets" for reap to archive.
+DEPENDENCY_STORES = {"node_modules", "bower_components", ".pnpm", "site-packages",
+                     "vendor", "Pods", "Carthage"}
+
+
 def precious_paths(full: str) -> List[str]:
     """All protected descendants, without following directory symlinks.
 
     An unreadable subtree is uncertain, not safe. Callers must preserve it.
     Protected directories are kept whole rather than inspecting their secrets.
+    Dependency stores are looked into one level only: a `.env` someone
+    dropped at the top of one is theirs; the packages below are not.
     """
     if not os.path.isdir(full) or os.path.islink(full):
         return []
     hits = []
     def unreadable(error):
         raise error
+    top = os.path.basename(full.rstrip("/")) in DEPENDENCY_STORES
     for parent, dirs, files in os.walk(full, followlinks=False, onerror=unreadable):
         for name in dirs + files:
             if any(rx.match(name) for rx in _PRECIOUS_RE):
                 hits.append(os.path.relpath(os.path.join(parent, name), full))
                 if name in dirs:
                     dirs.remove(name)
+        if top:
+            break
+        dirs[:] = [d for d in dirs if d not in DEPENDENCY_STORES]
     return sorted(hits)
 
 
@@ -450,6 +477,10 @@ class Worktree:
     unknown_kb: int = -1
     locked: str = ""
     has_submodules: bool = False
+    # Why the ignored files here could not all be inspected, if they could not.
+    # Removal is refused outright: no override, since what was not read cannot
+    # have been set aside.
+    uncertain: str = ""
 
     @property
     def dirty(self) -> int:
@@ -2577,10 +2608,9 @@ def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False
     if w.has_submodules and not force:
         return "contains submodules — review and remove explicitly in Terminal", "--force"
     if inspect:
-        try:
-            ignored_by_kind(w)
-        except OSError as e:
-            return str(e), ""
+        ignored_by_kind(w)
+    if w.uncertain:
+        return w.uncertain + " — try again when nothing is writing to it", ""
     if w.ignored_scanned and w.unknown_paths and not discard_unknown:
         if inspect:
             sizes = [du_kb(os.path.join(w.path, e.rstrip("/")), cache=False)

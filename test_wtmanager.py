@@ -928,6 +928,73 @@ class Base(unittest.TestCase):
         self.assertEqual((feat.base, feat.ahead), ("main", 1))
 
 
+class DeepProtection(unittest.TestCase):
+    """Looking all the way down for secrets, without mistaking packages for them
+    or one unreadable folder for a scan that cannot finish."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="wt-manager-deep-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def touch(self, rel, text="x\n"):
+        full = os.path.join(self.root, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as fh:
+            fh.write(text)
+
+    def test_package_sources_named_like_secrets_are_not_secrets(self):
+        # Measured: ~160 of these in every pnpm store here.
+        self.touch("node_modules/@aws-sdk/types/dist-es/credentials.js")
+        self.touch("node_modules/.pnpm/firebase/dist/user_credential.d.ts")
+        self.assertEqual(T.precious_paths(os.path.join(self.root, "node_modules")), [])
+        self.assertEqual(T.classify_ignored("node_modules/", self.root), T.SAFE)
+
+    def test_a_secret_at_the_top_of_a_store_still_counts(self):
+        self.touch("node_modules/.env")
+        self.assertEqual(T.classify_ignored("node_modules/", self.root), T.UNKNOWN)
+
+    def test_build_output_is_searched_deeply_but_not_its_packages(self):
+        self.touch("dist/config/.env")
+        self.touch("dist/node_modules/sdk/credentials.js")
+        self.assertEqual(T.precious_paths(os.path.join(self.root, "dist")),
+                         [os.path.join("config", ".env")])
+
+    def test_a_folder_that_vanishes_mid_walk_blocks_one_worktree_not_the_scan(self):
+        isolate_caches(self)
+        fx = Fixture()
+        self.addCleanup(fx.close)
+        wt = fx.worktree("v", "feat/v")
+        with open(os.path.join(wt, ".gitignore"), "w") as fh:
+            fh.write("dist/\n")
+        git("add", ".gitignore", cwd=wt)
+        git("commit", "-qm", "ignore", cwd=wt)
+        git("push", "-q", "-u", "origin", "feat/v", cwd=wt)
+        git("merge", "-q", "--ff-only", "feat/v", cwd=fx.main)
+        git("push", "-q", "origin", "main", cwd=fx.main)
+        git("fetch", "-q", "origin", cwd=wt)
+        os.makedirs(os.path.join(wt, "dist", "cache"))
+        with open(os.path.join(wt, "dist", "cache", "chunk.js"), "w") as fh:
+            fh.write("x\n")                  # git does not list an empty folder
+        real = os.walk
+
+        def vanishing(top, **kw):
+            # A build removes a folder while the walk is inside it.
+            kw["onerror"](FileNotFoundError(2, "No such file or directory", top))
+            yield from real(top, **kw)
+
+        w = fx.probe(wt, "feat/v")
+        with mock.patch.object(T.os, "walk", vanishing), \
+                contextlib.redirect_stderr(io.StringIO()):
+            T.measure(w)                                   # must not raise
+            blocker = T.reap_blocker(w, inspect=True)
+            forced = T.reap_blocker(w, force=True, discard_unknown=True, inspect=True)
+        self.assertTrue(w.uncertain)
+        self.assertIn("dist/", w.unknown_paths)
+        self.assertIn("try again", blocker[0])
+        self.assertIsNotNone(forced, "nothing overrides what was never read")
+        self.assertEqual(T.removal_info(w)["state"], "blocked")
+
+
 class Squashed(unittest.TestCase):
     """A squash merge proves itself by content when the PR's head is unknown here."""
 
@@ -1129,14 +1196,16 @@ class Reap(unittest.TestCase):
         return rc, out.getvalue()
 
     def test_generated_folder_archives_all_secrets_without_backing_up_build_output(self):
-        for rel in ("node_modules/a/.env.local", "node_modules/b/.npmrc", "node_modules/a/output.js"):
+        # At the top of the store: a package's own files below it are its
+        # author's, and are not looked into (see DeepProtection).
+        for rel in ("node_modules/.env.local", "node_modules/.npmrc", "node_modules/a/output.js"):
             full = os.path.join(self.wt, rel)
             os.makedirs(os.path.dirname(full), exist_ok=True)
             with open(full, "w") as fh:
                 fh.write("fixture content")
         w = self.probe()
         T.ignored_by_kind(w)
-        self.assertEqual(sorted(w.precious_hits), ["node_modules/a/.env.local", "node_modules/b/.npmrc"])
+        self.assertEqual(sorted(w.precious_hits), ["node_modules/.env.local", "node_modules/.npmrc"])
         self.assertEqual(w.unknown_paths, [])
         args = self.Args()
         args.yes = True
@@ -1145,8 +1214,8 @@ class Reap(unittest.TestCase):
             rc = T._reap([w], args, plan)
         self.assertEqual(rc, 0)
         self.assertFalse(os.path.exists(self.wt))
-        self.assertIn("node_modules/a/.env.local", self.kept())
-        self.assertIn("node_modules/b/.npmrc", self.kept())
+        self.assertIn("node_modules/.env.local", self.kept())
+        self.assertIn("node_modules/.npmrc", self.kept())
         self.assertNotIn("node_modules/a/output.js", self.kept())
         self.assertEqual(plan["completed_paths"], [self.wt])
 
