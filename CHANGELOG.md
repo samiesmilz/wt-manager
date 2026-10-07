@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+
+- Replace the cross-shaped attention badge with a simple right-pointing arrow.
+
 ## 0.6.0
 
 - Draw separate 32×32 pixel companions for Byte, Cooper, Pip, Flurry and Coco, with shading and recognizable character details.

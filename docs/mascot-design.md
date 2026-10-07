@@ -4,6 +4,7 @@ Characters express personality; the framed badge communicates engine status.
 Changing a character or coat must not change the strength or meaning of that signal.
 
 - Use the same nine-pixel badge, borders and mood glyphs for every character, including custom pictures. Take the live tint and mood from the engine.
+- Use a simple right-pointing arrow for attention; avoid cross-shaped status symbols.
 - Keep all eight moods distinguishable without colour. Two contrasting borders isolate the badge from coats and light/dark backgrounds.
 - For the menu bar, use the shared 22×23 source grid and bottom baseline. Resting figures occupy at least 16 rows; intentional pecks may compress during motion.
 - Draw the five new floating characters separately on a 32×32 grid. Render at integral 2× scale (64×64pt) inside the existing 84×84pt movable window. Never enlarge menu-bar art as a substitute for detail. Keep a nine-point badge so it does not obscure the character.
