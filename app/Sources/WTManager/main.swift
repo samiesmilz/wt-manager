@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if key == drawn { return }
         drawn = key
         if let image = store.image(height: NSStatusBar.system.thickness,
-                                   frame: wag, blinking: blinking) {
+                                   frame: wag, blinking: blinking, showSignal: false) {
             image.isTemplate = false
             button.image = image
             button.title = n > 0 ? " \(n)" : ""
@@ -728,7 +728,7 @@ private struct CastSheet: View {
                                 figure: f.id, gauge: 2, eyes: "open", frame: 0,
                                 skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][f.id] ?? store.skin,
                                 tint: store.face?.tint ?? "#3fb27f",
-                                fitting: size, detailed: size > 30) {
+                                fitting: size, detailed: size > 30, showSignal: size > 30) {
                                 Image(nsImage: image).interpolation(.none)
                             }
                             if size > 30 {

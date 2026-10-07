@@ -34,10 +34,11 @@ public struct Mascot: Decodable {
         public let palettes: [String: [String: String]]
     }
     public let companion: Companion?
+    public let menu: Companion?
     public let defaultFigure: String
 
     public enum CodingKeys: String, CodingKey {
-        case width, height, frames, slots, skins, sprites, figures, companion
+        case width, height, frames, slots, skins, sprites, figures, companion, menu
         case defaultSkin = "default_skin"
         case defaultFigure = "default_figure"
     }
@@ -87,8 +88,9 @@ extension Mascot {
     /// character resampled to a fractional size stops being pixel art and
     /// becomes a smudge, which is exactly what it looks like when it goes wrong.
     public func image(figure: String, gauge: Int, eyes: String, frame: Int, skin: String,
-               tint: String, fitting height: CGFloat, mood: String? = nil, detailed: Bool = false) -> NSImage? {
-        if detailed, let art = companion,
+               tint: String, fitting height: CGFloat, mood: String? = nil, detailed: Bool = false, showSignal: Bool = true) -> NSImage? {
+        let dedicatedArt = detailed ? companion : (!showSignal ? menu : nil)
+        if let art = dedicatedArt,
            let rows = art.sprites["\(figure)/\(eyes)/\(frame % max(frames, 1))"],
            let palette = art.palettes["\(figure)/\(skin)"] ?? art.palettes["\(figure)/\(defaultSkin)"] {
             // Detailed art fits in full. Never crop or fractionally resample it.
@@ -105,7 +107,7 @@ extension Mascot {
                            width: scale, height: scale).fill()
                 }
             }
-            if let mood {
+            if let mood, showSignal {
                 // Keep the badge at menu-bar size so art stays the focus.
                 MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width-9, y: 0), scale: 1)
             }
@@ -140,7 +142,7 @@ extension Mascot {
                        width: scale, height: scale).fill()
             }
         }
-        if let mood {
+        if let mood, showSignal {
             MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width - 9, y: 0), scale: 1)
         }
         image.unlockFocus()

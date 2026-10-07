@@ -843,6 +843,7 @@ def export() -> dict:
     between the menu bar and the page.
     """
     from companion_art import export as export_companions
+    from menu_art import export as export_menu
     sprites = {}
     for fig in FIGURES.values():
         for gauge_level in range(len(POUCH)):
@@ -854,6 +855,7 @@ def export() -> dict:
         "version": 1, "width": W, "height": H, "frames": FRAMES,
         "slots": SLOTS, "skins": SKINS, "tints": TINTS,
         "companion": export_companions(SKINS, SLOTS, EYES, FRAMES),
+        "menu": export_menu(SKINS, FRAMES),
         "default_skin": DEFAULT_SKIN,
         # The cast, so the picker is data too: a fifth character is a dozen
         # strings here and nothing at all in the app.

@@ -133,6 +133,24 @@ final class MascotTests: XCTestCase {
         }
     }
 
+    func testMenuBarCanHideSignalWithoutChangingCharacterSize() throws {
+        let m = try load()
+        for figure in m.figures {
+            var reference: Data?
+            for mood in MascotSignal.moods {
+                let clean = try XCTUnwrap(m.image(figure: figure.id, gauge: 0, eyes: "open", frame: 0,
+                    skin: "acorn", tint: "#3fb27f", fitting: 22, mood: mood, showSignal: false))
+                let marked = try XCTUnwrap(m.image(figure: figure.id, gauge: 0, eyes: "open", frame: 0,
+                    skin: "acorn", tint: "#3fb27f", fitting: 22, mood: mood))
+                XCTAssertEqual(clean.size, marked.size)
+                let pixels = try XCTUnwrap(clean.tiffRepresentation)
+                if let reference { XCTAssertEqual(pixels, reference, "\(figure.id) still draws a mood badge") }
+                reference = pixels
+                XCTAssertNotEqual(pixels, marked.tiffRepresentation)
+            }
+        }
+    }
+
     func testDetailedCompanionsFitFullyAndMenuBarStaysSmall() throws {
         let m = try load()
         for figure in ["robot", "rooster", "rabbit", "snowman", "palm"] {

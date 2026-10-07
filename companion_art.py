@@ -42,26 +42,22 @@ class Canvas:
 def sprite(figure,eyes,frame):
     c=Canvas();f=frame%8
     if figure=='rabbit':
-        # One ear folds at its tip. Body and paws remain planted.
+        # Plush oval face, restrained muzzle, and one soft folding ear.
         fold=(0,0,1,2,3,2,1,0)[f]
-        c.poly([(6,3),(9,1),(12,4),(13,15),(7,15)],'#')
-        c.poly([(7,4),(9,3),(11,5),(12,14),(8,14)],'f')
-        c.poly([(8,5),(9,4),(10,6),(11,13),(9,13)],'p')
-        c.poly([(20,3+fold),(23,1+fold),(26,4+fold),(24,16),(18,15)],'#')
-        c.poly([(21,4+fold),(23,3+fold),(25,5+fold),(23,15),(20,14)],'f')
-        c.line(23,5+fold,21,13,'p');c.line(24,6+fold,22,13,'p')
-        c.ellipse(8,20,24,31,'#');c.ellipse(9,21,23,30,'s')
-        c.ellipse(11,22,21,29,'f');c.ellipse(13,24,20,29,'b')
-        c.ellipse(5,27,13,31,'#');c.ellipse(6,28,12,30,'f')
-        c.ellipse(20,27,28,31,'#');c.ellipse(21,28,27,30,'f')
-        c.ellipse(4,12,27,26,'#');c.ellipse(5,13,26,25,'s')
-        c.ellipse(6,13,25,23,'f');c.ellipse(7,14,24,21,'f')
-        c.ellipse(7,20,24,25,'b');c.ellipse(7,16,12,21,'b');c.ellipse(20,16,24,21,'b')
-        c.eye(9,16,eyes);c.eye(21,16,eyes)
-        c.rect(7,21,9,22,'p');c.rect(24,21,25,22,'p')
-        c.rect(15,20,17,20,'p');c.put(16,21,'p');c.line(16,22,16,23,'#')
-        c.line(13,23,15,24,'#');c.line(17,24,19,23,'#')
-        c.line(6,24,8,24,'s');c.line(24,24,26,24,'s')
+        c.ellipse(7,1,13,16,'#');c.ellipse(8,2,12,15,'f');c.ellipse(9,4,11,12,'p')
+        c.poly([(20,2+fold),(24,1+fold),(27,5+fold),(24,16),(19,15)],'#')
+        c.poly([(21,3+fold),(24,3+fold),(25,6+fold),(23,15),(20,14)],'f')
+        c.line(23,5+fold,21,12,'p')
+        c.ellipse(10,23,23,31,'#');c.ellipse(11,24,22,30,'f');c.ellipse(13,25,20,29,'b')
+        c.ellipse(6,28,13,31,'#');c.ellipse(7,29,12,30,'f')
+        c.ellipse(20,28,27,31,'#');c.ellipse(21,29,26,30,'f')
+        c.ellipse(4,10,28,26,'#');c.ellipse(5,11,27,25,'s');c.ellipse(5,11,26,24,'f')
+        c.ellipse(9,18,23,24,'b')
+        c.eye(10,14,eyes);c.eye(20,14,eyes)
+        c.rect(7,19,9,20,'p');c.rect(24,19,25,20,'p')
+        c.rect(15,19,17,19,'p');c.put(16,20,'p')
+        c.put(16,21,'#');c.put(15,22,'#');c.put(17,22,'#')
+        c.line(8,12,11,12,'w')
     elif figure=='snowman':
         wave=(0,0,-1,-2,-3,-2,-1,0)[f];flutter=(0,1,2,1,0,-1,-2,-1)[f]
         c.line(8,21,3,17+wave,'t');c.line(3,17+wave,1,14+wave,'t')
@@ -80,24 +76,30 @@ def sprite(figure,eyes,frame):
         c.rect(8,7,22,8,'r');c.rect(6,9,25,10,'#');c.rect(7,9,23,9,'h')
         c.rect(9,6,11,7,'g');c.put(9,5,'l')
     elif figure=='rooster':
-        peck=(0,0,1,3,1,0,2,0)[f];wing=(0,0,0,1,2,1,0,0)[f]
-        # Fan tail, feather highlights, feet and a profile beak.
-        for pts in [[(19,19),(22,6),(25,5),(25,21)],[(22,21),(27,7),(30,8),(29,23)],[(22,23),(30,13),(31,16),(28,25)]]:
-            c.poly(pts,'#')
-        c.poly([(21,18),(23,8),(24,8),(24,20)],'b');c.poly([(24,21),(28,10),(29,10),(27,23)],'f')
-        c.line(26,20,29,15,'s')
-        c.ellipse(8,15,28,29,'#');c.ellipse(9,16,27,28,'s');c.ellipse(10,16,26,26,'f')
-        c.ellipse(12,17+wing,24,26,'s');c.ellipse(12,17+wing,22,24,'b')
-        c.line(16,22+wing,21,22+wing,'f');c.line(17,24,21,24,'f')
-        c.line(13,28,13,30,'a');c.line(20,28,20,30,'a');c.line(10,31,15,31,'a');c.line(18,31,23,31,'a')
-        c.ellipse(6+peck,6+peck,17+peck,21+peck,'#');c.ellipse(7+peck,7+peck,16+peck,20+peck,'f')
-        c.ellipse(8+peck,8+peck,14+peck,17+peck,'b')
-        c.ellipse(6+peck,3+peck,9+peck,8+peck,'r');c.ellipse(9+peck,2+peck,12+peck,8+peck,'r');c.ellipse(12+peck,4+peck,15+peck,8+peck,'r')
-        c.line(7+peck,4+peck,8+peck,4+peck,'p');c.put(10+peck,3+peck,'p')
-        c.ellipse(6+peck,14+peck,9+peck,19+peck,'r')
-        c.poly([(6+peck,11+peck),(2+peck,13+peck),(6+peck,15+peck)],'#')
-        c.poly([(5+peck,12+peck),(3+peck,13+peck),(6+peck,14+peck)],'a')
-        c.eye(9+peck,9+peck,eyes)
+        nod=(0,0,0,1,1,0,0,0)[f];wing=(0,0,0,1,1,0,0,0)[f]
+        # Slim neck, compact head, and long legs with alternating toe lifts.
+        c.poly([(21,19),(24,8),(27,7),(27,22)],'#')
+        c.poly([(24,21),(29,11),(30,12),(28,24)],'#')
+        c.poly([(23,18),(25,10),(26,10),(25,21)],'b')
+        c.line(27,17,29,13,'f')
+        c.ellipse(9,16,28,25,'#');c.ellipse(10,17,27,24,'s');c.ellipse(11,17,26,23,'f')
+        c.ellipse(14,18+wing,24,23,'s');c.ellipse(14,18+wing,22,22,'b')
+        c.line(16,20+wing,20,20+wing,'f')
+        c.rect(10,12,16,20,'#');c.rect(11,13,15,19,'f');c.rect(12,14,14,18,'b')
+        c.ellipse(6+nod,5+nod,17+nod,15+nod,'#');c.ellipse(7+nod,6+nod,16+nod,14+nod,'f')
+        c.ellipse(8+nod,6+nod,14+nod,12+nod,'b')
+        for x,y in [(7,2),(10,1),(13,3)]:
+            c.ellipse(x+nod,y+nod,x+2+nod,6+nod,'r')
+        c.put(8+nod,3+nod,'p');c.put(11+nod,2+nod,'p')
+        c.ellipse(6+nod,12+nod,8+nod,16+nod,'r')
+        c.poly([(6+nod,9+nod),(2+nod,11+nod),(6+nod,12+nod)],'#')
+        c.line(3+nod,11+nod,6+nod,11+nod,'a')
+        c.eye(9+nod,7+nod,eyes)
+        left=f in (2,3);right=f in (6,7)
+        for x,lift,dx in [(13,left,1),(22,right,-1)]:
+            end=30 if lift else 31;toe=x+dx if lift else x
+            c.line(x,25,x,28,'a');c.line(x,28,toe,end,'a')
+            c.line(toe-2,end,toe+2,end,'a')
     elif figure=='palm':
         sway=(0,1,2,1,0,-1,-2,-1)[f]
         c.ellipse(6,28,28,31,'t');c.line(8,29,25,29,'b')

@@ -27,7 +27,7 @@ app/wt-manager.app/Contents/MacOS/wt-manager --snapshot-motion /tmp/wt-motion
 app/wt-manager.app/Contents/MacOS/wt-manager --snapshot-merge /tmp/wt-merge
 ```
 
-Inspect light and dark images at their real size. Raster tests cover badge consistency across every character, mood and coat; other tests check glyph uniqueness, contrast, baselines and distinct alarm expressions. These checks establish consistency, not artistic quality or complete accessibility coverage. Live desktop movement and assistive-technology behaviour still need device testing.
+Inspect light and dark images at their real size. Menu-bar characters omit the framed badge; larger characters retain it. Raster tests cover badge consistency across every character, mood and coat; other tests check glyph uniqueness, contrast, baselines and distinct alarm expressions. These checks establish consistency, not artistic quality or complete accessibility coverage. Live desktop movement and assistive-technology behaviour still need device testing.
 
 Mallow keeps the reference’s limbless orb silhouette and diagonal eyes. Bop keeps separate side arms, antennae and short feet. Do not turn these into another shared humanoid body. Mallow rolls its highlight; Bop flexes antennae and waves one arm.
 
@@ -36,3 +36,6 @@ Mallow keeps the reference’s limbless orb silhouette and diagonal eyes. Bop ke
 - Primary desktop and menu-bar clicks open the window immediately; secondary clicks expose maintenance actions. Dragging never opens the window.
 - Keep every character portrait visible above scrolling content. One click selects that character and highlights it; the header portrait cycles characters.
 - PR counters reveal matching, deduplicated PR links. Open PRs are visible by default, with title/branch fallback and explicit feedback when a link is unavailable.
+
+- Use dedicated 22px face-forward menu art, not scaled-down desktop illustrations. Preserve recognizable silhouette, highlights and clear eyes in both appearances.
+- Cooper’s feet may alternate toe lifts while one foot remains grounded; other desktop companions retain their fixed baseline.

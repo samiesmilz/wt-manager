@@ -343,7 +343,7 @@ struct MascotSwitcher: View {
                 ForEach(mascot.figures) { figure in
                     portrait(id: figure.id, name: figure.name, help: figure.tell) {
                         if let image = mascot.image(figure: figure.id, gauge: 0, eyes: "open", frame: 0,
-                            skin: coats[figure.id] ?? "acorn", tint: "#3fb27f", fitting: 26) {
+                            skin: coats[figure.id] ?? "acorn", tint: "#3fb27f", fitting: 26, showSignal: false) {
                             Image(nsImage: image).interpolation(.none)
                         }
                     }

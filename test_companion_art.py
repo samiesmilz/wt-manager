@@ -1,6 +1,7 @@
 import unittest
 import companion_art as C
 import mascot as M
+import menu_art as U
 
 class CompanionArtTests(unittest.TestCase):
     def test_every_expression_frame_has_complete_palette_and_bounds(self):
@@ -20,7 +21,10 @@ class CompanionArtTests(unittest.TestCase):
         for fig in C.FIGURES:
             frames=[C.sprite(fig,'open',f) for f in range(8)]
             self.assertGreaterEqual(len({tuple(r) for r in frames}),3,fig)
-            self.assertTrue(all(r[-4:]==frames[0][-4:] for r in frames),fig)
+            if fig != 'rooster': self.assertTrue(all(r[-4:]==frames[0][-4:] for r in frames),fig)
+            else:
+                self.assertGreater(len({tuple(r[-7:]) for r in frames}),1)
+                self.assertTrue(all(any(c!='.' for c in r[-1]) for r in frames))
             self.assertTrue(any(c!='.' for c in frames[0][-1]),fig)
     def test_alarm_and_nudge_are_distinct_in_every_frame(self):
         for fig in C.FIGURES:
@@ -33,5 +37,19 @@ class CompanionArtTests(unittest.TestCase):
             rows=C.sprite(fig,'open',0)
             self.assertGreaterEqual(len(set(''.join(rows))-{'.'}),5,fig)
             self.assertNotEqual(rows[:23],M.sprite(0,'open',0,M.FIGURES[fig]))
+
+class MenuArtTests(unittest.TestCase):
+    def test_small_icons_are_complete_and_expressions_remain_distinct(self):
+        art=U.export(M.SKINS,M.FRAMES)
+        for fig in U.FIGURES:
+            variants=[]
+            for eyes in M.EYES:
+                rows=U.sprite(fig,eyes,0);variants.append(tuple(rows))
+                self.assertEqual(len(rows),22)
+                self.assertTrue(all(len(r)==22 for r in rows))
+                used=set(''.join(rows))-{'.'}
+                for skin in M.SKINS:self.assertTrue(used <= art['palettes'][f'{fig}/{skin}'].keys())
+            self.assertEqual(len(set(variants)),5,fig)
+        self.assertEqual(len({tuple(U.sprite(f,'open',0)) for f in U.FIGURES}),len(U.FIGURES))
 
 if __name__=='__main__': unittest.main()

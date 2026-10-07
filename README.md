@@ -114,7 +114,7 @@ The first scan quietly establishes a baseline. Messages and dismissals persist l
 
 ## Meet the pixel crew
 
-The seven new companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions remain 22px. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
+The seven new companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions use separate 22px portraits with larger facial features and no framed badge. Wity retains its original silhouette. Cooper has a slim neck, longer legs and alternating toe lifts; Pip has a softer face and simpler muzzle. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
 
 ![Detailed pixel companions and simplified menu-bar mascots](docs/images/mascots.png)
 
@@ -130,15 +130,19 @@ The seven new companions have separate **32×32 drawings**, shown at **64×64pt*
 | **Mallow** | A limbless pearl orb with slanted eyes and a rolling highlight |
 | **Bop** | A red antenna character with rounded side arms, short feet and a wave |
 
-The character is decoration; its framed status badge is the instrument. Every character uses the same badge size, colour field, high-contrast borders, and distinct glyph for each of eight moods. The signal stays readable on light and dark menu bars, and changing character does not change its meaning. Characters share a baseline, while Byte now has a compact body and a lighter slate coat. Coco's coconuts no longer cover its expression.
+The character is decoration; its framed status badge is the instrument. On the desktop and in the window, every character uses the same badge size, colour field, high-contrast borders, and distinct glyph for each of eight moods. The larger signal stays readable on light and dark backgrounds, and changing character does not change its meaning. Characters share a baseline, while Byte now has a compact body and a lighter slate coat. Coco's coconuts no longer cover its expression.
 
-![All characters and moods at real menu-bar size](docs/images/signals.png)
+![Framed mood signals used on larger mascots](docs/images/signals.png)
 
-Each companion has its own idle gesture: Byte scans its signal lights, Cooper pecks twice, Pip flops its ears, Flurry waves and flutters its scarf, and Coco changes its frond shapes in the breeze. Their bodies remain planted. Reduce Motion freezes the gestures.
+Each companion has its own idle gesture: Byte scans its signal lights, Cooper nods and alternates toe lifts, Pip flops its ears, Flurry waves and flutters its scarf, and Coco changes its frond shapes in the breeze. Cooper keeps one foot grounded while stepping; the other companions keep their bodies planted. Reduce Motion freezes the gestures.
 
 ![Individual idle gestures: signal lights, pecks, ear folds, scarf and twig wave, and palm fronds](docs/images/motions.gif)
 
 Choose a character with **one click on its portrait beneath the window headline**. The selected portrait is highlighted. Clicking the large header mascot cycles to the next character. Coats are available in **Appearance**. You can also use your own picture, reduced to the same pixel grid and stored locally.
+
+![Cooper, Pip and the small menu icons](docs/images/cooper-pip.gif)
+
+**The menu-bar mascot stays clean, without the arrow/status badge; the attention count still appears beside it.** Full status badges remain on larger mascots, and the menu-bar tooltip explains current status.
 
 **Click the desktop or menu-bar mascot to open wt-manager immediately.** Right-click either mascot for less frequent actions, including Quit. The compact floating desktop mascot is shown by default. Drag it anywhere without opening the window; its position survives restarting the app. Right-click the large header mascot for coat, update and Quit actions. Hide/show the desktop companion using **Appearance → Show floating mascot** or its right-click menu. **Reset mascot position** brings it back if needed. It stays available when you close the main window and follows your Mac's Spaces. Saved positions are recovered onto a connected display when the display layout changes.
 

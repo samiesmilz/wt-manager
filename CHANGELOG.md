@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.3
+
+- Draw dedicated 22px menu-bar icons with larger faces, clearer eyes and distinct silhouettes. Preserve Wity’s original drawing.
+- Soften Pip’s face and muzzle; give Cooper a smaller head, slimmer neck, longer legs and alternating toe lifts.
+- Keep menu-bar mascots clean by omitting the framed arrow/status badge, while preserving the attention count and status tooltip. Desktop and window badges remain.
+
 ## 0.7.2
 
 - Make PR counters reveal their matching PR links; fetch titles and offer Open PR in merge messages and checkout details.

@@ -30,7 +30,7 @@ echo "==> baking the character"
 python3 "$ENGINE/mascot.py" "$APP/Contents/Resources/mascot.json" >/dev/null
 
 echo "==> embedding the engine"
-for f in wtmanager.py mascot.py companion_art.py; do
+for f in wtmanager.py mascot.py companion_art.py menu_art.py; do
   cp "$ENGINE/$f" "$APP/Contents/Resources/engine/$f"
 done
 chmod +x "$APP/Contents/Resources/engine/wtmanager.py"
