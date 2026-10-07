@@ -80,7 +80,7 @@ extension Mascot {
     /// character resampled to a fractional size stops being pixel art and
     /// becomes a smudge, which is exactly what it looks like when it goes wrong.
     public func image(figure: String, gauge: Int, eyes: String, frame: Int, skin: String,
-               tint: String, fitting height: CGFloat) -> NSImage? {
+               tint: String, fitting height: CGFloat, mood: String? = nil) -> NSImage? {
         guard let rows = rows(figure: figure, gauge: gauge, eyes: eyes, frame: frame)
         else { return nil }
         let palette = skins[skin] ?? skins[defaultSkin] ?? [:]
@@ -100,7 +100,7 @@ extension Mascot {
         for (y, row) in rows.enumerated() where y < drawnRows {
             for (x, ch) in row.enumerated() where ch != "." {
                 guard let slot = slots[String(ch)] else { continue }
-                let color = slot == "accent" ? accent : Ink.color(palette[slot] ?? "")
+                let color = slot == "accent" ? (mood == nil ? accent : Ink.color(palette["pale"] ?? "")) : Ink.color(palette[slot] ?? "")
                 guard let color else { continue }
                 color.setFill()
                 // Sprite rows run top-down; AppKit's origin is bottom-left.
@@ -108,6 +108,9 @@ extension Mascot {
                        y: CGFloat(drawnRows - 1 - y) * scale,
                        width: scale, height: scale).fill()
             }
+        }
+        if let mood {
+            MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width - 9 * scale, y: 0), scale: scale)
         }
         image.unlockFocus()
         return image

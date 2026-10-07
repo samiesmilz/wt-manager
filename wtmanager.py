@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -1533,6 +1533,13 @@ def du_kb(path: str, timeout: int = 120, cache: bool = True) -> int:
 _IGNORED: Dict[str, List[str]] = {}
 
 
+def local_inventory_problem(rc: int, error: str) -> str:
+    if rc == 0 and not error.strip():
+        return ""
+    detail = error.strip().splitlines()[0] if error.strip() else f"Git exited {rc}"
+    return "cannot verify local files: " + detail[:160]
+
+
 def ignored_entries(path: str) -> List[str]:
     """Top-level ignored paths, as git itself reports them.
 
@@ -1548,11 +1555,14 @@ def ignored_entries(path: str) -> List[str]:
         return _IGNORED[path]
     # --untracked-files=no suppresses the ignored list too, so it cannot be used
     # here however much faster it looks.
-    rc, out, _ = git(
+    rc, out, err = git(
         ["status", "--porcelain=v2", "--ignored=traditional"], cwd=path, timeout=90,
     )
-    if rc != 0:
-        return []
+    # Git may return success while warning that a directory was skipped. A
+    # partial inventory is not evidence that protected local files are absent.
+    problem = local_inventory_problem(rc, err)
+    if problem:
+        raise OSError(problem)
     # Not memoised here: only the probe's capture is trusted to be current,
     # and a listing kept across two measurements of one tree would miss what
     # a build wrote in between.
@@ -1595,7 +1605,12 @@ def measure(w: Worktree, want_detail: bool = True) -> None:
         w.size_kb = du_kb(w.path)
         return
     safe: List[Tuple[str, str]] = []
-    for entry in ignored_entries(w.path):
+    try:
+        entries = ignored_entries(w.path)
+    except OSError as e:
+        w.uncertain = w.uncertain or str(e)
+        return
+    for entry in entries:
         if record_ignored(w, entry) == SAFE:
             safe.append((entry, os.path.join(w.path, entry)))
     w.ignored_scanned = True
@@ -1886,8 +1901,12 @@ def probe_worktree(gitdir: str, repo: str, main_wt: str, path: str,
     status_args = ["status", "--porcelain=v2", "--untracked-files=normal"]
     if want_ignored:
         status_args.append("--ignored=traditional")
-    rc, pv2, _ = git(status_args, cwd=path, timeout=90)
-    if want_ignored and rc == 0:
+    rc, pv2, status_error = git(status_args, cwd=path, timeout=90)
+    _IGNORED.pop(path, None)
+    problem = local_inventory_problem(rc, status_error)
+    if problem:
+        w.uncertain = problem
+    elif want_ignored:
         _IGNORED[path] = parse_ignored(pv2)
     for line in pv2.splitlines():
         if line.startswith(("1 ", "2 ")):
@@ -2091,6 +2110,9 @@ def gather(cfg: dict, roots: Sequence[str], sizes: bool, detail: bool = True,
         spin.done()
         save_size_cache()
 
+    for w in wts:
+        if w.uncertain:
+            NOTICES.append(("local", w.repo, f"{w.name}: {w.uncertain}"))
     wts.sort(key=lambda w: (ORDER.index(w.status) if w.status in ORDER else 99,
                             -w.last_commit))
     return wts
@@ -2443,7 +2465,12 @@ def ignored_by_kind(w: Worktree) -> Tuple[List[str], List[str]]:
     verb that never looked.
     """
     if not w.ignored_scanned and not (w.precious_hits or w.unknown_paths or w.reclaim_paths):
-        for entry in ignored_entries(w.path):
+        try:
+            entries = ignored_entries(w.path)
+        except OSError as e:
+            w.uncertain = w.uncertain or str(e)
+            return w.precious_hits, w.unknown_paths
+        for entry in entries:
             record_ignored(w, entry)
     w.ignored_scanned = True
     return w.precious_hits, w.unknown_paths
@@ -2610,7 +2637,10 @@ def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False
     if inspect:
         ignored_by_kind(w)
     if w.uncertain:
-        return w.uncertain + " — try again when nothing is writing to it", ""
+        advice = (" — check access to this checkout and try again"
+                  if w.uncertain.startswith("cannot verify local files")
+                  else " — try again when nothing is writing to it")
+        return w.uncertain + advice, ""
     if w.ignored_scanned and w.unknown_paths and not discard_unknown:
         if inspect:
             sizes = [du_kb(os.path.join(w.path, e.rstrip("/")), cache=False)
@@ -2782,6 +2812,10 @@ def cmd_clean(wts: List[Worktree], args) -> int:
 
 def _clean(wts: List[Worktree], args, plan: dict) -> int:
     if args.list_unknown:
+        incomplete = [w for w in wts if w.uncertain]
+        if incomplete:
+            for w in incomplete: print(f"cannot classify {w.repo}/{w.name}: {w.uncertain}")
+            return 1
         seen = sorted({p for w in wts for p in w.unknown_paths})
         if not seen:
             print(f"{C.dim}every ignored path was recognised.{C.off}")
@@ -2795,12 +2829,19 @@ def _clean(wts: List[Worktree], args, plan: dict) -> int:
 
     wts = only(wts, args)
     targets = []
+    skipped = []
     for w in wts:
+        if w.uncertain:
+            skipped.append({"path": w.path, "repo": w.repo, "name": w.name,
+                            "why": w.uncertain, "override": ""})
+            print(f"skip {w.repo}/{w.name} ({w.uncertain})")
+            continue
         if args.stale and w.status not in (STALE, MERGED, EMPTY):
             continue
         if w.reclaim_kb > 0 and w.reclaim_paths:
             targets.append(w)
     targets.sort(key=lambda w: -w.reclaim_kb)
+    plan["skipped"] = skipped
     plan["paths"] = [w.path for w in targets]
     plan["plan"] = plan_hash("clean", [f"{w.path}\t{rel}" for w in targets
                                        for rel in w.reclaim_paths])

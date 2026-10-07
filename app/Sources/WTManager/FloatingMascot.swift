@@ -45,7 +45,7 @@ final class FloatingMascot {
     func sync() {
         guard store.floatingMascot else { panel.orderOut(nil); return }
         let pulse = Pulse.shared
-        let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(pulse.wag)/\(pulse.blinking)"
+        let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(pulse.wag)/\(pulse.blinking)"
         if key != drawn {
             drawn = key
             view.image = store.image(height: 69, frame: pulse.wag, blinking: pulse.blinking)

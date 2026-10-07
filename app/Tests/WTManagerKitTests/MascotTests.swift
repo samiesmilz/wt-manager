@@ -110,6 +110,29 @@ final class MascotTests: XCTestCase {
         }
     }
 
+    func testEveryCharacterRendersTheSameSignalAtActualMenuBarSize() throws {
+        let m = try load()
+        for mood in MascotSignal.moods {
+            var reference: [String]?
+            for figure in m.figures {
+              for skin in m.skins.keys {
+                let image = try XCTUnwrap(m.image(figure: figure.id, gauge: 0, eyes: "open", frame: 0,
+                    skin: skin, tint: MascotSignal.colors[mood]!, fitting: 22, mood: mood))
+                XCTAssertEqual(image.size, NSSize(width: 22, height: 22))
+                let pixels = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+                let sx = pixels.pixelsWide / 22, sy = pixels.pixelsHigh / 22
+                var badge: [String] = []
+                for y in 13..<22 { for x in 13..<22 {
+                    let c = try XCTUnwrap(pixels.colorAt(x: x*sx, y: y*sy)?.usingColorSpace(.deviceRGB))
+                    badge.append(String(format: "%.3f/%.3f/%.3f/%.3f", c.redComponent,c.greenComponent,c.blueComponent,c.alphaComponent))
+                } }
+                if let reference { XCTAssertEqual(badge, reference, "\(figure.id)/\(mood) signal changed") }
+                else { reference = badge }
+              }
+            }
+        }
+    }
+
     func testFramesWrapRatherThanFallingOff() throws {
         let m = try load()
         XCTAssertEqual(m.rows(figure: m.defaultFigure, gauge: 0, eyes: "open", frame: m.frames + 1),

@@ -584,6 +584,20 @@ class Character(unittest.TestCase):
                         art = "".join(M.sprite(level, eyes, frame, fig))
                         self.assertIn("*", art, "%s/%s/%d/frame%d" % (fig.id, eyes, level, frame))
 
+    def test_every_character_keeps_alarm_and_nudge_visually_distinct(self):
+        for fig in M.FIGURES.values():
+            for frame in range(M.FRAMES):
+                self.assertNotEqual(M.sprite(0, "wide", frame, fig), M.sprite(0, "glance", frame, fig), fig.id)
+
+    def test_cast_shares_a_baseline_and_no_character_is_a_sliver(self):
+        for fig in M.FIGURES.values():
+            for frame in range(M.FRAMES):
+                rows = M.sprite(0, "open", frame, fig)
+                occupied = [y for y, row in enumerate(rows) if row.strip(".")]
+                self.assertEqual(max(occupied), M.H - 1, fig.id)
+                if frame == 0:  # A peck may compress the head; the resting icon must be readable.
+                    self.assertGreaterEqual(max(occupied) - min(occupied) + 1, 16, fig.id)
+
     def test_no_two_figures_draw_the_same(self):
         # Four characters that render identically are one character and three
         # wasted entries in a picker.
@@ -995,6 +1009,74 @@ class DeepProtection(unittest.TestCase):
         self.assertEqual(T.removal_info(w)["state"], "blocked")
 
 
+class IncompleteGitInventory(unittest.TestCase):
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+        self.wt = self.fx.worktree("unreadable", "feat/unreadable")
+        self.addCleanup(T._IGNORED.pop, self.wt, None)
+
+    def test_success_with_warning_is_not_a_complete_ignored_inventory(self):
+        with mock.patch.object(T, "git", return_value=(0, "", "warning: could not open directory 'private/': Permission denied")):
+            with self.assertRaises(OSError): T.ignored_entries(self.wt)
+            w = T.Worktree(repo="r", path=self.wt, branch="feat/unreadable", primary=False, base="origin/main", base_source="test", status=T.EMPTY)
+            T.measure(w)
+            self.assertTrue(w.uncertain)
+            self.assertFalse(w.ignored_scanned)
+            self.assertIsNotNone(T.reap_blocker(w, force=True, discard_unknown=True, inspect=True))
+            self.assertEqual(T.removal_info(w)["state"], "blocked")
+        self.assertTrue(os.path.isdir(self.wt))
+
+    def test_failed_git_inventory_does_not_look_empty(self):
+        with mock.patch.object(T, "git", return_value=(124, "", "timed out")):
+            w = T.Worktree(repo="r", path=self.wt, branch="feat/unreadable", primary=False, base="origin/main", base_source="test", status=T.EMPTY)
+            T.ignored_by_kind(w)
+            self.assertTrue(w.uncertain)
+            self.assertIsNotNone(T.reap_blocker(w, force=True, discard_unknown=True))
+
+    def test_cleanup_preview_reports_uncertainty_instead_of_offering_cached_paths(self):
+        w = T.Worktree(repo="r", path=self.wt, branch="feat/unreadable", primary=False,
+                       base="origin/main", base_source="test", status=T.EMPTY,
+                       reclaim_kb=10, reclaim_paths=["node_modules/"], uncertain="cannot verify local files")
+        args = argparse.Namespace(list_unknown=False, path=None, stale=False, yes=False, plan=None, verbose=False, json=True)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out): T.cmd_clean([w], args)
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["paths"], [])
+        self.assertIn("cannot verify", result["skipped"][0]["why"])
+
+    def test_force_and_discard_cannot_delete_an_unreadable_checkout(self):
+        w = T.Worktree(repo="r", path=self.wt, branch="feat/unreadable", primary=False,
+                       base="origin/main", base_source="test", status=T.EMPTY)
+        args = argparse.Namespace(path=[self.wt], force=True, yes=True,
+            discard_precious=True, discard_unknown=True, json=True, plan=None)
+        original = T.git
+        def skipped_directory(command, **kw):
+            if command[0] == "status": return 0, "", "warning: could not open directory 'hidden/': Permission denied"
+            return original(command, **kw)
+        out = io.StringIO()
+        with mock.patch.object(T, "git", side_effect=skipped_directory), contextlib.redirect_stdout(out):
+            T.cmd_reap([w], args)
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["paths"], [])
+        self.assertEqual(result["skipped"][0]["override"], "")
+        self.assertTrue(os.path.isdir(self.wt), "an incomplete inventory must never authorise deletion")
+
+    def test_probe_warning_invalidates_cached_inventory_and_blocks_removal(self):
+        original = T.git
+        def partial(args, **kw):
+            result = original(args, **kw)
+            if args[0] == "status": return result[0], result[1], "warning: could not open directory 'hidden/': Permission denied"
+            return result
+        T._IGNORED[self.wt] = []
+        with mock.patch.object(T, "git", side_effect=partial):
+            w = self.fx.probe(self.wt, "feat/unreadable")
+        self.assertTrue(w.uncertain)
+        self.assertNotIn(self.wt, T._IGNORED)
+        self.assertEqual(T.removal_info(w)["state"], "blocked")
+
+
 class Squashed(unittest.TestCase):
     """A squash merge proves itself by content when the PR's head is unknown here."""
 
@@ -1224,7 +1306,12 @@ class Reap(unittest.TestCase):
         args.yes = True
         plan = {}
         w = self.probe()
-        with mock.patch.object(T, "git", return_value=(1, "", "permission denied")), contextlib.redirect_stdout(io.StringIO()):
+        original = T.git
+        def failed_remove(command, **kw):
+            if list(command[:2]) == ["worktree", "remove"]:
+                return 1, "", "permission denied"
+            return original(command, **kw)
+        with mock.patch.object(T, "git", side_effect=failed_remove), contextlib.redirect_stdout(io.StringIO()):
             rc = T._reap([w], args, plan)
         self.assertEqual(rc, 1)
         self.assertEqual(plan["completed_paths"], [])

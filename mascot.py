@@ -55,14 +55,14 @@ SKINS.update({
                "pale": "#d7f5d9", "shine": "#f4fff2", "blush": "#edbd83"},
 })
 SKINS.update({
-    "graphite": {"outline": "#11131c", "fur": "#252a3b", "fur_dark": "#434d66",
+    "graphite": {"outline": "#11131c", "fur": "#91a5ce", "fur_dark": "#536c99",
                  "pale": "#b9dce8", "shine": "#f4fdff", "blush": "#718baf"},
-    "sunrise": {"outline": "#322019", "fur": "#fff1d0", "fur_dark": "#ce913b",
-                "pale": "#fffaf0", "shine": "#ffffff", "blush": "#ef625c"},
+    "sunrise": {"outline": "#322019", "fur": "#fff1d0", "fur_dark": "#a08064",
+                "pale": "#fffaf0", "shine": "#ffffff", "blush": "#b9719c"},
     "snow": {"outline": "#332e42", "fur": "#f8f4fa", "fur_dark": "#c9bace",
              "pale": "#ffffff", "shine": "#ffffff", "blush": "#ed9eb6"},
 })
-SKINS["tropical"] = {"outline": "#183b2c", "fur": "#53b979", "fur_dark": "#a97041",
+SKINS["tropical"] = {"outline": "#183b2c", "fur": "#8dcdbc", "fur_dark": "#a97041",
                      "pale": "#efd49a", "shine": "#fff9e8", "blush": "#e7ad6b"}
 SKINS["frost"] = {"outline": "#263c57", "fur": "#f1f8ff", "fur_dark": "#9fc6db",
                   "pale": "#dbeffa", "shine": "#ffffff", "blush": "#ed9349"}
@@ -303,14 +303,14 @@ ROBOT = figure(Figure(
     muzzle=[(5, 7, 'b'), (10, 7, 'b'), (6, 8, 'b'), (9, 8, 'b')],
     cheeks=["#sffffffffffffs#", ".#ffffffffffff#.",
             "..#ffffffffff#..", "...##########..."],
-    body=["................", "................", "................",
-          "................", "................", "................"],
+    body=["...#ssssssss#...", "..#ssbbbbbbss#..", "..#ssbbbbbbss#..",
+          "...#ssssssss#...", "...#ss#..#ss#...", "...####..####..."],
     parts=[Part(range(0, 10), [(0, 0), (0, 0), (1, 0), (1, 0),
                               (0, 0), (0, 0), (-1, 0), (-1, 0)])],
 ))
 
 ROOSTER = figure(Figure(
-    id="rooster", name="Cooper", tell="red comb and golden beak", tail=None,
+    id="rooster", name="Cooper", tell="plum comb and warm beak", tail=None,
     crown=[".....pp.pp......", "....#ppppp#.....",
            "...#ffffffff#...", "..#ffffffffff#.."],
     eye_row="..#fffffffffff#.",
@@ -360,7 +360,7 @@ PALM = figure(Figure(
     cheeks=[".....#ssss#.....", ".....#ssss#.....",
             ".....#ssss#.....", ".....#ssss#....."],
     accent=[(2, 2), (3, 2), (12, 2), (13, 2)],
-    muzzle=[(5, 4, 'b'), (10, 4, 'b'), (7, 6, '#'), (8, 6, '#')],
+    muzzle=[(3, 4, 'b'), (12, 4, 'b'), (7, 6, '#'), (8, 6, '#')],
     body=[".....#ssss#.....", ".....#ssss#.....", ".....#ssss#.....",
           "....#ssssss#....", "...#bbbbbbbb#...", "..############.."],
     parts=[Part(range(0, 4), [(0, 0), (1, 0), (1, 0), (0, 0),
@@ -562,7 +562,7 @@ def sprite(cheek: int = 0, eyes: str = "open", frame: int = 0,
     # leaving them blank and hanging its own feet off the bottom edge, which
     # at the same drawn height makes it look smaller than the cat as well as
     # cropped. Nothing is up there, so it moves up into it.
-    rise = 0 if kind in TAILS else 3
+    rise = 0
     lift = rise + (1 - BOB[frame % len(BOB)] if still else 0)
 
     rows = bust(cheek, eyes, fig)

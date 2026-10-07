@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+- Block cleanup/removal when Git reports an incomplete inventory, even with a successful exit code.
+- Report skipped checkouts and preserve incomplete-scan warnings.
+- Give every mascot the same framed status badge with eight distinct mood glyphs and tested contrast.
+- Align character baselines, enlarge/lighten Byte, adjust Cooper and Coco coats, and restore Coco alarm eyes.
+- Fix dark appearance in cast/motion snapshot modes.
+- Make automatic update checks opt-in for new installations.
 
 - A folder that cannot be read during the secret check — one a running build deletes mid-scan, say — no longer ends the whole scan with "scan refused". That worktree alone is marked unverified and refuses removal until a later scan reads it; everything else still refreshes.
 - Installed-package folders (`node_modules`, `.pnpm`, `vendor`, `Pods`, `Carthage`, `site-packages`, `bower_components`) are checked for secrets at their top level only. A package's own `credentials.js` is no longer mistaken for yours, which had turned every `node_modules` into "unknown" and kept `clean` from removing it.

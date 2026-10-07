@@ -79,7 +79,7 @@ wt-manager has two different actions:
 
 Removal checks local changes, unpushed work, base resolution, locks, submodules, and unknown-file size. Primary/base checkouts are kept. Protected ignored files, such as environment files, are copied to `~/.local/share/wt-manager/kept/` and verified byte for byte before removal. Recognized output containing protected descendants preserves those descendants without archiving the whole build folder. Truly unclassified data over the backup limit (100 MB) blocks removal.
 
-The preview and confirmation are bound to the same reviewed set. If that set changes, the operation asks for another review. Execution can still refuse if permissions, files, or Git state change. Partial results list only confirmed completions and show what failed.
+The preview and confirmation are bound to the same reviewed set. If that set changes, the operation asks for another review. Execution can still refuse if permissions, files, or Git state change. A Git warning about skipped directories, or a failed status command, blocks cleanup/removal for that checkout and is shown in the preview; overrides do not bypass an incomplete inventory. Partial results list only confirmed completions and show what failed.
 
 **Deletion is consequential.** Preserved local files are not a full checkout backup. Read the preview and keep your own backups. Rebuildable output must be installed or built again.
 
@@ -108,11 +108,15 @@ Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Moti
 |---|---|
 | **Wity** | The original cat, with a plume and status collar |
 | **Nipper** | A crab with snapping claws and tiny legs |
-| **Byte** | An original dark robot face with a visor, scanning signal lights, and a small smile |
-| **Cooper** | A rooster with a red comb, golden beak, and a double peck |
+| **Byte** | An original slate robot with a visor, scanning signal lights, and a small smile |
+| **Cooper** | A rooster with a plum comb, warm beak, and a double peck |
 | **Pip** | A bright rabbit with flopping ears and little paws |
 | **Flurry** | A snowman with a tipping top hat, waving twig hand, carrot nose, and status scarf |
 | **Coco** | A palm tree with swaying fronds and coconuts |
+
+The character is decoration; its framed status badge is the instrument. Every character uses the same badge size, colour field, high-contrast borders, and distinct glyph for each of eight moods. The signal stays readable on light and dark menu bars, and changing character does not change its meaning. Characters share a baseline, while Byte now has a compact body and a lighter slate coat. Coco's coconuts no longer cover its expression.
+
+![All characters and moods at real menu-bar size](docs/images/signals.png)
 
 Each companion has its own idle gesture: Byte scans its signal lights, Cooper pecks twice, Pip flops its ears, Flurry tips its hat and waves, and Coco changes its frond shapes in the breeze. Their bodies remain planted. Reduce Motion freezes the gestures.
 
@@ -126,7 +130,7 @@ The menu-bar mascot also offers Open window, Refresh, Watched folders, updates, 
 
 ## Updates
 
-The app checks this repository's latest stable GitHub release at launch and then no more than once a day after a successful check. A new version appears in a dismissible banner with a link to the release and installation instructions. You can always check manually from either mascot menu or Appearance.
+Automatic update checks are **off by default**. Enable **Appearance → Check updates automatically** to check this repository's latest stable GitHub release at launch and then no more than once a day after a successful check. An existing explicitly saved preference is retained. A new version appears in a dismissible banner with a link to the release and installation instructions. You can always check manually from either mascot menu or Appearance.
 
 Updates are **announced, not silently installed**. To update a downloaded app, quit wt-manager and replace it with the new download. For a source install, update your checkout and run `make install` again. Settings and local reward history survive replacement.
 

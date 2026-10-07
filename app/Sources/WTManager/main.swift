@@ -116,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let n = store.attention
         let wag = Pulse.shared.wag, blinking = Pulse.shared.blinking
         let key = "\(store.face?.gauge ?? -1)/\(blinking ? "shut" : store.face?.eyes ?? "")"
-            + "/\(wag)/\(store.skin)/\(store.figure)/\(store.face?.tint ?? "")/\(n)"
+            + "/\(wag)/\(store.skin)/\(store.figure)/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(n)"
         if key == drawn { return }
         drawn = key
         if let image = store.image(height: NSStatusBar.system.thickness,
@@ -436,7 +436,7 @@ func start() {
 /// The envelope is the engine's own `agent` output, so what is rendered is what
 /// the engine would have said - a fixture is one saved run of it.
 @MainActor
-func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, feedbackOnly: Bool = false, motionOnly: Bool = false) {
+func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, feedbackOnly: Bool = false, motionOnly: Bool = false, signalsOnly: Bool = false) {
     _ = NSApplication.shared
     let store = Store(mascot: AppDelegate.loadMascotForSnapshot())
     store.history = CleanupHistory()
@@ -489,6 +489,13 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
     let lim = AppDelegate.limits(for: NSScreen.main, contentNeeds: 620)
     let sizes = [("", lim.ideal), ("-min", lim.min)]
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
+        NSApp.appearance = NSAppearance(named: appearance)
+        if signalsOnly {
+            draw(SignalSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                 size: CGSize(width: 770, height: 520), appearance: appearance,
+                 to: "\(name)-signals.png")
+            continue
+        }
         if motionOnly {
             draw(MotionSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
                  size: CGSize(width: 730, height: 570), appearance: appearance,
@@ -620,6 +627,10 @@ MainActor.assumeIsolated {
         snapshot(into: args[i + 1], envelopePath: nil, feedbackOnly: true)
         exit(0)
     }
+    if let i = args.firstIndex(of: "--snapshot-signals"), i + 1 < args.count {
+        snapshot(into: args[i + 1], envelopePath: nil, signalsOnly: true)
+        return
+    }
     if let i = args.firstIndex(of: "--snapshot-motion"), i + 1 < args.count {
         snapshot(into: args[i + 1], envelopePath: nil, motionOnly: true)
         return
@@ -729,5 +740,33 @@ private struct MotionSheet: View {
                 }
             }
         }.padding(18)
+    }
+}
+
+
+/// Real 22pt menu-bar images, across every character and state.
+private struct SignalSheet: View {
+    @ObservedObject var store: Store
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Menu-bar status · real 22pt size").font(.system(size: 15, weight: .semibold))
+            HStack(spacing: 10) {
+                Color.clear.frame(width: 72, height: 10)
+                ForEach(MascotSignal.moods, id: \.self) { mood in Text(mood).font(.system(size: 10)).frame(width: 70) }
+            }
+            ForEach(store.mascot?.figures ?? []) { figure in
+                HStack(spacing: 10) {
+                    Text(figure.name).font(.system(size: 12, weight: .medium)).frame(width: 72, alignment: .leading)
+                    ForEach(MascotSignal.moods, id: \.self) { mood in
+                        let eyes = ["lost": "squint", "working": "shut", "alarmed": "wide", "nudging": "glance", "burdened": "squint", "calm": "open", "proud": "open", "asleep": "shut"][mood] ?? "open"
+                        if let image = store.mascot?.image(figure: figure.id, gauge: 0, eyes: eyes, frame: 0,
+                            skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow", "snowman": "frost", "palm": "tropical"][figure.id] ?? "acorn",
+                            tint: MascotSignal.colors[mood] ?? "#8b93a1", fitting: 22, mood: mood) {
+                            Image(nsImage: image).interpolation(.none).frame(width: 70, height: 34)
+                        }
+                    }
+                }
+            }
+        }.padding(20)
     }
 }

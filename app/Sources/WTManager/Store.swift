@@ -32,7 +32,7 @@ final class Store: ObservableObject {
     @Published var history = CleanupHistory()
     @Published var celebration: UUID?
     let updates = UpdateChecker()
-    @AppStorage("wtmanager.automaticUpdates") var automaticUpdates = true
+    @AppStorage("wtmanager.automaticUpdates") var automaticUpdates = false
     @AppStorage("wtmanager.celebrations") var celebrationsEnabled = true
     @AppStorage("wtmanager.dismissedUpdate") var dismissedUpdate = ""
     private let historyKey = "wtmanager.cleanupHistory.v1"
@@ -276,11 +276,10 @@ final class Store: ObservableObject {
     /// and the ones already shut simply keep them shut.
     func image(height: CGFloat, frame: Int = 0, blinking: Bool = false) -> NSImage? {
         if usingOwnImage {
-            // A picture cannot blink and cannot change its eyes, so the mood
-            // arrives as a ring. Before the first envelope there is no mood,
-            // and no ring is drawn — a grey one would read as a state.
-            return OwnFace.image(fitting: height,
-                                 tint: face.flatMap { Ink.color($0.tint) })
+            // Custom pictures get the same status badge as every character.
+            // Before the first envelope, the badge says the scan is working.
+            guard let image = OwnFace.image(fitting: height, tint: nil) else { return nil }
+            return MascotSignal.adding(to: image, mood: face?.mood ?? "working", tint: face?.tint)
         }
         return mascot?.image(figure: figure,
                              gauge: face?.gauge ?? 0,
@@ -288,7 +287,7 @@ final class Store: ObservableObject {
                              frame: frame,
                              skin: skin,
                              tint: face?.tint ?? "#8b93a1",
-                             fitting: height)
+                             fitting: height, mood: face?.mood ?? "working")
     }
 
     /// The next coat along, wrapping.
