@@ -48,7 +48,7 @@ final class FloatingMascot {
         let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(pulse.wag)/\(pulse.blinking)"
         if key != drawn {
             drawn = key
-            view.image = store.image(height: 69, frame: pulse.wag, blinking: pulse.blinking)
+            view.image = store.image(height: 69, frame: pulse.wag, blinking: pulse.blinking, detailed: true)
             view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · drag to move; click for menu"
             view.needsDisplay = true
         }

@@ -102,7 +102,9 @@ Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Moti
 
 ## Meet the pixel crew
 
-![Original pixel mascots at header and menu-bar sizes](docs/images/mascots.png)
+The five new companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions remain 22px. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
+
+![Detailed pixel companions and simplified menu-bar mascots](docs/images/mascots.png)
 
 | Companion | Personality |
 |---|---|
@@ -110,17 +112,17 @@ Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Moti
 | **Nipper** | A crab with snapping claws and tiny legs |
 | **Byte** | An original slate robot with a visor, scanning signal lights, and a small smile |
 | **Cooper** | A rooster with a plum comb, warm beak, and a double peck |
-| **Pip** | A bright rabbit with flopping ears and little paws |
-| **Flurry** | A snowman with a tipping top hat, waving twig hand, carrot nose, and status scarf |
+| **Pip** | A chestnut rabbit with a cream muzzle, folding ear and little paws |
+| **Flurry** | A snowman with a top hat, waving twig hand, carrot nose, and fluttering scarf |
 | **Coco** | A palm tree with swaying fronds and coconuts |
 
 The character is decoration; its framed status badge is the instrument. Every character uses the same badge size, colour field, high-contrast borders, and distinct glyph for each of eight moods. The signal stays readable on light and dark menu bars, and changing character does not change its meaning. Characters share a baseline, while Byte now has a compact body and a lighter slate coat. Coco's coconuts no longer cover its expression.
 
 ![All characters and moods at real menu-bar size](docs/images/signals.png)
 
-Each companion has its own idle gesture: Byte scans its signal lights, Cooper pecks twice, Pip flops its ears, Flurry tips its hat and waves, and Coco changes its frond shapes in the breeze. Their bodies remain planted. Reduce Motion freezes the gestures.
+Each companion has its own idle gesture: Byte scans its signal lights, Cooper pecks twice, Pip flops its ears, Flurry waves and flutters its scarf, and Coco changes its frond shapes in the breeze. Their bodies remain planted. Reduce Motion freezes the gestures.
 
-![Individual idle gestures: signal lights, pecks, ear flops, a hat tip and wave, and palm fronds](docs/images/motions.gif)
+![Individual idle gestures: signal lights, pecks, ear folds, scarf and twig wave, and palm fronds](docs/images/motions.gif)
 
 Pick a character and coat in **Appearance**. You can also use your own picture, reduced to the same pixel grid and stored locally.
 

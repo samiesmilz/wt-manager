@@ -18,9 +18,13 @@ struct WityView: View {
     let height: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        if let image = store.image(height: height, frame: reduceMotion ? 0 : pulse.wag, blinking: !reduceMotion && pulse.blinking) {
-            Image(nsImage: image).interpolation(.none).resizable().aspectRatio(contentMode: .fit)
-                .frame(height: height)
+        if let image = store.image(height: height, frame: reduceMotion ? 0 : pulse.wag, blinking: !reduceMotion && pulse.blinking, detailed: height >= 32) {
+            if height >= 32 && !store.usingOwnImage && store.mascot?.companion?.sprites["\(store.figure)/open/0"] != nil {
+                Image(nsImage: image).interpolation(.none).frame(width: height, height: height)
+            } else {
+                Image(nsImage: image).interpolation(.none).resizable().aspectRatio(contentMode: .fit)
+                    .frame(height: height)
+            }
         } else {
             Image(systemName: "leaf").font(.system(size: height * 0.5)).foregroundStyle(.secondary)
         }

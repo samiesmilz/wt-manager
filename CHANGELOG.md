@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Draw separate 32×32 pixel companions for Byte, Cooper, Pip, Flurry and Coco, with shading and recognizable character details.
+- Render floating characters at 64×64pt inside the existing movable window; preserve simplified menu-bar artwork and status badges.
+- Animate individual lights, ears, wing/peck, twig/scarf and fronds while keeping the feet grounded.
+- Add a warm chestnut coat for Pip, retaining saved coat preferences.
+- Keep older mascot data and the original characters usable through fallback rendering.
+
 ## 0.5.0
 
 - Block cleanup/removal when Git reports an incomplete inventory, even with a successful exit code.

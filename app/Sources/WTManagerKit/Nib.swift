@@ -27,10 +27,17 @@ public struct Mascot: Decodable {
     public let defaultSkin: String
     public let sprites: [String: [String]]
     public let figures: [Figure]
+    public struct Companion: Decodable {
+        public let width: Int
+        public let height: Int
+        public let sprites: [String: [String]]
+        public let palettes: [String: [String: String]]
+    }
+    public let companion: Companion?
     public let defaultFigure: String
 
     public enum CodingKeys: String, CodingKey {
-        case width, height, frames, slots, skins, sprites, figures
+        case width, height, frames, slots, skins, sprites, figures, companion
         case defaultSkin = "default_skin"
         case defaultFigure = "default_figure"
     }
@@ -80,7 +87,31 @@ extension Mascot {
     /// character resampled to a fractional size stops being pixel art and
     /// becomes a smudge, which is exactly what it looks like when it goes wrong.
     public func image(figure: String, gauge: Int, eyes: String, frame: Int, skin: String,
-               tint: String, fitting height: CGFloat, mood: String? = nil) -> NSImage? {
+               tint: String, fitting height: CGFloat, mood: String? = nil, detailed: Bool = false) -> NSImage? {
+        if detailed, let art = companion,
+           let rows = art.sprites["\(figure)/\(eyes)/\(frame % max(frames, 1))"],
+           let palette = art.palettes["\(figure)/\(skin)"] ?? art.palettes["\(figure)/\(defaultSkin)"] {
+            // Detailed art fits in full. Never crop or fractionally resample it.
+            let scale = max(1, floor(height / CGFloat(art.height)))
+            let size = NSSize(width: CGFloat(art.width) * scale, height: CGFloat(art.height) * scale)
+            let image = NSImage(size: size)
+            image.lockFocus()
+            NSGraphicsContext.current?.imageInterpolation = .none
+            for (y, row) in rows.enumerated() {
+                for (x, ch) in row.enumerated() where ch != "." {
+                    guard let color = Ink.color(palette[String(ch)] ?? "") else { continue }
+                    color.setFill()
+                    NSRect(x: CGFloat(x)*scale, y: CGFloat(art.height-1-y)*scale,
+                           width: scale, height: scale).fill()
+                }
+            }
+            if let mood {
+                // Keep the badge at menu-bar size so art stays the focus.
+                MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width-9, y: 0), scale: 1)
+            }
+            image.unlockFocus()
+            return image
+        }
         guard let rows = rows(figure: figure, gauge: gauge, eyes: eyes, frame: frame)
         else { return nil }
         let palette = skins[skin] ?? skins[defaultSkin] ?? [:]

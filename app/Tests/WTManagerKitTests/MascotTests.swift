@@ -133,6 +133,34 @@ final class MascotTests: XCTestCase {
         }
     }
 
+    func testDetailedCompanionsFitFullyAndMenuBarStaysSmall() throws {
+        let m = try load()
+        for figure in ["robot", "rooster", "rabbit", "snowman", "palm"] {
+            let large = try XCTUnwrap(m.image(figure: figure, gauge: 3, eyes: "wide", frame: 7,
+                skin: "chestnut", tint: "#e0604c", fitting: 69, mood: "alarmed", detailed: true))
+            XCTAssertEqual(large.size, NSSize(width: 64, height: 64))
+            let small = try XCTUnwrap(m.image(figure: figure, gauge: 3, eyes: "wide", frame: 7,
+                skin: "chestnut", tint: "#e0604c", fitting: 22, mood: "alarmed"))
+            XCTAssertEqual(small.size, NSSize(width: 22, height: 22))
+        }
+    }
+
+    func testOlderDataAndExistingCharactersKeepFallbackArtwork() throws {
+        let m = try load()
+        let encoderData = try Data(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("mascot.json"))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoderData) as? [String: Any])
+        object.removeValue(forKey: "companion")
+        let old = try JSONDecoder().decode(Mascot.self, from: JSONSerialization.data(withJSONObject: object))
+        for figure in ["robot", "cat", "crab", "missing"] {
+            XCTAssertNotNil(old.image(figure: figure, gauge: 0, eyes: "open", frame: 0,
+                skin: "acorn", tint: "#3fb27f", fitting: 69, detailed: true))
+        }
+        XCTAssertNotNil(m.image(figure: "cat", gauge: 0, eyes: "open", frame: 0,
+            skin: "acorn", tint: "#3fb27f", fitting: 69, detailed: true))
+    }
+
     func testFramesWrapRatherThanFallingOff() throws {
         let m = try load()
         XCTAssertEqual(m.rows(figure: m.defaultFigure, gauge: 0, eyes: "open", frame: m.frames + 1),

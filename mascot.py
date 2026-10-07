@@ -66,6 +66,8 @@ SKINS["tropical"] = {"outline": "#183b2c", "fur": "#8dcdbc", "fur_dark": "#a9704
                      "pale": "#efd49a", "shine": "#fff9e8", "blush": "#e7ad6b"}
 SKINS["frost"] = {"outline": "#263c57", "fur": "#f1f8ff", "fur_dark": "#9fc6db",
                   "pale": "#dbeffa", "shine": "#ffffff", "blush": "#ed9349"}
+SKINS["chestnut"] = {"outline": "#34221e", "fur": "#c99461", "fur_dark": "#9e6b43",
+                     "pale": "#fae5bf", "shine": "#fff6e6", "blush": "#bd7d73"}
 DEFAULT_SKIN = "acorn"
 
 # The accent is never in the skin: it is the status tint.
@@ -818,6 +820,7 @@ def export() -> dict:
     about, and here the divergence would be a mascot that disagrees with itself
     between the menu bar and the page.
     """
+    from companion_art import export as export_companions
     sprites = {}
     for fig in FIGURES.values():
         for gauge_level in range(len(POUCH)):
@@ -828,6 +831,7 @@ def export() -> dict:
     return {
         "version": 1, "width": W, "height": H, "frames": FRAMES,
         "slots": SLOTS, "skins": SKINS, "tints": TINTS,
+        "companion": export_companions(SKINS, SLOTS, EYES, FRAMES),
         "default_skin": DEFAULT_SKIN,
         # The cast, so the picker is data too: a fifth character is a dozen
         # strings here and nothing at all in the app.

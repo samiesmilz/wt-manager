@@ -274,7 +274,7 @@ final class Store: ObservableObject {
     /// The blink is applied here rather than in the art, because it belongs to
     /// the clock and not to the mood: every mood that has its eyes open blinks,
     /// and the ones already shut simply keep them shut.
-    func image(height: CGFloat, frame: Int = 0, blinking: Bool = false) -> NSImage? {
+    func image(height: CGFloat, frame: Int = 0, blinking: Bool = false, detailed: Bool = false) -> NSImage? {
         if usingOwnImage {
             // Custom pictures get the same status badge as every character.
             // Before the first envelope, the badge says the scan is working.
@@ -287,7 +287,7 @@ final class Store: ObservableObject {
                              frame: frame,
                              skin: skin,
                              tint: face?.tint ?? "#8b93a1",
-                             fitting: height, mood: face?.mood ?? "working")
+                             fitting: height, mood: face?.mood ?? "working", detailed: detailed)
     }
 
     /// The next coat along, wrapping.
