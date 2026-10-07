@@ -37,6 +37,14 @@ class CompanionArtTests(unittest.TestCase):
             rows=C.sprite(fig,'open',0)
             self.assertGreaterEqual(len(set(''.join(rows))-{'.'}),5,fig)
             self.assertNotEqual(rows[:23],M.sprite(0,'open',0,M.FIGURES[fig]))
+    def test_walk_gaits_have_eight_distinct_bounded_frames(self):
+        art=C.export(M.SKINS,M.SLOTS,M.EYES,M.FRAMES)
+        for fig in C.FIGURES:
+            frames=[art['walking_sprites'][f'{fig}/open/{f}'] for f in range(8)]
+            self.assertGreaterEqual(len({tuple(rows) for rows in frames}), 4, fig)
+            for rows in frames:
+                self.assertEqual(len(rows), 32, fig)
+                self.assertTrue(all(len(row)==32 for row in rows), fig)
 
 class MenuArtTests(unittest.TestCase):
     def test_small_icons_are_complete_and_expressions_remain_distinct(self):
@@ -51,5 +59,13 @@ class MenuArtTests(unittest.TestCase):
                 for skin in M.SKINS:self.assertTrue(used <= art['palettes'][f'{fig}/{skin}'].keys())
             self.assertEqual(len(set(variants)),5,fig)
         self.assertEqual(len({tuple(U.sprite(f,'open',0)) for f in U.FIGURES}),len(U.FIGURES))
+
+    def test_original_mascots_also_have_a_distinct_grounded_walking_gait(self):
+        art=M.export()
+        for fig in (M.CAT, M.CRAB):
+            frames=[art['walk_sprites'][f'{fig.id}/0/open/{f}'] for f in range(8)]
+            self.assertGreaterEqual(len({tuple(r) for r in frames}),4,fig.name)
+            self.assertTrue(all(len(rows)==23 and all(len(row)==22 for row in rows)
+                                for rows in frames),fig.name)
 
 if __name__=='__main__': unittest.main()

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.7.3"
+VERSION = "0.8.0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.

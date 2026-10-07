@@ -303,6 +303,8 @@ struct Header: View {
                 Button("Check for updates…") { store.updates.check(manual: true) }
                 Toggle("Check updates automatically", isOn: $store.automaticUpdates)
                 Toggle("Mascot merge messages", isOn: $store.mergeNudges)
+                Toggle("Let the mascot wander", isOn: $store.mascotWanders)
+                    .help("Occasional, interruptible strolls across this display; disabled by Reduce Motion")
                 Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
                 Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()

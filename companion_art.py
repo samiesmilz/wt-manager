@@ -163,6 +163,45 @@ def sprite(figure,eyes,frame):
     else: raise ValueError(figure)
     return c.rows()
 
+def walking_sprite(figure,eyes,frame):
+    """A short, figure-specific gait layered over that character's own gesture."""
+    phase=frame%8
+    rows=[list(row) for row in sprite(figure,eyes,phase)]
+    # The bunny hops, the pearl rolls with its highlight, and the snowball
+    # waddles. Their motion follows each character's own silhouette.
+    vertical={
+        'rabbit':(0,0,1,2,1,0,0,0),
+        'orb':(0,0,1,2,1,0,0,0),
+        'snowman':(0,0,1,1,0,0,0,0),
+    }.get(figure,(0,)*8)[phase]
+    if vertical:
+        shifted=[['.']*SIZE for _ in range(SIZE)]
+        for y,row in enumerate(rows):
+            dest=y-vertical
+            if 0<=dest<SIZE: shifted[dest]=row
+        rows=shifted
+    if figure=='palm':
+        # A palm's walk is a gentle crown sway, not legs it does not have.
+        dx=(0,0,1,1,0,-1,-1,0)[phase]
+        for y in range(10):
+            source=rows[y];rows[y]=['.']*SIZE
+            for x,ch in enumerate(source):
+                if ch!='.' and 0<=x+dx<SIZE: rows[y][x+dx]=ch
+    if figure in ('robot','antenna'):
+        # Small alternating toe taps, under each character's own upper-body gesture.
+        offsets=(0,0,1,1,0,0,-1,-1)
+        feet=((8,14),(18,24)) if figure=='robot' else ((10,14),(20,24))
+        for foot,(left,right) in enumerate(feet):
+            dx=offsets[(phase+(0 if foot==0 else 4))%8]
+            source=[]
+            for y in ((29,30,31) if figure=='robot' else (30,31)):
+                for x in range(left,right+1):
+                    ch=rows[y][x]
+                    if ch!='.': source.append((x,y,ch));rows[y][x]='.'
+            for x,y,ch in source:
+                if 0<=x+dx<SIZE: rows[y][x+dx]=ch
+    return [''.join(row) for row in rows]
+
 # Accessory colours are identity, never the live state. The framed badge is
 # added by the native renderer and consumes the engine's mood and tint.
 ACCESSORIES = {'h':'#202a3c','v':'#455d7e','r':'#bf4b58','g':'#277c60','l':'#83c58b',
@@ -177,4 +216,5 @@ def export(skins, slots, eyes, frames):
             if figure == 'rooster': palettes[f'{figure}/{name}']['r'] = '#b9719c'
     return {'width':SIZE,'height':SIZE,
             'sprites':{f'{fig}/{eye}/{f}':sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},
+            'walking_sprites':{f'{fig}/{eye}/{f}':walking_sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},
             'palettes':palettes}

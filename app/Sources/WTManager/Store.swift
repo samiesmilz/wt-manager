@@ -58,6 +58,7 @@ final class Store: ObservableObject {
     }
 
     @AppStorage("wtmanager.floatingMascot") var floatingMascot = true
+    @AppStorage("wtmanager.mascotWanders") var mascotWanders = false
 
     @AppStorage("wtmanager.skin") var skin: String = "acorn"
     /// Which character, or `Store.ownFigure` for a picture the person chose.
@@ -285,13 +286,15 @@ final class Store: ObservableObject {
     /// The blink is applied here rather than in the art, because it belongs to
     /// the clock and not to the mood: every mood that has its eyes open blinks,
     /// and the ones already shut simply keep them shut.
-    func image(height: CGFloat, frame: Int = 0, blinking: Bool = false, detailed: Bool = false, showSignal: Bool = true) -> NSImage? {
+    func image(height: CGFloat, frame: Int = 0, blinking: Bool = false, detailed: Bool = false,
+               showSignal: Bool = true, walking: Bool = false, facesLeft: Bool = false) -> NSImage? {
         if usingOwnImage {
             // Custom pictures get the same status badge as every character.
             // Before the first envelope, the badge says the scan is working.
             guard let image = OwnFace.image(fitting: height, tint: nil) else { return nil }
             guard showSignal else { return image }
-            return MascotSignal.adding(to: image, mood: face?.mood ?? "working", tint: face?.tint)
+            return MascotSignal.adding(to: image, mood: face?.mood ?? "working", tint: face?.tint,
+                                       facesLeft: facesLeft)
         }
         return mascot?.image(figure: figure,
                              gauge: face?.gauge ?? 0,
@@ -299,7 +302,8 @@ final class Store: ObservableObject {
                              frame: frame,
                              skin: skin,
                              tint: face?.tint ?? "#8b93a1",
-                             fitting: height, mood: face?.mood ?? "working", detailed: detailed, showSignal: showSignal)
+                             fitting: height, mood: face?.mood ?? "working", detailed: detailed,
+                             showSignal: showSignal, walking: walking, facesLeft: facesLeft)
     }
 
     /// The next coat along, wrapping.

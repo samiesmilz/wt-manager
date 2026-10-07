@@ -26,11 +26,13 @@ public struct Mascot: Decodable {
     public let skins: [String: [String: String]]
     public let defaultSkin: String
     public let sprites: [String: [String]]
+    public let walkSprites: [String: [String]]?
     public let figures: [Figure]
     public struct Companion: Decodable {
         public let width: Int
         public let height: Int
         public let sprites: [String: [String]]
+        public let walkingSprites: [String: [String]]?
         public let palettes: [String: [String: String]]
     }
     public let companion: Companion?
@@ -39,6 +41,7 @@ public struct Mascot: Decodable {
 
     public enum CodingKeys: String, CodingKey {
         case width, height, frames, slots, skins, sprites, figures, companion, menu
+        case walkSprites = "walk_sprites"
         case defaultSkin = "default_skin"
         case defaultFigure = "default_figure"
     }
@@ -88,10 +91,13 @@ extension Mascot {
     /// character resampled to a fractional size stops being pixel art and
     /// becomes a smudge, which is exactly what it looks like when it goes wrong.
     public func image(figure: String, gauge: Int, eyes: String, frame: Int, skin: String,
-               tint: String, fitting height: CGFloat, mood: String? = nil, detailed: Bool = false, showSignal: Bool = true) -> NSImage? {
+               tint: String, fitting height: CGFloat, mood: String? = nil, detailed: Bool = false,
+               showSignal: Bool = true, walking: Bool = false, facesLeft: Bool = false) -> NSImage? {
         let dedicatedArt = detailed ? companion : (!showSignal ? menu : nil)
         if let art = dedicatedArt,
-           let rows = art.sprites["\(figure)/\(eyes)/\(frame % max(frames, 1))"],
+           let rows = (walking
+                ? art.walkingSprites?["\(figure)/\(eyes)/\(frame % max(frames, 1))"]
+                : nil) ?? art.sprites["\(figure)/\(eyes)/\(frame % max(frames, 1))"],
            let palette = art.palettes["\(figure)/\(skin)"] ?? art.palettes["\(figure)/\(defaultSkin)"] {
             // Detailed art fits in full. Never crop or fractionally resample it.
             let scale = max(1, floor(height / CGFloat(art.height)))
@@ -99,6 +105,12 @@ extension Mascot {
             let image = NSImage(size: size)
             image.lockFocus()
             NSGraphicsContext.current?.imageInterpolation = .none
+            let context = NSGraphicsContext.current?.cgContext
+            context?.saveGState()
+            if facesLeft {
+                context?.translateBy(x: size.width, y: 0)
+                context?.scaleBy(x: -1, y: 1)
+            }
             for (y, row) in rows.enumerated() {
                 for (x, ch) in row.enumerated() where ch != "." {
                     guard let color = Ink.color(palette[String(ch)] ?? "") else { continue }
@@ -107,6 +119,7 @@ extension Mascot {
                            width: scale, height: scale).fill()
                 }
             }
+            context?.restoreGState()
             if let mood, showSignal {
                 // Keep the badge at menu-bar size so art stays the focus.
                 MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width-9, y: 0), scale: 1)
@@ -114,7 +127,11 @@ extension Mascot {
             image.unlockFocus()
             return image
         }
-        guard let rows = rows(figure: figure, gauge: gauge, eyes: eyes, frame: frame)
+        let walkingRows = walking
+            ? (companion?.walkingSprites?["\(figure)/\(eyes)/\(frame % max(frames, 1))"]
+                ?? walkSprites?["\(figure)/\(gauge)/\(eyes)/\(frame % max(frames, 1))"])
+            : nil
+        guard let rows = walkingRows ?? rows(figure: figure, gauge: gauge, eyes: eyes, frame: frame)
         else { return nil }
         let palette = skins[skin] ?? skins[defaultSkin] ?? [:]
         let accent = Ink.color(tint) ?? .systemGreen
@@ -130,6 +147,12 @@ extension Mascot {
         let image = NSImage(size: size)
         image.lockFocus()
         NSGraphicsContext.current?.imageInterpolation = .none
+        let context = NSGraphicsContext.current?.cgContext
+        context?.saveGState()
+        if facesLeft {
+            context?.translateBy(x: size.width, y: 0)
+            context?.scaleBy(x: -1, y: 1)
+        }
         for (y, row) in rows.enumerated() where y < drawnRows {
             for (x, ch) in row.enumerated() where ch != "." {
                 guard let slot = slots[String(ch)] else { continue }
@@ -142,6 +165,7 @@ extension Mascot {
                        width: scale, height: scale).fill()
             }
         }
+        context?.restoreGState()
         if let mood, showSignal {
             MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width - 9, y: 0), scale: 1)
         }
