@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Add Flurry the snowman and Coco the palm tree, with animated pixel silhouettes and matching coats.
+- Restore the movable desktop mascot, shown by default, with click/right-click menu access.
+- Remember its position across launches; recover it after display changes.
+- Add Show floating mascot and Reset mascot position controls.
+- Keep the desktop, header, and menu-bar mascots on the same state and animation clock.
+
 ## 0.3.2
 
 - Both background scans and previews use shared child-process shutdown tracking.

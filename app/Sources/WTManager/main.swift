@@ -4,20 +4,12 @@ import WTManagerKit
 
 /// wt-manager — an ambient reading of what you are in the middle of.
 ///
-/// Two surfaces over one store: a window, and a menu bar item. The menu bar
-/// item cannot be dismissed, so there is always a way back to a window you
-/// closed.
-///
-/// There was a third — a floating Wity you could drag anywhere. It was the
-/// menu bar item exactly: same character, same count, same click, same
-/// right-click menu, and on top of that a saved position, a drag-versus-click
-/// distance tracker and a `canBecomeKey` override to make a borderless panel
-/// behave. A second copy of one control is not a second way to reach it, it
-/// is a second thing to keep in agreement.
+/// The window, menu bar, and optional draggable companion all read one Store.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private var store: Store!
     private var statusItem: NSStatusItem!
+    private var floating: FloatingMascot?
     private var window: NSWindow?
     private var observer: NSObjectProtocol?
     private var announced = false
@@ -38,12 +30,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // Redrawing the status item is the one thing SwiftUI does not do for us.
         observer = NotificationCenter.default.addObserver(
             forName: Pulse.tickNote, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.drawStatusItem() }
+                MainActor.assumeIsolated { self?.drawStatusItem(); self?.floating?.sync() }
             }
 
+        floating = FloatingMascot(store: store) { [weak self] in
+            guard let self else { return NSMenu() }
+            let menu = NSMenu(); menu.autoenablesItems = false; menu.delegate = self
+            self.menuNeedsUpdate(menu)
+            return menu
+        }
         installKeyboardShortcuts()
         store.start()
         drawStatusItem()
+        floating?.sync()
         openWindow()
     }
 
@@ -154,6 +153,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             menu.addItem(m)
         }
         menu.addItem(.separator())
+        let floatingItem = item("Show floating mascot", #selector(toggleFloating), key: "")
+        floatingItem.state = store.floatingMascot ? .on : .off
+        menu.addItem(floatingItem)
+        menu.addItem(item("Reset mascot position", #selector(resetFloating), key: ""))
+        menu.addItem(.separator())
         menu.addItem(item("Refresh now", #selector(refresh), key: "r"))
         menu.addItem(item("Watched folders…", #selector(watchedFolders), key: ","))
         menu.addItem(item("Check for updates…", #selector(checkUpdates), key: ""))
@@ -170,6 +174,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(quitItem)
     }
 
+    @objc private func toggleFloating() { store.floatingMascot.toggle(); floating?.sync() }
+    @objc private func resetFloating() { store.floatingMascot = true; floating?.resetPosition(); floating?.sync() }
     @objc private func quitApp() { store.quit() }
     @objc private func checkUpdates() { store.updates.check(manual: true) }
     @objc private func openUpdate() { if let url = store.updates.availableURL { NSWorkspace.shared.open(url) } }
@@ -485,7 +491,7 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
         if castOnly {
             draw(CastSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
-                 size: CGSize(width: 760, height: 170), appearance: appearance,
+                 size: CGSize(width: CGFloat((store.mascot?.figures.count ?? 7) * 128 + 36), height: 180), appearance: appearance,
                  to: "\(name)-cast.png")
             continue
         }
@@ -553,7 +559,7 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
         // other is not a character this app can ship, and the only way that
         // was ever checked before was by picking each one and looking.
         draw(CastSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
-             size: CGSize(width: 700, height: 150), appearance: appearance,
+             size: CGSize(width: CGFloat((store.mascot?.figures.count ?? 7) * 128 + 36), height: 180), appearance: appearance,
              to: "\(name)-cast.png")
 
         // Every stage of the sheet, at the height that stage asks for. The
@@ -668,7 +674,7 @@ private struct CastSheet: View {
                         VStack(spacing: 4) {
                             if let image = store.mascot?.image(
                                 figure: f.id, gauge: 2, eyes: "open", frame: 0,
-                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow"][f.id] ?? store.skin,
+                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow", "snowman": "frost", "palm": "tropical"][f.id] ?? store.skin,
                                 tint: store.face?.tint ?? "#3fb27f",
                                 fitting: size) {
                                 Image(nsImage: image).interpolation(.none)

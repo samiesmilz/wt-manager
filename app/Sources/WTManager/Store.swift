@@ -50,6 +50,8 @@ final class Store: ObservableObject {
         NSApplication.shared.terminate(nil)
     }
 
+    @AppStorage("wtmanager.floatingMascot") var floatingMascot = true
+
     @AppStorage("wtmanager.skin") var skin: String = "acorn"
     /// Which character, or `Store.ownFigure` for a picture the person chose.
     @AppStorage("wtmanager.figure") var figure: String = "cat"

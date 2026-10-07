@@ -42,7 +42,7 @@ struct RootView: View {
         .sheet(item: $store.plan) { PlanSheet(store: store, plan: $0) }
         .sheet(isPresented: $store.showingSettings) { SettingsSheet(store: store) }
         .onChange(of: store.figure) { figure in
-            if let coat = ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow"][figure] { store.skin = coat }
+            if let coat = ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow", "snowman": "frost", "palm": "tropical"][figure] { store.skin = coat }
         }
         .onChange(of: store.section) { next in
             // Status chips describe the current group. A selection from the
@@ -309,6 +309,7 @@ struct Header: View {
                 Button("Check for updates…") { store.updates.check(manual: true) }
                 Toggle("Check updates automatically", isOn: $store.automaticUpdates)
                 Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
+                Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()
                 Picker("Theme", selection: $store.theme) {
                     Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
@@ -324,7 +325,7 @@ struct Header: View {
                                 Text("\(f.name) — \(f.tell)")
                             } icon: {
                                 if let image = mascot.image(figure: f.id, gauge: 0, eyes: "open", frame: 0,
-                                    skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow"][f.id] ?? store.skin,
+                                    skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow", "snowman": "frost", "palm": "tropical"][f.id] ?? store.skin,
                                     tint: "#3fb27f", fitting: 22) {
                                     Image(nsImage: image).interpolation(.none)
                                 }

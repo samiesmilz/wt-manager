@@ -62,6 +62,10 @@ SKINS.update({
     "snow": {"outline": "#332e42", "fur": "#f8f4fa", "fur_dark": "#c9bace",
              "pale": "#ffffff", "shine": "#ffffff", "blush": "#ed9eb6"},
 })
+SKINS["tropical"] = {"outline": "#183b2c", "fur": "#53b979", "fur_dark": "#a97041",
+                     "pale": "#efd49a", "shine": "#fff9e8", "blush": "#e7ad6b"}
+SKINS["frost"] = {"outline": "#263c57", "fur": "#f1f8ff", "fur_dark": "#9fc6db",
+                  "pale": "#dbeffa", "shine": "#ffffff", "blush": "#ed9349"}
 DEFAULT_SKIN = "acorn"
 
 # The accent is never in the skin: it is the status tint.
@@ -327,6 +331,37 @@ RABBIT = figure(Figure(
           ".#fff#....#fff#.", ".#fff#....#fff#.", "..####....####.."],
     parts=[Part(range(0, 3), [(0, 0), (0, -1), (0, 0), (0, 0),
                              (1, 0), (0, 0), (-1, 0), (0, 0)])],
+))
+
+SNOWMAN = figure(Figure(
+    id="snowman", name="Flurry", tell="top hat and carrot nose", tail=None,
+    crown=[".....######.....", ".....######.....",
+           "...##########...", "...#ffffffff#..."],
+    eye_row="..#fffffffffff#.",
+    cheeks=["..#fffffffffff#.", "...#ffffffff#...",
+            "....#ffffff#....", "...##ffffff##..."],
+    accent=[(5, 9), (6, 9), (7, 9), (8, 9), (9, 9), (10, 9)],
+    muzzle=[(7, 6, 'p'), (8, 6, 'p'), (9, 6, 'p'), (8, 7, 'p'),
+            (6, 8, '#'), (9, 8, '#')],
+    body=["..#fffffffffff#.", ".#fffff#fffffff#", ".#fffffffffffff#",
+          ".#fffff#fffffff#", "..#fffffffffff#.", "...###########.."],
+    parts=[Part(range(0, 4), [(0, 0), (0, -1), (0, 0), (1, 0),
+                             (0, 0), (0, -1), (0, 0), (-1, 0)])],
+))
+
+PALM = figure(Figure(
+    id="palm", name="Coco", tell="swaying fronds and coconuts", tail=None,
+    crown=["...fff..fff.....", "..ffffffffff....",
+           ".fffffffffffff..", "fff..ffff..ffff."],
+    eye_row="....#ssssss#....",
+    cheeks=[".....#ssss#.....", ".....#ssss#.....",
+            ".....#ssss#.....", ".....#ssss#....."],
+    accent=[(2, 2), (3, 2), (12, 2), (13, 2)],
+    muzzle=[(5, 4, 'b'), (10, 4, 'b'), (7, 6, '#'), (8, 6, '#')],
+    body=[".....#ssss#.....", ".....#ssss#.....", ".....#ssss#.....",
+          "....#ssssss#....", "...#bbbbbbbb#...", "..############.."],
+    parts=[Part(range(0, 4), [(0, 0), (1, 0), (1, 0), (0, 0),
+                             (0, 0), (-1, 0), (-1, 0), (0, 0)])],
 ))
 
 DEFAULT_FIGURE = CAT.id
