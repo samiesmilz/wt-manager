@@ -33,7 +33,7 @@ public enum MascotSignal {
 
     public static func adding(to image: NSImage, mood: String, tint: String? = nil) -> NSImage {
         let result = NSImage(size: image.size)
-        let scale = max(1, floor(min(image.size.width, image.size.height) / 23))
+        let scale: CGFloat = 1
         result.lockFocus()
         NSGraphicsContext.current?.imageInterpolation = .none
         image.draw(at: .zero, from: .zero, operation: .sourceOver, fraction: 1)

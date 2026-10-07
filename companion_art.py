@@ -6,7 +6,7 @@ These are original pixel drawings inspired by the supplied character references.
 from math import sin, pi
 
 SIZE = 32
-FIGURES = ('robot', 'rooster', 'rabbit', 'snowman', 'palm')
+FIGURES = ('robot', 'rooster', 'rabbit', 'snowman', 'palm', 'orb', 'antenna')
 
 class Canvas:
     def __init__(self): self.p = [['.'] * SIZE for _ in range(SIZE)]
@@ -129,6 +129,35 @@ def sprite(figure,eyes,frame):
         c.eye(11,10,eyes);c.eye(20,10,eyes)
         c.rect(12,17,20,17,'h');c.put(12+scan*2,17,'l')
         c.line(8,6,12,6,'w');c.put(24,8,'w')
+    elif figure=='orb':
+        # Limbless pearl sphere: a rolling highlight, diagonal oval eyes.
+        roll=(0,0,1,2,2,1,0,-1)[f]
+        c.ellipse(2,3,29,31,'#');c.ellipse(3,4,28,30,'s')
+        c.ellipse(3,4,27,28,'f');c.ellipse(4,5,25,24,'b')
+        c.ellipse(6+roll,6,16+roll,12,'w')
+        for x,y in [(10,14),(21,11)]:
+            if eyes=='shut': c.line(x,y+3,x+3,y+3,'#')
+            else:
+                c.ellipse(x-1,y,x+2,y+4,'#');c.ellipse(x,y+2,x+3,y+6,'#')
+                if eyes!='wide': c.put(x+(1 if eyes=='glance' else 0),y,'w')
+    elif figure=='antenna':
+        bend=(0,0,1,2,1,0,-1,0)[f];wave=(0,0,-1,-2,-2,-1,0,0)[f]
+        c.line(10,8,7+bend,3,'#');c.line(7+bend,3,4+bend,2,'r')
+        c.line(21,8,25-bend,3,'#');c.line(25-bend,3,28-bend,2,'r')
+        c.rect(10,25,14,30,'#');c.rect(20,25,24,30,'#')
+        c.rect(11,26,13,30,'f');c.rect(21,26,23,30,'f')
+        c.rect(10,31,14,31,'s');c.rect(20,31,24,31,'s')
+        c.ellipse(4,6,28,27,'#');c.ellipse(5,7,27,26,'s')
+        c.ellipse(5,7,26,24,'f');c.ellipse(7,7,23,15,'r')
+        c.ellipse(8,8,14,10,'p')
+        c.ellipse(1,14,7,21,'#');c.ellipse(1,14,6,20,'f')
+        c.ellipse(25,14+wave,31,21+wave,'#');c.ellipse(26,14+wave,30,20+wave,'f')
+        for x in (10,20):
+            c.ellipse(x-1,12,x+4,18,'h')
+            if eyes=='shut': c.line(x,15,x+2,15,'l')
+            else:
+                c.ellipse(x,13,x+2,15,'l')
+                if eyes!='wide': c.put(x+(1 if eyes=='glance' else 0),13,'w')
     else: raise ValueError(figure)
     return c.rows()
 
@@ -142,6 +171,7 @@ def export(skins, slots, eyes, frames):
     for figure in FIGURES:
         for name,skin in skins.items():
             palettes[f'{figure}/{name}']={ch:skin[slot] for ch,slot in slots.items() if slot!='accent'} | ACCESSORIES
+            if figure == 'antenna': palettes[f'{figure}/{name}'].update(r='#fb5966', l='#45d8d1')
             if figure == 'rooster': palettes[f'{figure}/{name}']['r'] = '#b9719c'
     return {'width':SIZE,'height':SIZE,
             'sprites':{f'{fig}/{eye}/{f}':sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},

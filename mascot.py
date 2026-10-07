@@ -68,6 +68,10 @@ SKINS["frost"] = {"outline": "#263c57", "fur": "#f1f8ff", "fur_dark": "#9fc6db",
                   "pale": "#dbeffa", "shine": "#ffffff", "blush": "#ed9349"}
 SKINS["chestnut"] = {"outline": "#34221e", "fur": "#c99461", "fur_dark": "#9e6b43",
                      "pale": "#fae5bf", "shine": "#fff6e6", "blush": "#bd7d73"}
+SKINS["pearl"] = {"outline":"#303236", "fur":"#e4e5e3", "fur_dark":"#b4b7b5",
+                  "pale":"#f0f1ed", "shine":"#ffffff", "blush":"#ddd5d1"}
+SKINS["cherry"] = {"outline":"#5f2335", "fur":"#ed4759", "fur_dark":"#b92d46",
+                   "pale":"#ff8390", "shine":"#fff5f0", "blush":"#ff9c98"}
 DEFAULT_SKIN = "acorn"
 
 # The accent is never in the skin: it is the status tint.
@@ -367,6 +371,24 @@ PALM = figure(Figure(
           "....#ssssss#....", "...#bbbbbbbb#...", "..############.."],
     parts=[Part(range(0, 4), [(0, 0), (1, 0), (1, 0), (0, 0),
                              (0, 0), (-1, 0), (-1, 0), (0, 0)])],
+))
+
+ORB = figure(Figure(
+    id="orb", name="Mallow", tell="pearl sphere and slanted eyes", tail=None,
+    crown=[".....######.....","...##bbbbbb##...","..#bbbbbbbbbb#..",".#bbbbbbbbbbbb#."],
+    eye_row="#bbbbbbbbbbbbbb#", accent=[(7,9),(8,9)],
+    cheeks=["#ffffffffffffff#","#ffffffffffffff#",".#ffffffffffff#.",".#ffffffffffff#."],
+    body=[".#ffffffffffff#.","..#ffffffffff#..","..#ssssssssss#..","...#ssssssss#...","....#ssssss#....",".....######....."],
+    poses=tuple({1: ["...##wwbbbb##...", "...##bwwbbb##...", "...##bbwwbb##...", "...##bbbwwb##..."][i]} for i in (0,0,1,2,3,2,1,0)),
+))
+ANTENNA = figure(Figure(
+    id="antenna", name="Bop", tell="antennae, side arms and short feet", tail=None,
+    crown=["..##........##..","...#........#...","....########....","..##ffffffff##.."],
+    eye_row=".#ffbbbbbbbbff#.", accent=[(7,8),(8,8)],
+    cheeks=["#ffffffffffffff#","#ffffffffffffff#",".#ffffffffffff#.","..#ffffffffff#.."],
+    body=["..#ffffffffff#..","...#ffffffff#...","....########....","....#ff..ff#....","....#ff..ff#....","....###..###...."],
+    muzzle=[(0,7,'f'),(15,7,'f'),(0,6,'f'),(15,6,'f')],
+    parts=[Part(range(0,2),[(0,0),(0,0),(1,0),(1,0),(0,0),(-1,0),(-1,0),(0,0)])],
 ))
 
 # Distinct idle actions, with pauses between gestures. The face's expression

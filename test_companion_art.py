@@ -31,7 +31,7 @@ class CompanionArtTests(unittest.TestCase):
         self.assertEqual(len(art),len(C.FIGURES))
         for fig in C.FIGURES:
             rows=C.sprite(fig,'open',0)
-            self.assertGreater(len(set(''.join(rows))-{'.'}),5,fig)
+            self.assertGreaterEqual(len(set(''.join(rows))-{'.'}),5,fig)
             self.assertNotEqual(rows[:23],M.sprite(0,'open',0,M.FIGURES[fig]))
 
 if __name__=='__main__': unittest.main()

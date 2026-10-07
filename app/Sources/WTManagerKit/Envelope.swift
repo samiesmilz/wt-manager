@@ -73,6 +73,8 @@ public struct Worktree: Decodable {
     /// a newer app must not fail to decode over one field.
     public var isBase: Bool = false
     public let pr: PRInfo?
+    public let prActivity: PRInfo?
+    public var linkedPR: PRInfo? { prActivity ?? pr }
     /// The subjects of the commits that exist only here, newest first, up to
     /// five. The count alone says something is at stake and not what, which
     /// left the only way of finding out being to open a terminal — the tool
@@ -80,6 +82,7 @@ public struct Worktree: Decodable {
     public var soloLog: [String] = []
     public enum CodingKeys: String, CodingKey {
         case repo, branch, status, meaning, path, ahead, behind, dirty, deleted, unpushed, pr, base, primary, removal
+        case prActivity = "pr_activity"
         case repoId = "repo_id"
         case soloLog = "solo_log"
         case isBase = "is_base"

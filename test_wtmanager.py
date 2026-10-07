@@ -639,7 +639,8 @@ class Character(unittest.TestCase):
             # tail-less figure is lifted, so a fixed slice compares one part
             # of it with itself.
             floor = max(y for y, r in enumerate(frames[0]) if r.strip("."))
-            top = [f[:4] for f in frames]
+            ceiling = min(y for y, r in enumerate(frames[0]) if r.strip("."))
+            top = [f[ceiling:ceiling + 4] for f in frames]
             low = [f[floor - 3:floor + 1] for f in frames]
             moved_top = {i for i in range(M.FRAMES) if top[i] != top[0]}
             moved_low = {i for i in range(M.FRAMES) if low[i] != low[0]}

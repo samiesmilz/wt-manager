@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 MainActor.assumeIsolated { self?.drawStatusItem(); self?.floating?.sync() }
             }
 
-        floating = FloatingMascot(store: store) { [weak self] in
+        floating = FloatingMascot(store: store, openWindow: { [weak self] in self?.openWindow() }) { [weak self] in
             guard let self else { return NSMenu() }
             let menu = NSMenu(); menu.autoenablesItems = false; menu.delegate = self
             self.menuNeedsUpdate(menu)
@@ -436,10 +436,11 @@ func start() {
 /// The envelope is the engine's own `agent` output, so what is rendered is what
 /// the engine would have said - a fixture is one saved run of it.
 @MainActor
-func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, feedbackOnly: Bool = false, motionOnly: Bool = false, signalsOnly: Bool = false) {
+func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, feedbackOnly: Bool = false, motionOnly: Bool = false, signalsOnly: Bool = false, mergeOnly: Bool = false) {
     _ = NSApplication.shared
     let store = Store(mascot: AppDelegate.loadMascotForSnapshot())
     store.history = CleanupHistory()
+    store.prLifecycle = PRLifecycle()
     let gb = 1024 * 1024
     for (i, total) in [24, 28, 42].enumerated() {
         store.history.measure(roots: ["/demo/projects"], totalKb: total * gb, rebuildableKb: 18 * gb,
@@ -490,15 +491,30 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
     let sizes = [("", lim.ideal), ("-min", lim.min)]
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
         NSApp.appearance = NSAppearance(named: appearance)
+        if mergeOnly {
+            let json = #"{"id":"demo/pr/42","number":42,"repo":"demo project","paths":["/demo/feature"],"occupiedKb":1258291,"blocked":false}"#
+            if let nudge = try? JSONDecoder().decode(MergeNudge.self, from: Data(json.utf8)) {
+                draw(VStack(spacing: 20) {
+                    MergeSpeechBanner(store: store, nudge: nudge)
+                    LinkedPRCard(store: store).padding(.horizontal, 14)
+                    Text("Floating mascot message").font(.system(size: 12, weight: .medium))
+                    MergeSpeechBanner(store: store, nudge: nudge, compact: true)
+                        .frame(width: 320, height: 180)
+                }.padding(.vertical, 16).background(Color(nsColor: .windowBackgroundColor)),
+                size: CGSize(width: 630, height: 600), appearance: appearance,
+                to: "\(name)-merge.png")
+            }
+            continue
+        }
         if signalsOnly {
             draw(SignalSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
-                 size: CGSize(width: 770, height: 520), appearance: appearance,
+                 size: CGSize(width: 770, height: 650), appearance: appearance,
                  to: "\(name)-signals.png")
             continue
         }
         if motionOnly {
             draw(MotionSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
-                 size: CGSize(width: 730, height: 570), appearance: appearance,
+                 size: CGSize(width: 730, height: 760), appearance: appearance,
                  to: "\(name)-motion.png")
             continue
         }
@@ -627,6 +643,10 @@ MainActor.assumeIsolated {
         snapshot(into: args[i + 1], envelopePath: nil, feedbackOnly: true)
         exit(0)
     }
+    if let i = args.firstIndex(of: "--snapshot-merge"), i + 1 < args.count {
+        snapshot(into: args[i + 1], envelopePath: i + 2 < args.count ? args[i + 2] : nil, mergeOnly: true)
+        exit(0)
+    }
     if let i = args.firstIndex(of: "--snapshot-signals"), i + 1 < args.count {
         snapshot(into: args[i + 1], envelopePath: nil, signalsOnly: true)
         return
@@ -695,7 +715,7 @@ private struct CastSheet: View {
                         VStack(spacing: 4) {
                             if let image = store.mascot?.image(
                                 figure: f.id, gauge: 2, eyes: "open", frame: 0,
-                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical"][f.id] ?? store.skin,
+                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][f.id] ?? store.skin,
                                 tint: store.face?.tint ?? "#3fb27f",
                                 fitting: size, detailed: size > 30) {
                                 Image(nsImage: image).interpolation(.none)
@@ -728,7 +748,7 @@ private struct MotionSheet: View {
                     ForEach(0..<8, id: \.self) { frame in
                         VStack(spacing: 5) {
                             if let image = store.mascot?.image(figure: figure.id, gauge: 0, eyes: "open", frame: frame,
-                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical"][figure.id] ?? "acorn",
+                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][figure.id] ?? "acorn",
                                 tint: "#3fb27f", fitting: 69, mood: "proud", detailed: true) {
                                 Image(nsImage: image).interpolation(.none)
                             }
@@ -758,7 +778,7 @@ private struct SignalSheet: View {
                     ForEach(MascotSignal.moods, id: \.self) { mood in
                         let eyes = ["lost": "squint", "working": "shut", "alarmed": "wide", "nudging": "glance", "burdened": "squint", "calm": "open", "proud": "open", "asleep": "shut"][mood] ?? "open"
                         if let image = store.mascot?.image(figure: figure.id, gauge: 0, eyes: eyes, frame: 0,
-                            skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical"][figure.id] ?? "acorn",
+                            skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][figure.id] ?? "acorn",
                             tint: MascotSignal.colors[mood] ?? "#8b93a1", fitting: 22, mood: mood) {
                             Image(nsImage: image).interpolation(.none).frame(width: 70, height: 34)
                         }

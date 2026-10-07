@@ -139,6 +139,7 @@ struct Overview: View {
                         }
                     }
                 } else {
+                    LinkedPRCard(store: store)
                     movesCard
                     CleanupScoreCard(store: store)
                     repoCard
@@ -743,5 +744,61 @@ struct CompletionBanner: View {
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(tint.opacity(0.09))
         .accessibilityElement(children: .contain)
+    }
+}
+
+
+struct LinkedPRCard: View {
+    @ObservedObject var store: Store
+    var body: some View {
+        let stats = LinkedPRStats(worktrees: store.envelope?.worktrees ?? [])
+        Card(title: "PRs linked to local worktrees", tint: .accentColor, symbol: "arrow.triangle.pull") {
+            HStack(spacing: 24) {
+                metric("Open", stats.open, .blue)
+                metric("Merged", stats.merged, .green)
+                metric("Closed, not merged", stats.closed, .secondary)
+                Spacer(minLength: 0)
+            }
+            Text("Known PRs, counted once each. \(stats.unconfirmed) checkouts have no confirmed linked PR. GitHub access warnings appear below.")
+                .font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+    private func metric(_ title: String, _ value: Int, _ tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(value)").font(.system(size: 22, weight: .bold, design: .monospaced)).foregroundStyle(tint)
+            Text(title).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct MergeSpeechBanner: View {
+    @ObservedObject var store: Store
+    let nudge: MergeNudge
+    var compact = false
+    var onReview: (() -> Void)? = nil
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            if !compact { WityView(store: store, height: 32).accessibilityHidden(true) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("PR #\(nudge.number) merged!").font(.system(size: 12, weight: .bold, design: .monospaced))
+                Text(message).font(.system(size: 11)).lineLimit(compact ? 3 : nil).help(message).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Review checkout") { store.preview(Store.Action(kind: .reap, paths: nudge.paths)); onReview?() }
+                        .controlSize(.small).disabled(store.busy || store.plan != nil)
+                    Button("Dismiss") { store.dismissMerge(nudge.id) }.controlSize(.small)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12).background(Color.green.opacity(0.09))
+        .overlay(Rectangle().stroke(Color.green.opacity(0.4), lineWidth: 2))
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
+    }
+    private var message: String {
+        if compact { return "\(nudge.repo) — let’s review this local checkout before removing anything." }
+        let space = nudge.occupiedKb.map { $0 == 0 ? " This checkout uses 0 B." : " About \(Store.human($0)) is still on disk." } ?? " Space has not been measured yet."
+        return "\(nudge.repo) — let’s review the local checkout." + space
+            + (nudge.blocked ? " Local work or another blocker needs attention." : " Removal is checked again before anything changes.")
     }
 }

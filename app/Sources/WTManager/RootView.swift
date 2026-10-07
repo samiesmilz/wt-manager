@@ -22,6 +22,9 @@ struct RootView: View {
             VStack(spacing: 0) {
                 Header(store: store)
                 UpdateBanner(store: store, updates: store.updates)
+                if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
+                    MergeSpeechBanner(store: store, nudge: nudge)
+                }
                 Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
                 if let completion = store.completion {
                     CompletionBanner(store: store, plan: completion)
@@ -42,7 +45,7 @@ struct RootView: View {
         .sheet(item: $store.plan) { PlanSheet(store: store, plan: $0) }
         .sheet(isPresented: $store.showingSettings) { SettingsSheet(store: store) }
         .onChange(of: store.figure) { figure in
-            if let coat = ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical"][figure] { store.skin = coat }
+            if let coat = ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][figure] { store.skin = coat }
         }
         .onChange(of: store.section) { next in
             // Status chips describe the current group. A selection from the
@@ -308,6 +311,7 @@ struct Header: View {
             Menu {
                 Button("Check for updates…") { store.updates.check(manual: true) }
                 Toggle("Check updates automatically", isOn: $store.automaticUpdates)
+                Toggle("Mascot merge messages", isOn: $store.mergeNudges)
                 Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
                 Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()
@@ -325,7 +329,7 @@ struct Header: View {
                                 Text("\(f.name) — \(f.tell)")
                             } icon: {
                                 if let image = mascot.image(figure: f.id, gauge: 0, eyes: "open", frame: 0,
-                                    skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical"][f.id] ?? store.skin,
+                                    skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][f.id] ?? store.skin,
                                     tint: "#3fb27f", fitting: 22) {
                                     Image(nsImage: image).interpolation(.none)
                                 }

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import WTManagerKit
 
 /// An optional companion, using the same image and menu as the other surfaces.
@@ -10,10 +11,14 @@ final class FloatingMascot {
     private let view: FloatingMascotView
     private var screenObserver: NSObjectProtocol?
     private var drawn: String?
+    private var speech: NSPanel?
+    private var spoken: String?
+    private let openWindow: () -> Void
     private let positionKey = "wtmanager.floatingPosition.v1"
     private let size = NSSize(width: 84, height: 84)
 
-    init(store: Store, menu: @escaping () -> NSMenu) {
+    init(store: Store, openWindow: @escaping () -> Void, menu: @escaping () -> NSMenu) {
+        self.openWindow = openWindow
         self.store = store
         panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -43,7 +48,7 @@ final class FloatingMascot {
     deinit { if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) } }
 
     func sync() {
-        guard store.floatingMascot else { panel.orderOut(nil); return }
+        guard store.floatingMascot else { panel.orderOut(nil); speech?.orderOut(nil); return }
         let pulse = Pulse.shared
         let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(pulse.wag)/\(pulse.blinking)"
         if key != drawn {
@@ -53,6 +58,37 @@ final class FloatingMascot {
             view.needsDisplay = true
         }
         if !panel.isVisible { panel.orderFrontRegardless() }
+        syncSpeech()
+    }
+
+    private func syncSpeech() {
+        let mainVisible = NSApp.windows.contains { $0.isVisible && !($0 is NSPanel) }
+        guard store.mergeNudges, !mainVisible, store.plan?.stage != .committing,
+              let nudge = store.prLifecycle.pending.first else { speech?.orderOut(nil); return }
+        if speech == nil {
+            let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 180),
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            p.title = "wt-manager merge message"
+            p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true
+            p.level = .floating; p.hidesOnDeactivate = false; p.isReleasedWhenClosed = false
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            speech = p
+        }
+        guard let speech else { return }
+        let speechKey = "\(nudge.id)/\(nudge.paths)/\(nudge.occupiedKb ?? -1)/\(nudge.blocked)"
+        if spoken != speechKey {
+            spoken = speechKey
+            let host = NSHostingView(rootView: MergeSpeechBanner(store: store, nudge: nudge,
+                compact: true, onReview: openWindow).background(Color(nsColor: .windowBackgroundColor)))
+            host.sizingOptions = []
+            host.frame = NSRect(origin: .zero, size: speech.frame.size)
+            host.autoresizingMask = [.width, .height]
+            speech.contentView = host
+        }
+        let origin = NSPoint(x: panel.frame.maxX + 8, y: panel.frame.minY)
+        speech.setFrame(FloatingPlacement.frame(origin: origin, size: speech.frame.size,
+                        screens: NSScreen.screens.map(\.visibleFrame)), display: true)
+        if !speech.isVisible { speech.orderFrontRegardless() }
     }
 
     func resetPosition() {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+- Add Mallow, a pearl orb, and Bop, a red antenna character, with different silhouettes and idle gestures.
+- Keep Wity’s floating arrow badge small; use the same nine-point status badge across companions.
+- Count known linked PRs as Open, Merged or Closed-not-merged, once per PR.
+- Verify closed PR linkage against the checkout head; surface incomplete provider history.
+- Track observed PR merges locally and show dismissible speech messages beside the floating mascot or in the window.
+- Separate merge activity from removal eligibility when a checkout has newer commits. Review always opens a fresh safety preview.
+
 ## 0.6.1
 
 - Replace the cross-shaped attention badge with a simple right-pointing arrow.

@@ -31,6 +31,13 @@ final class Store: ObservableObject {
     @Published private(set) var scanProgress: Engine.Progress?
     @Published var history = CleanupHistory()
     @Published var celebration: UUID?
+    @Published var prLifecycle = PRLifecycle()
+    @AppStorage("wtmanager.mergeNudges") var mergeNudges = true
+    private let prLifecycleKey = "wtmanager.prLifecycle.v1"
+    func savePRLifecycle() {
+        if let data = try? JSONEncoder().encode(prLifecycle) { UserDefaults.standard.set(data, forKey: prLifecycleKey) }
+    }
+    func dismissMerge(_ id: String) { prLifecycle.dismiss(id); savePRLifecycle() }
     let updates = UpdateChecker()
     @AppStorage("wtmanager.automaticUpdates") var automaticUpdates = false
     @AppStorage("wtmanager.celebrations") var celebrationsEnabled = true
@@ -92,6 +99,8 @@ final class Store: ObservableObject {
 
     init(mascot: Mascot?) {
         self.mascot = mascot
+        if let data = UserDefaults.standard.data(forKey: prLifecycleKey),
+           let saved = try? JSONDecoder().decode(PRLifecycle.self, from: data) { prLifecycle = saved }
         if let data = UserDefaults.standard.data(forKey: historyKey),
            let stored = try? JSONDecoder().decode(CleanupHistory.self, from: data) { history = stored }
         if figure == "owl" { figure = "rooster"; skin = "sunrise" }
@@ -203,6 +212,8 @@ final class Store: ObservableObject {
                         }
                     }
                 }
+                self.prLifecycle.observe(env.worktrees, complete: env.notices.isEmpty)
+                self.savePRLifecycle()
                 self.envelope = env
                 self.error = nil
                 self.countedAt = Date()

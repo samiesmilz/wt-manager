@@ -141,7 +141,7 @@ extension Mascot {
             }
         }
         if let mood {
-            MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width - 9 * scale, y: 0), scale: scale)
+            MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width - 9, y: 0), scale: 1)
         }
         image.unlockFocus()
         return image

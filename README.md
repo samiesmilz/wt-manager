@@ -100,9 +100,19 @@ Measurements and rewards stay on your Mac. Changing watched folders resets the c
 
 Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Motion** disables the particle burst and mascot motion; readable completion feedback stays.
 
+## PR intelligence
+
+Overview counts **known PRs linked to local worktrees**, with separate Open, Merged, and Closed-not-merged counters. One PR counts once even when several checkouts reference it. Unconfirmed checkouts and GitHub access warnings stay visible; these are not repository-wide or lifetime totals. Closed PRs are associated only when their head commit matches the local checkout. Historic query limits can leave older PRs unconfirmed.
+
+After wt-manager has observed a PR open, a later verified merge produces a mascot speech message. It appears in the window, or beside the floating companion when the window is closed. **Review checkout** opens the engine's safety preview; merging a PR never automatically deletes files. New local commits, protected files, locked worktrees and unreadable folders can still prevent removal. Occupied disk space is labelled separately from safely reclaimable space.
+
+The first scan quietly establishes a baseline. Messages and dismissals persist locally, partial scans preserve known state, and duplicate checkouts do not duplicate alerts. Turn them off using **Appearance → Mascot merge messages**. PR reads use your existing `gh` session and short local caches; detection follows periodic refreshes, rather than real-time GitHub push events.
+
+![Demo PR counters and mascot merge messages](docs/images/pr-intelligence.png)
+
 ## Meet the pixel crew
 
-The five new companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions remain 22px. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
+The seven new companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions remain 22px. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
 
 ![Detailed pixel companions and simplified menu-bar mascots](docs/images/mascots.png)
 
@@ -115,6 +125,8 @@ The five new companions have separate **32×32 drawings**, shown at **64×64pt**
 | **Pip** | A chestnut rabbit with a cream muzzle, folding ear and little paws |
 | **Flurry** | A snowman with a top hat, waving twig hand, carrot nose, and fluttering scarf |
 | **Coco** | A palm tree with swaying fronds and coconuts |
+| **Mallow** | A limbless pearl orb with slanted eyes and a rolling highlight |
+| **Bop** | A red antenna character with rounded side arms, short feet and a wave |
 
 The character is decoration; its framed status badge is the instrument. Every character uses the same badge size, colour field, high-contrast borders, and distinct glyph for each of eight moods. The signal stays readable on light and dark menu bars, and changing character does not change its meaning. Characters share a baseline, while Byte now has a compact body and a lighter slate coat. Coco's coconuts no longer cover its expression.
 
