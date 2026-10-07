@@ -1,0 +1,211 @@
+{
+  "version": "0.3.0",
+  "generated_at": 1791334447,
+  "counts": {
+    "trunk": 2,
+    "active": 1,
+    "merged": 2,
+    "stale": 1
+  },
+  "total_kb": 44040192,
+  "reclaim_kb": 18874368,
+  "measured_disk": true,
+  "notices": [],
+  "roots": [
+    "/demo/projects"
+  ],
+  "headline": "Room for your next idea",
+  "insights": [
+    {
+      "id": "reclaim",
+      "label": "18GB rebuildable",
+      "tint": "reclaim",
+      "target": "disk",
+      "value": 18874368,
+      "solo": true
+    }
+  ],
+  "face": {
+    "mood": "content",
+    "meaning": "ready for your next idea",
+    "eyes": "open",
+    "tint": "#3fb27f",
+    "bob": [
+      0,
+      0,
+      1,
+      1
+    ],
+    "gauge": 2
+  },
+  "worktrees": [
+    {
+      "repo": "pixel-app",
+      "repo_id": "/demo/projects/pixel-app/.git",
+      "branch": "main",
+      "status": "trunk",
+      "meaning": "the base branch itself",
+      "path": "/demo/projects/pixel-app/main",
+      "ahead": 0,
+      "behind": 0,
+      "dirty": 0,
+      "deleted": 0,
+      "unpushed": 0,
+      "unpushed_mine": 0,
+      "solo_log": [],
+      "age_days": 1,
+      "last_commit": 1791248047,
+      "base": "origin/main",
+      "base_source": "remote default",
+      "primary": true,
+      "removal": {
+        "state": "blocked",
+        "reason": "Main checkouts stay in place."
+      },
+      "is_base": true,
+      "size_kb": 10485760,
+      "reclaim_kb": 3145728,
+      "pr": null
+    },
+    {
+      "repo": "pixel-app",
+      "repo_id": "/demo/projects/pixel-app/.git",
+      "branch": "feat/sidebar",
+      "status": "active",
+      "meaning": "your move",
+      "path": "/demo/projects/pixel-app/feat-sidebar",
+      "ahead": 3,
+      "behind": 0,
+      "dirty": 1,
+      "deleted": 0,
+      "unpushed": 0,
+      "unpushed_mine": 0,
+      "solo_log": [],
+      "age_days": 1,
+      "last_commit": 1791248047,
+      "base": "origin/main",
+      "base_source": "remote default",
+      "primary": false,
+      "removal": {
+        "state": "blocked",
+        "reason": "This branch is not finished yet."
+      },
+      "is_base": false,
+      "size_kb": 6291456,
+      "reclaim_kb": 2097152,
+      "pr": null
+    },
+    {
+      "repo": "pixel-app",
+      "repo_id": "/demo/projects/pixel-app/.git",
+      "branch": "feat/sparkles",
+      "status": "merged",
+      "meaning": "already in the base",
+      "path": "/demo/projects/pixel-app/feat-sparkles",
+      "ahead": 0,
+      "behind": 0,
+      "dirty": 0,
+      "deleted": 0,
+      "unpushed": 0,
+      "unpushed_mine": 0,
+      "solo_log": [],
+      "age_days": 1,
+      "last_commit": 1791248047,
+      "base": "origin/main",
+      "base_source": "remote default",
+      "primary": false,
+      "removal": {
+        "state": "ready",
+        "reason": "This branch is not finished yet."
+      },
+      "is_base": false,
+      "size_kb": 5242880,
+      "reclaim_kb": 3145728,
+      "pr": null
+    },
+    {
+      "repo": "api-server",
+      "repo_id": "/demo/projects/api-server/.git",
+      "branch": "main",
+      "status": "trunk",
+      "meaning": "the base branch itself",
+      "path": "/demo/projects/api-server/main",
+      "ahead": 0,
+      "behind": 0,
+      "dirty": 0,
+      "deleted": 0,
+      "unpushed": 0,
+      "unpushed_mine": 0,
+      "solo_log": [],
+      "age_days": 1,
+      "last_commit": 1791248047,
+      "base": "origin/main",
+      "base_source": "remote default",
+      "primary": true,
+      "removal": {
+        "state": "blocked",
+        "reason": "Main checkouts stay in place."
+      },
+      "is_base": true,
+      "size_kb": 8388608,
+      "reclaim_kb": 3145728,
+      "pr": null
+    },
+    {
+      "repo": "api-server",
+      "repo_id": "/demo/projects/api-server/.git",
+      "branch": "fix/retry",
+      "status": "merged",
+      "meaning": "already in the base",
+      "path": "/demo/projects/api-server/fix-retry",
+      "ahead": 0,
+      "behind": 0,
+      "dirty": 0,
+      "deleted": 0,
+      "unpushed": 0,
+      "unpushed_mine": 0,
+      "solo_log": [],
+      "age_days": 1,
+      "last_commit": 1791248047,
+      "base": "origin/main",
+      "base_source": "remote default",
+      "primary": false,
+      "removal": {
+        "state": "ready",
+        "reason": "This branch is not finished yet."
+      },
+      "is_base": false,
+      "size_kb": 6291456,
+      "reclaim_kb": 4194304,
+      "pr": null
+    },
+    {
+      "repo": "mobile-kit",
+      "repo_id": "/demo/projects/mobile-kit/.git",
+      "branch": "feat/login",
+      "status": "stale",
+      "meaning": "no recent commit",
+      "path": "/demo/projects/mobile-kit/feat-login",
+      "ahead": 3,
+      "behind": 0,
+      "dirty": 0,
+      "deleted": 0,
+      "unpushed": 0,
+      "unpushed_mine": 0,
+      "solo_log": [],
+      "age_days": 18,
+      "last_commit": 1789779247,
+      "base": "origin/main",
+      "base_source": "remote default",
+      "primary": false,
+      "removal": {
+        "state": "blocked",
+        "reason": "This branch is not finished yet."
+      },
+      "is_base": false,
+      "size_kb": 7340032,
+      "reclaim_kb": 3145728,
+      "pr": null
+    }
+  ]
+}
