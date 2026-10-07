@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- Both background scans and previews use shared child-process shutdown tracking.
+- Added regression coverage for termination and work queued after Quit.
+
 ## 0.3.1
 
 - Quit now ends the app's read-only background engine scan instead of leaving it running.

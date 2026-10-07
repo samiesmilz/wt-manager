@@ -15,18 +15,8 @@ final class Engine {
     static let diskInterval: TimeInterval = 60 * 60
 
     private let queue = DispatchQueue(label: "wtmanager.engine", qos: .utility)
-    private let processLock = NSLock()
-    private var running: Process?
-    private var stopping = false
-
-    /// Called only when the app has ruled out an active destructive operation.
-    func shutdown() {
-        processLock.lock()
-        stopping = true
-        let task = running
-        if task?.isRunning == true { task?.terminate() }
-        processLock.unlock()
-    }
+    private let child = EngineChild()
+    func shutdown() { child.shutdown() }
     private(set) var lastReclaimKb: Int = 0
 
     /// Login items have a small PATH. Pick an absolute interpreter shared by
@@ -94,7 +84,8 @@ final class Engine {
         let out = Pipe(), err = Pipe()
         task.standardOutput = out
         task.standardError = err
-        do { try task.run() } catch { return .failure(error) }
+        do { try child.launch(task) } catch { return .failure(error) }
+        defer { child.finished() }
         let (data, errData) = Self.drain(out, err, progress: progress)
         task.waitUntilExit()
         guard task.terminationStatus == 0, !data.isEmpty else {
@@ -141,24 +132,11 @@ final class Engine {
             let out = Pipe(), err = Pipe()
             task.standardOutput = out
             task.standardError = err
-            // Lock launch and shutdown together: quitting cannot slip between
-            // checking the stop flag and registering the child process.
-            self.processLock.lock()
-            if self.stopping { self.processLock.unlock(); return }
-            do {
-                try task.run()
-                self.running = task
-                self.processLock.unlock()
-            } catch {
-                self.processLock.unlock()
+            do { try self.child.launch(task) } catch {
                 DispatchQueue.main.async { completion(.failure(error)) }
                 return
             }
-            defer {
-                self.processLock.lock()
-                self.running = nil
-                self.processLock.unlock()
-            }
+            defer { self.child.finished() }
             let (data, errData) = Self.drain(out, err, progress: progress)
             task.waitUntilExit()
             let text = String(data: data, encoding: .utf8) ?? ""
