@@ -214,7 +214,7 @@ class Figure:
 
     def __init__(self, id, name, tell, crown, accent, eyes=(4, 4),
                  tail="plume", muzzle=(), eye_row="#ffffffffffffff#",
-                 parts=(), feet=None, body=None, cheeks=None):
+                 parts=(), feet=None, body=None, cheeks=None, poses=()):
         self.id, self.name, self.tell = id, name, tell
         self.crown = list(crown)
         self.body = list(body) if body is not None else BODY
@@ -222,6 +222,9 @@ class Figure:
         self.cheeks = list(cheeks) if cheeks else None
         # Moving layers. See `Part`.
         self.parts = tuple(parts)
+        # Hand-authored frame changes: lights, ear folds, hat tips and fronds.
+        # These change the drawing rather than translating the whole character.
+        self.poses = tuple(poses)
         # Per-frame replacements for the bottom rows. Feet are the one part
         # small enough that redrawing them outright is cheaper than any
         # transform, and a shuffle needs the toes to actually change shape.
@@ -364,6 +367,62 @@ PALM = figure(Figure(
                              (0, 0), (-1, 0), (-1, 0), (0, 0)])],
 ))
 
+# Distinct idle actions, with pauses between gestures. The face's expression
+# and status accent stay intact; only the named parts are redrawn.
+def _shift_row(row, dx):
+    return ''.join(row[x - dx] if 0 <= x - dx < len(row) else '.' for x in range(len(row)))
+
+
+ROBOT.parts = ()
+ROBOT.poses = tuple({
+    2: ''.join('w' if x in (lamp, lamp + 1) else ch
+               for x, ch in enumerate(ROBOT.crown[2])),
+    3: ''.join('w' if x in ((0, 1) if i < 4 else (14, 15)) else ch
+               for x, ch in enumerate(ROBOT.crown[3]))
+} for i, lamp in enumerate((5, 5, 6, 8, 10, 10, 8, 6)))
+
+# Cooper bends the neck forward, pecks twice, then returns to a proud pose.
+# The feet and body remain planted, unlike a generic whole-sprite wobble.
+ROOSTER.parts = (Part(range(0, 10),
+    [(0, 0), (0, 0), (1, 1), (2, 2), (1, 1), (2, 2), (0, 0), (0, 0)]),)
+
+RABBIT.parts = ()
+_ears = [RABBIT.crown,
+    ["................", ".####.....##....", ".#pff#...#fp#...", "..#fff####fff#.."],
+    ["................", "................", ".#ppff####ffpp#.", "..#fff####fff#.."],
+    ["................", "...##.....####..", "..#pf#...#ffp#..", "..#fff####fff#.."]]
+RABBIT.poses = tuple(dict(enumerate(_ears[i])) for i in (0, 0, 1, 2, 2, 1, 0, 3))
+
+SNOWMAN.parts = ()
+_hat = (0, 0, 0, 1, 2, 2, 1, 0)
+_arm = (0, 0, 1, 2, 2, 1, 0, 0)
+_snow_poses = []
+for lean, wave in zip(_hat, _arm):
+    pose = {0: _shift_row(SNOWMAN.crown[0], lean * 2),
+            1: _shift_row(SNOWMAN.crown[1], lean),
+            2: SNOWMAN.crown[2]}
+    # Twig hand waves beside the head; the scarf and snowballs stay still.
+    for y in range(8, 13):
+        row = list((SNOWMAN.cheeks + SNOWMAN.body)[y - 6])
+        if y == 11: row[0] = '#'; row[1] = '#'
+        if 10 - wave <= y <= 11: row[0] = '#'
+        if y == 9 - wave and y >= 8: row[0] = '#'
+        pose[y] = ''.join(row)
+    # Row 9 carries the scarf; do not overwrite the status channel.
+    row = list(pose[9])
+    for x, y in SNOWMAN.accent:
+        if y == 9: row[x] = '*'
+    pose[9] = ''.join(row)
+    _snow_poses.append(pose)
+SNOWMAN.poses = tuple(_snow_poses)
+
+PALM.parts = ()
+_fronds = [PALM.crown,
+    ["....fff..fff....", "..ffffffffff....", ".ffffffffff.ff..", "ffff..ff....ffff"],
+    [".....ffff.......", "...ffffffffff...", "..fffffffffffff.", "ffff..ff...ffff."],
+    ["..fff..fff......", ".fffffffffff....", "ffff.ffffffffff.", "fff...ff..ffff.."]]
+PALM.poses = tuple(dict(enumerate(_fronds[i])) for i in (0, 1, 1, 2, 2, 1, 0, 3))
+
 DEFAULT_FIGURE = CAT.id
 
 
@@ -498,7 +557,7 @@ def sprite(cheek: int = 0, eyes: str = "open", frame: int = 0,
     # everybody shifted the cat up a pixel, which drove his ears into the
     # plume and left a blank row under his feet. A shared origin is not a
     # place to put one figure's animation.
-    still = kind not in TAILS and not fig.parts and not fig.feet
+    still = kind not in TAILS and not fig.parts and not fig.feet and not fig.poses
     # Rows 0-6 of the frame belong to the plume. A figure with no tail was
     # leaving them blank and hanging its own feet off the bottom edge, which
     # at the same drawn height makes it look smaller than the cat as well as
@@ -507,6 +566,14 @@ def sprite(cheek: int = 0, eyes: str = "open", frame: int = 0,
     lift = rise + (1 - BOB[frame % len(BOB)] if still else 0)
 
     rows = bust(cheek, eyes, fig)
+    if fig.poses:
+        for y, replacement in fig.poses[frame % len(fig.poses)].items():
+            rows[y] = replacement
+        # Idle gestures must not erase the live status tint or expression details.
+        mutable = [list(row) for row in rows]
+        for x, y, ch in fig.muzzle: mutable[y][x] = ch
+        for x, y in fig.accent: mutable[y][x] = '*'
+        rows = [''.join(row) for row in mutable]
     if fig.feet:
         step = fig.feet[frame % len(fig.feet)]
         rows = rows[:len(rows) - len(step)] + ["".join(r) for r in step]

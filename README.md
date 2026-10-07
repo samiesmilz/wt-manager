@@ -108,15 +108,19 @@ Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Moti
 |---|---|
 | **Wity** | The original cat, with a plume and status collar |
 | **Nipper** | A crab with snapping claws and tiny legs |
-| **Byte** | An original dark robot face with a visor, signal lights, and a small smile |
-| **Cooper** | A rooster with a red comb, golden beak, and a proud head bob |
-| **Pip** | A bright rabbit with long ears and little paws |
-| **Flurry** | A snowman with a top hat, carrot nose, and status scarf |
+| **Byte** | An original dark robot face with a visor, scanning signal lights, and a small smile |
+| **Cooper** | A rooster with a red comb, golden beak, and a double peck |
+| **Pip** | A bright rabbit with flopping ears and little paws |
+| **Flurry** | A snowman with a tipping top hat, waving twig hand, carrot nose, and status scarf |
 | **Coco** | A palm tree with swaying fronds and coconuts |
+
+Each companion has its own idle gesture: Byte scans its signal lights, Cooper pecks twice, Pip flops its ears, Flurry tips its hat and waves, and Coco changes its frond shapes in the breeze. Their bodies remain planted. Reduce Motion freezes the gestures.
+
+![Individual idle gestures: signal lights, pecks, ear flops, a hat tip and wave, and palm fronds](docs/images/motions.gif)
 
 Pick a character and coat in **Appearance**. You can also use your own picture, reduced to the same pixel grid and stored locally.
 
-**Tap the large mascot for its menu: change coat, check for updates, or quit.** The floating desktop mascot is shown by default. Drag it anywhere; its position survives restarting the app. Click or right-click it for the same menu-bar actions, including Open window and Quit. Hide/show it using **Appearance → Show floating mascot** or the menu-bar mascot. **Reset mascot position** brings it back if needed. It stays available when you close the main window, and follows your Mac's Spaces. Saved positions are recovered onto a connected display when the display layout changes.
+**Tap the large mascot for its menu: change coat, check for updates, or quit.** The compact floating desktop mascot is shown by default. Drag it anywhere; its position survives restarting the app. Click or right-click it for the same menu-bar actions, including Open window and Quit. Hide/show it using **Appearance → Show floating mascot** or the menu-bar mascot. **Reset mascot position** brings it back if needed. It stays available when you close the main window, and follows your Mac's Spaces. Saved positions are recovered onto a connected display when the display layout changes.
 
 The menu-bar mascot also offers Open window, Refresh, Watched folders, updates, and Quit. Quit is unavailable while a destructive operation is running. Closing the window leaves the menu-bar companion running; quitting stops the app until you open it again or the next configured login launch.
 

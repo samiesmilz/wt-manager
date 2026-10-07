@@ -436,7 +436,7 @@ func start() {
 /// The envelope is the engine's own `agent` output, so what is rendered is what
 /// the engine would have said - a fixture is one saved run of it.
 @MainActor
-func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, feedbackOnly: Bool = false) {
+func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, feedbackOnly: Bool = false, motionOnly: Bool = false) {
     _ = NSApplication.shared
     let store = Store(mascot: AppDelegate.loadMascotForSnapshot())
     store.history = CleanupHistory()
@@ -489,6 +489,12 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
     let lim = AppDelegate.limits(for: NSScreen.main, contentNeeds: 620)
     let sizes = [("", lim.ideal), ("-min", lim.min)]
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
+        if motionOnly {
+            draw(MotionSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                 size: CGSize(width: 730, height: 570), appearance: appearance,
+                 to: "\(name)-motion.png")
+            continue
+        }
         if castOnly {
             draw(CastSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
                  size: CGSize(width: CGFloat((store.mascot?.figures.count ?? 7) * 128 + 36), height: 180), appearance: appearance,
@@ -614,6 +620,10 @@ MainActor.assumeIsolated {
         snapshot(into: args[i + 1], envelopePath: nil, feedbackOnly: true)
         exit(0)
     }
+    if let i = args.firstIndex(of: "--snapshot-motion"), i + 1 < args.count {
+        snapshot(into: args[i + 1], envelopePath: nil, motionOnly: true)
+        return
+    }
     if let i = args.firstIndex(of: "--snapshot-cast"), i + 1 < args.count {
         snapshot(into: args[i + 1], envelopePath: nil, castOnly: true)
         exit(0)
@@ -693,5 +703,31 @@ private struct CastSheet: View {
             }
         }
         .padding(18)
+    }
+}
+
+
+/// All gesture frames side by side, so shape changes can be reviewed as art.
+private struct MotionSheet: View {
+    @ObservedObject var store: Store
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Individual idle gestures · 8 frames").font(.system(size: 14, weight: .semibold))
+            ForEach((store.mascot?.figures ?? []).filter { !["cat", "crab"].contains($0.id) }) { figure in
+                HStack(spacing: 14) {
+                    Text(figure.name).font(.system(size: 12, weight: .medium)).frame(width: 64, alignment: .leading)
+                    ForEach(0..<8, id: \.self) { frame in
+                        VStack(spacing: 5) {
+                            if let image = store.mascot?.image(figure: figure.id, gauge: 0, eyes: "open", frame: frame,
+                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "snow", "snowman": "frost", "palm": "tropical"][figure.id] ?? "acorn",
+                                tint: "#3fb27f", fitting: 69) {
+                                Image(nsImage: image).interpolation(.none)
+                            }
+                            Text("\(frame + 1)").font(.system(size: 9)).foregroundStyle(.secondary)
+                        }.frame(width: 66)
+                    }
+                }
+            }
+        }.padding(18)
     }
 }

@@ -580,8 +580,9 @@ class Character(unittest.TestCase):
             self.assertTrue(fig.tell, "%s declares no tell" % fig.id)
             for eyes in M.EYES:
                 for level in range(len(M.POUCH)):
-                    art = "".join(M.sprite(level, eyes, 0, fig))
-                    self.assertIn("*", art, "%s/%s/%d" % (fig.id, eyes, level))
+                    for frame in range(M.FRAMES):
+                        art = "".join(M.sprite(level, eyes, frame, fig))
+                        self.assertIn("*", art, "%s/%s/%d/frame%d" % (fig.id, eyes, level, frame))
 
     def test_no_two_figures_draw_the_same(self):
         # Four characters that render identically are one character and three

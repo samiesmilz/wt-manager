@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- Give Byte scanning signal lights, Cooper a double peck, Pip folding ears, Flurry a hat-tip and twig wave, and Coco independently reshaped fronds.
+- Keep the new figures planted instead of sharing a generic bob/sideways shift.
+- Reduce the floating companion from an 88×92pt drawing to 66×69pt.
+
 ## 0.4.0
 
 - Add Flurry the snowman and Coco the palm tree, with animated pixel silhouettes and matching coats.

@@ -11,7 +11,7 @@ final class FloatingMascot {
     private var screenObserver: NSObjectProtocol?
     private var drawn: String?
     private let positionKey = "wtmanager.floatingPosition.v1"
-    private let size = NSSize(width: 104, height: 108)
+    private let size = NSSize(width: 84, height: 84)
 
     init(store: Store, menu: @escaping () -> NSMenu) {
         self.store = store
@@ -48,7 +48,7 @@ final class FloatingMascot {
         let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(pulse.wag)/\(pulse.blinking)"
         if key != drawn {
             drawn = key
-            view.image = store.image(height: 92, frame: pulse.wag, blinking: pulse.blinking)
+            view.image = store.image(height: 69, frame: pulse.wag, blinking: pulse.blinking)
             view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · drag to move; click for menu"
             view.needsDisplay = true
         }
