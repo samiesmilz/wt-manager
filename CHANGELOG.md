@@ -2,8 +2,9 @@
 
 ## Unreleased
 
+- Keep alternating steps steady without the extra hold; remove the long wandering subtext from Appearance.
 - Allow mascot wandering with the main window open or closed; remove the close-window instruction.
-- Advance the floating mascot and its walking pose together on each foot push, with a planted hold between steps; remove the independent window animation that made it slide.
+- Advance the floating mascot and its walking pose together on each foot push; remove the independent window animation that made it slide.
 - Hide the floating status arrow during walking and restore it at rest.
 - Decode the companion's `walking_sprites` JSON field correctly; the native app was silently drawing idle frames during movement.
 - Give all moving companions dedicated side profiles, mirrored for leftward travel; keep the front portraits for resting and Coco rooted.

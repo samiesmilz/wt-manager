@@ -251,7 +251,7 @@ final class FloatingMascot {
     }
 
     /// One low-frequency clock owns both the pixel pose and window position.
-    /// Between planted pushes, neither moves. No background travel animation
+    /// Each alternating pose advances the body. No background travel animation
     /// can carry the body forward while its feet are waiting.
     private func scheduleGaitFrame() {
         let work = DispatchWorkItem { [weak self] in

@@ -70,11 +70,10 @@ public struct MascotWander {
         }
     }
 
-    /// A four-pose step takes one second: three 4-point pushes, then a
-    /// planted hold. Position and pose share this clock, so neither can slide
-    /// independently. At the integral 2x pixel scale, a 2-pixel foot push
-    /// cancels the body's 4-point advance.
-    public static let poseInterval: TimeInterval = 0.25
+    /// Alternate the eight poses steadily, advancing four points with each
+    /// pose change. No extra planted hold interrupts the walking cadence.
+    /// Position and pose share one clock at a gentle 12 points/second.
+    public static let poseInterval: TimeInterval = 1.0 / 3.0
 
     public struct StepSample {
         public let frame: Int
@@ -84,9 +83,8 @@ public struct MascotWander {
 
     public static func stepSample(distance: Double, elapsed: TimeInterval) -> StepSample {
         let distance = max(0, distance)
-        let ticks = Int(max(0, elapsed) / poseInterval)
-        let pushes = (ticks / 4) * 3 + min(ticks % 4, 3)
-        let travelled = min(distance, Double(pushes) * 4)
+        let ticks = Int(floor(max(0, elapsed) / poseInterval + 1e-9))
+        let travelled = min(distance, Double(ticks) * 4)
         return StepSample(frame: ticks % 8, travelled: travelled, finished: travelled >= distance)
     }
 
@@ -95,8 +93,7 @@ public struct MascotWander {
     public static func travelTime(from start: CGPoint, to end: CGPoint) -> TimeInterval {
         let pushes = Int(ceil(hypot(end.x - start.x, end.y - start.y) / 4))
         guard pushes > 0 else { return 0 }
-        let lastTick = ((pushes - 1) / 3) * 4 + (pushes - 1) % 3 + 1
-        return Double(lastTick) * poseInterval
+        return Double(pushes) * poseInterval
     }
 
     public static func facesLeft(from start: CGPoint, to end: CGPoint) -> Bool {

@@ -59,12 +59,12 @@ final class MascotWanderTests: XCTestCase {
         XCTAssertFalse(MascotWander.facesLeft(from: CGPoint(x: 40, y: 0), to: CGPoint(x: 100, y: 0)))
     }
 
-    func testPositionAdvancesOnlyWithPushAndHoldsBetweenSteps() {
-        let samples = (0...8).map { MascotWander.stepSample(distance: 100, elapsed: Double($0) * 0.25) }
+    func testEveryAlternatingPoseAdvancesWithoutExtraHold() {
+        let samples = (0...8).map { MascotWander.stepSample(distance: 100, elapsed: Double($0) * MascotWander.poseInterval) }
         XCTAssertEqual(samples.map(\.frame), [0, 1, 2, 3, 4, 5, 6, 7, 0])
-        XCTAssertEqual(samples.map(\.travelled), [0, 4, 8, 12, 12, 16, 20, 24, 24])
+        XCTAssertEqual(samples.map(\.travelled), [0, 4, 8, 12, 16, 20, 24, 28, 32])
         for tick in 0..<8 {
-            let between = MascotWander.stepSample(distance: 100, elapsed: Double(tick) * 0.25 + 0.24)
+            let between = MascotWander.stepSample(distance: 100, elapsed: Double(tick) * MascotWander.poseInterval + 0.32)
             XCTAssertEqual(between.frame, samples[tick].frame)
             XCTAssertEqual(between.travelled, samples[tick].travelled)
         }
