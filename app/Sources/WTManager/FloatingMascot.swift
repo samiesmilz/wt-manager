@@ -11,6 +11,7 @@ final class FloatingMascot {
     private let view: FloatingMascotView
     private var screenObserver: NSObjectProtocol?
     private var drawn: String?
+    private var renderedWalking = false
     private var speech: NSPanel?
     private var spoken: String?
     private var wanderPlanner = MascotWander()
@@ -87,8 +88,12 @@ final class FloatingMascot {
         let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(frame)/\(pulse.blinking)/\(walking)/\(facesLeft)"
         if key != drawn {
             drawn = key
-            view.image = store.image(height: 69, frame: frame, blinking: pulse.blinking,
-                                     detailed: true, showSignal: !walking, walking: walking, facesLeft: facesLeft)
+            let transition = renderedWalking != walking && !userInteracting
+                && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            view.setImage(store.image(height: 69, frame: frame, blinking: pulse.blinking,
+                detailed: true, showSignal: !walking, walking: walking, facesLeft: facesLeft),
+                transitioning: transition)
+            renderedWalking = walking
             let roamTip = store.mascotWanders ? " · occasional strolls; click or drag to interrupt" : ""
             view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · click to open wt-manager; drag to move\(roamTip); right-click for more actions"
             view.needsDisplay = true
@@ -238,6 +243,7 @@ final class FloatingMascot {
     private func finishLeg() {
         if traceMovement { NSLog("wt-manager wander: arrived at %@", NSStringFromPoint(panel.frame.origin)) }
         walking = false
+        facesLeft = false
         gaitWork = nil
         drawn = nil
         if legGoingHome { legsLeft = 0; returningHome = false }
@@ -276,7 +282,7 @@ final class FloatingMascot {
                 self.walkFrame = (self.walkFrame + 1) % 8
             } else {
                 let sample = MascotWander.stepSample(distance: self.legDistance,
-                    elapsed: ProcessInfo.processInfo.systemUptime - self.legStartedAt)
+                    elapsed: ProcessInfo.processInfo.systemUptime - self.legStartedAt, figure: self.store.figure)
                 self.walkFrame = sample.frame
                 let fraction = self.legDistance > 0 ? sample.travelled / self.legDistance : 1
                 self.panel.setFrameOrigin(NSPoint(
@@ -289,7 +295,7 @@ final class FloatingMascot {
         }
         gaitWork = work
         let now = ProcessInfo.processInfo.systemUptime
-        let interval = MascotWander.poseInterval
+        let interval = MascotWander.poseInterval(figure: store.figure)
         let delay = rootedStartedAt != nil ? 0.06
             : max(0.001, interval - (now - legStartedAt).truncatingRemainder(dividingBy: interval))
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -306,6 +312,7 @@ final class FloatingMascot {
         rootedStartedAt = nil
         movingFigure = nil
         view.rotation = 0
+        view.cancelTransition()
         view.needsDisplay = true
         returningHome = false
         legsLeft = 0
@@ -321,7 +328,38 @@ final class FloatingMascot {
 
 @MainActor
 private final class FloatingMascotView: NSView {
-    var image: NSImage?
+    private var image: NSImage?
+    private var previousImage: NSImage?
+    private var transitionProgress: CGFloat = 1
+    private var transitionWork: DispatchWorkItem?
+
+    func setImage(_ next: NSImage?, transitioning: Bool) {
+        if transitioning, let image {
+            transitionWork?.cancel()
+            previousImage = image
+            transitionProgress = 0
+            advanceTransition()
+        }
+        image = next
+        needsDisplay = true
+    }
+
+    func cancelTransition() {
+        transitionWork?.cancel(); transitionWork = nil
+        previousImage = nil; transitionProgress = 1
+    }
+
+    private func advanceTransition() {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.transitionProgress = min(1, self.transitionProgress + 0.25)
+            self.needsDisplay = true
+            if self.transitionProgress < 1 { self.advanceTransition() }
+            else { self.cancelTransition() }
+        }
+        transitionWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04, execute: work)
+    }
     var rotation: Double = 0
     var makeMenu: (() -> NSMenu)?
     var openWindow: (() -> Void)?
@@ -338,7 +376,7 @@ private final class FloatingMascotView: NSView {
         guard let image else { return }
         NSGraphicsContext.current?.imageInterpolation = .none
         let rect = NSRect(x: floor((bounds.width - image.size.width) / 2),
-                          y: floor((bounds.height - image.size.height) / 2),
+                          y: 10,
                           width: image.size.width, height: image.size.height)
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
@@ -360,7 +398,13 @@ private final class FloatingMascotView: NSView {
             transform.translateX(by: -pivot.x, yBy: -pivot.y)
             transform.concat()
         }
-        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+        if let previousImage {
+            let oldRect = NSRect(x: floor((bounds.width-previousImage.size.width)/2), y: 10,
+                                 width: previousImage.size.width, height: previousImage.size.height)
+            previousImage.draw(in: oldRect, from: .zero, operation: .sourceOver,
+                               fraction: 1-transitionProgress)
+        }
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: transitionProgress)
     }
 
     override func mouseDown(with event: NSEvent) {

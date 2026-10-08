@@ -173,7 +173,13 @@ final class MascotTests: XCTestCase {
             }
             let right = try render(walking: true)
             let left = try render(walking: true, left: true)
-            XCTAssertEqual(right.size, NSSize(width: 64, height: 64), figure)
+            let latterHalf = try XCTUnwrap(m.image(figure: figure, gauge: 0, eyes: "open", frame: 10,
+                skin: "acorn", tint: "#3fb27f", fitting: 69, detailed: true,
+                showSignal: false, walking: true))
+            XCTAssertNotEqual(right.tiffRepresentation, latterHalf.tiffRepresentation, figure)
+            let original = figure == "cat" || figure == "crab"
+            XCTAssertEqual(right.size, original ? NSSize(width: 66, height: 69) : NSSize(width: 64, height: 64), figure)
+            XCTAssertEqual(right.size, try render(walking: false).size, figure)
             XCTAssertNotEqual(right.tiffRepresentation, try render(walking: false).tiffRepresentation, figure)
             let a = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(right.tiffRepresentation)))
             let b = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(left.tiffRepresentation)))
@@ -181,8 +187,9 @@ final class MascotTests: XCTestCase {
             XCTAssertEqual(a.pixelsHigh, b.pixelsHigh)
             // Sample every art pixel. A direction change must mirror the pose,
             // including the forward eye/muzzle and the near/far walking limbs.
-            let sx = a.pixelsWide / 32, sy = a.pixelsHigh / 32
-            for y in 0..<32 { for x in 0..<32 {
+            let width = original ? 22 : 32, height = original ? 23 : 32
+            let sx = a.pixelsWide / width, sy = a.pixelsHigh / height
+            for y in 0..<height { for x in 0..<width {
                 let r = try XCTUnwrap(a.colorAt(x: x*sx, y: y*sy)?.usingColorSpace(.deviceRGB))
                 let l = try XCTUnwrap(b.colorAt(x: b.pixelsWide-1-x*sx, y: y*sy)?.usingColorSpace(.deviceRGB))
                 for pair in [(r.redComponent,l.redComponent), (r.greenComponent,l.greenComponent),

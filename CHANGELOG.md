@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Expand walking to 16 poses with lifted recovery arcs and forward foot placement; align leg attachments so the recovering foot passes the planted foot.
+- Match Wity and Nipper’s walking art to their original portrait grids and anchor all floating drawings to a shared foot baseline.
+- Use smaller, more frequent advances at the same slow average pace, with hop-specific rabbit travel and snowman waddling.
+- Blend walking/resting changes briefly; cancel that transition on interaction or Reduce Motion.
+- Check planted-foot stability, airborne forward crossing, native 16-frame decoding, matching portrait dimensions, and character travel pace.
+
 - Keep alternating steps steady without the extra hold; remove the long wandering subtext from Appearance.
 - Allow mascot wandering with the main window open or closed; remove the close-window instruction.
 - Advance the floating mascot and its walking pose together on each foot push; remove the independent window animation that made it slide.

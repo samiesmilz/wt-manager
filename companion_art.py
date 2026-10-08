@@ -5,13 +5,17 @@ These are original pixel drawings inspired by the supplied character references.
 """
 from math import sin, pi
 
+WALK_FRAMES = 16
+
 SIZE = 32
 FIGURES = ('robot', 'rooster', 'rabbit', 'snowman', 'palm', 'orb', 'antenna')
 
 class Canvas:
-    def __init__(self): self.p = [['.'] * SIZE for _ in range(SIZE)]
+    def __init__(self, size=SIZE, height=None):
+        self.width=size; self.height=height or size
+        self.p = [['.'] * self.width for _ in range(self.height)]
     def put(self, x, y, c):
-        if 0 <= x < SIZE and 0 <= y < SIZE: self.p[y][x] = c
+        if 0 <= x < self.width and 0 <= y < self.height: self.p[y][x] = c
     def rect(self, x0, y0, x1, y1, c):
         for y in range(y0,y1+1):
             for x in range(x0,x1+1): self.put(x,y,c)
@@ -166,22 +170,63 @@ def sprite(figure,eyes,frame):
 WALKING_FIGURES = FIGURES + ('cat', 'crab')
 
 
-def _side_leg(c, hip, top, phase, fill='f', bird=False):
-    """One planted push followed by a lifted return, drawn facing right."""
-    stride=(3,1,-1,-3,-3,-1,1,3)
-    lift=(0,0,0,0,1,3,3,1)
-    toe=hip+stride[phase]; floor=31-lift[phase]
-    knee=hip+stride[phase]//2; knee_y=min(top+2,floor-1)
+# Eight planted poses followed by an airborne recovery. The swing overshoots
+# the next contact slightly, visibly passing ahead of the weight-bearing foot.
+STRIDE = (4,3,2,1,0,-1,-2,-3,-4,-3,-1,1,3,5,6,5)
+LIFT = (0,0,0,0,0,0,0,0,1,2,3,4,4,3,2,1)
+
+def foot_pose(hip, phase, floor=31):
+    phase %= WALK_FRAMES
+    return hip+STRIDE[phase], floor-LIFT[phase]
+
+def _side_leg(c, hip, top, phase, fill='f', bird=False, floor=31, slim=False):
+    toe,ground=foot_pose(hip,phase,floor)
+    knee=hip+STRIDE[phase % WALK_FRAMES]//2
+    knee_y=min(top+2,ground-1)
     if bird:
-        c.line(hip,top,knee,knee_y,'a');c.line(knee,knee_y,toe,floor,'a')
-        c.line(toe-2,floor,toe+2,floor,'a')
+        c.line(hip,top,knee,knee_y,'a');c.line(knee,knee_y,toe,ground,'a')
+        c.line(toe-1,ground,toe+1,ground,'a')
     else:
-        for dx in (-1,0,1):
+        for dx in ((0,) if slim else (-1,0,1)):
             c.line(hip+dx,top,knee+dx,knee_y,'#')
-            c.line(knee+dx,knee_y,toe+dx,floor-1,'#')
-        c.line(hip,top,knee,knee_y,fill);c.line(knee,knee_y,toe,floor-1,fill)
-        c.rect(toe-2,floor-1,toe+2,floor,'#')
-        c.line(toe-1,floor-1,toe+1,floor-1,fill)
+            c.line(knee+dx,knee_y,toe+dx,ground-1,'#')
+        c.line(hip,top,knee,knee_y,fill);c.line(knee,knee_y,toe,ground-1,fill)
+        c.rect(toe-1,ground-1,toe+1,ground,'#')
+        c.put(toe,ground-1,fill)
+
+def _original_profile(figure,eyes,phase):
+    # The original characters keep their original 22x23 pixel grid. No size
+    # or outline-weight jump when the front portrait becomes a profile.
+    c=Canvas(22,23);g=phase%WALK_FRAMES
+    if figure=='cat':
+        _side_leg(c,7,18,g,'s',floor=22,slim=True)
+        _side_leg(c,13,18,(g+8)%16,'s',floor=22,slim=True)
+        c.poly([(7,19),(2,16),(0,9),(1,3),(4,0),(6,2),(5,7),(3,10),(4,14),(8,17)],'#')
+        c.poly([(6,17),(3,14),(2,8),(3,3),(4,2),(4,6),(2,10),(4,15)],'s')
+        c.line(2,5,2,8,'w')
+        c.ellipse(5,13,17,20,'#');c.ellipse(6,14,16,19,'f')
+        c.ellipse(8,15,15,19,'b')
+        c.poly([(8,10),(7,4),(11,5),(13,10)],'#')
+        c.poly([(9,8),(9,6),(11,7)],'s')
+        c.ellipse(7,6,19,17,'#');c.ellipse(8,7,18,16,'f')
+        c.poly([(14,8),(15,3),(19,5),(20,10)],'#')
+        c.poly([(16,7),(16,5),(18,6)],'p')
+        c.ellipse(16,12,21,16,'#');c.ellipse(17,13,20,15,'b');c.put(21,13,'p')
+        c.eye(16,9,eyes);c.put(18,16,'#')
+        _side_leg(c,8,18,(g+8)%16,floor=22,slim=True)
+        _side_leg(c,14,18,g,floor=22,slim=True)
+    else:
+        for i,hip in enumerate((7,11,15)):
+            _side_leg(c,hip,18,(g+8+i*4)%16,'s',floor=22,slim=True)
+        c.line(7,15,4,11,'#');c.ellipse(0,7,6,13,'#');c.ellipse(1,8,5,12,'s')
+        c.poly([(0,8),(3,10),(0,11)],'.')
+        c.ellipse(4,13,17,19,'#');c.ellipse(5,14,16,18,'f');c.line(7,15,13,15,'w')
+        c.line(16,14,17,6,'#');c.ellipse(14,3,20,9,'#');c.ellipse(15,4,19,8,'f')
+        c.eye(17,5,eyes)
+        c.line(15,15,19,12,'#');c.ellipse(17,9,21,14,'#');c.ellipse(18,10,20,13,'f')
+        for i,hip in enumerate((7,11,15)):
+            _side_leg(c,hip,18,(g+i*4)%16,floor=22,slim=True)
+    return c.rows()
 
 
 def walking_sprite(figure,eyes,frame):
@@ -191,31 +236,15 @@ def walking_sprite(figure,eyes,frame):
     Idle/menu art stays unchanged. Far limbs precede the body; near limbs follow
     it. Feet stop before the lower-right badge so the signal cannot hide a step.
     """
-    c=Canvas();p=frame%8;bob=(0,0,-1,0,0,0,-1,0)[p]
+    if figure in ('cat','crab'): return _original_profile(figure,eyes,frame)
+    c=Canvas();g=frame%WALK_FRAMES;p=g//2;bob=(0,0,-1,0,0,0,-1,0)[p]
     swing=(2,1,0,-1,-2,-1,0,1)[p]
     if figure=='palm':
         # A rooted tree only sways/topples in place, never acquires a walk.
-        return sprite(figure,eyes,p)
-    if figure=='cat':
-        # Wity's plume remains behind a rounded body, with a little profile
-        # muzzle and one bright eye. Far paws are darker and partly occluded.
-        c.poly([(7,26),(2,23),(0,14),(1,7),(4,4),(7,6),(6,13),(5,19),(9,22)],'#')
-        c.poly([(6,24),(3,21),(2,13),(3,7),(4,6),(5,7),(4,15),(5,20),(8,23)],'s')
-        c.line(3,9,3,15,'b');c.put(4,7,'w')
-        _side_leg(c,11,26,(p+4)%8,'s');_side_leg(c,20,26,(p+4)%8,'s')
-        c.ellipse(6,18+bob,25,28+bob,'#');c.ellipse(7,19+bob,24,27+bob,'f')
-        c.ellipse(11,22+bob,21,27+bob,'b')
-        c.poly([(15,12+bob),(14,4+bob),(19,6+bob),(21,12+bob)],'#')
-        c.poly([(16,10+bob),(16,6+bob),(19,8+bob)],'s')
-        c.ellipse(14,8+bob,29,23+bob,'#');c.ellipse(15,9+bob,28,22+bob,'f')
-        c.poly([(22,11+bob),(22,3+bob),(27,6+bob),(27,13+bob)],'#')
-        c.poly([(23,10+bob),(23,5+bob),(25,7+bob),(25,11+bob)],'p')
-        c.ellipse(25,17+bob,30,21+bob,'#');c.ellipse(25,18+bob,29,20+bob,'b')
-        c.eye(24,12+bob,eyes);c.put(30,18+bob,'p');c.line(28,21+bob,29,21+bob,'#')
-        _side_leg(c,10,27,p);_side_leg(c,21,27,p)
-    elif figure=='rooster':
+        return sprite(figure,eyes,g)
+    if figure=='rooster':
         # Tail behind, beak ahead: Cooper's slim neck and long orange legs.
-        _side_leg(c,12,25,(p+4)%8,bird=True)
+        _side_leg(c,19,25,(g+8)%16,bird=True)
         c.poly([(9,22),(2,18),(1,8),(4,9),(7,18)],'#')
         c.poly([(9,23),(3,23),(0,15),(3,15),(7,20)],'#')
         c.line(3,11,5,18,'b');c.line(3,17,6,21,'f')
@@ -228,11 +257,11 @@ def walking_sprite(figure,eyes,frame):
         c.ellipse(25,13+bob,27,17+bob,'r')
         c.poly([(28,9+bob),(31,11+bob),(28,12+bob)],'#');c.line(28,11+bob,30,11+bob,'a')
         c.eye(24,7+bob,eyes)
-        _side_leg(c,20,25,p,bird=True)
+        _side_leg(c,20,25,g,bird=True)
     elif figure=='rabbit':
         # Haunch drives a hop; tucked front paws and a small tail sit behind
         # a projecting muzzle. Ear movement follows the hop, not a head-on bob.
-        hop=(0,0,1,3,3,2,1,0)[p];fold=(0,0,1,2,2,1,0,0)[p]
+        hop=(0,0,1,2,3,4,5,5,5,4,3,2,1,0,0,0)[g];fold=(0,0,1,2,2,1,0,0)[p]
         c.ellipse(4,22,11,28,'#');c.ellipse(5,23,10,27,'b')
         c.ellipse(7,18,25,29,'#');c.ellipse(8,19,24,28,'f')
         c.ellipse(8,23,18,30,'#');c.ellipse(9,24,17,29,'s')
@@ -254,7 +283,7 @@ def walking_sprite(figure,eyes,frame):
                 for x,ch in enumerate(row):
                     if ch!='.': c.put(x,y-hop,ch)
     elif figure=='robot':
-        _side_leg(c,15,25,(p+4)%8,'s')
+        _side_leg(c,20,25,(g+8)%16,'s')
         c.rect(13,19+bob,23,25+bob,'#');c.rect(14,20+bob,22,24+bob,'s')
         c.rect(18,20+bob,22,23+bob,'f')
         c.line(16,3+bob,16,6+bob,'#');c.ellipse(14,1+bob,18,4+bob,'#');c.put(16,2+bob,'l')
@@ -266,9 +295,9 @@ def walking_sprite(figure,eyes,frame):
         c.rect(19,17+bob,24,17+bob,'h');c.put(20+(p%4),17+bob,'l')
         c.poly([(15,19+bob),(18,20+bob),(18+swing,25+bob),(15+swing,25+bob)],'#')
         c.line(16,20+bob,16+swing,24+bob,'f')
-        _side_leg(c,21,25,p)
+        _side_leg(c,21,25,g)
     elif figure=='antenna':
-        _side_leg(c,14,27,(p+4)%8,'s')
+        _side_leg(c,19,27,(g+8)%16,'s')
         c.line(12,8+bob,9,3+bob,'#');c.line(9,3+bob,6,2+bob,'r')
         c.line(22,8+bob,25,3+bob,'#');c.line(25,3+bob,28,2+bob,'r')
         c.ellipse(7,6+bob,27,27+bob,'#');c.ellipse(8,7+bob,26,26+bob,'s')
@@ -282,7 +311,7 @@ def walking_sprite(figure,eyes,frame):
             if eyes!='wide': c.put(25 if eyes=='glance' else 24,12+bob,'w')
         c.ellipse(13+swing,18+bob,19+swing,24+bob,'#')
         c.ellipse(14+swing,19+bob,18+swing,23+bob,'f')
-        _side_leg(c,20,27,p)
+        _side_leg(c,20,27,g)
     elif figure=='snowman':
         roll=(0,0,1,1,0,0,-1,-1)[p];wave=(0,0,-1,-2,-2,-1,0,0)[p]
         c.ellipse(8,19,25,31,'#');c.ellipse(9,20,24,30,'s');c.ellipse(12,20,24,28,'f')
@@ -297,7 +326,7 @@ def walking_sprite(figure,eyes,frame):
         c.rect(15+roll,7,23+roll,8,'r');c.rect(11+roll,9,27+roll,10,'#')
         c.line(12+roll,9,26+roll,9,'h');c.put(16,24,'#');c.put(16,28,'#')
     elif figure=='orb':
-        roll=(0,1,2,3,2,1,0,-1)[p]
+        roll=(0,1,2,3,4,4,3,2,1,0,-1,-2,-3,-3,-2,-1)[g]
         c.ellipse(4,3,28,31,'#');c.ellipse(5,4,27,30,'s')
         c.ellipse(8,4,27,28,'f');c.ellipse(10,5,25,24,'b')
         c.ellipse(9+roll,6,16+roll,11,'w')
@@ -307,21 +336,6 @@ def walking_sprite(figure,eyes,frame):
             c.ellipse(22,11,24,16,'#');c.ellipse(23,14,25,18,'#')
             if eyes!='wide': c.put(24 if eyes=='glance' else 23,12,'w')
         c.put(26,21,'#')
-    elif figure=='crab':
-        # Nipper's shell, overlapping scuttle legs and forward claw are seen
-        # from the side; its stalk eye looks along the route.
-        for i,hip in enumerate((10,15,20)): _side_leg(c,hip,27,(p+4+i*2)%8,'s')
-        c.line(9,19,6,15,'#');c.ellipse(3,11,10,18,'#');c.ellipse(4,12,9,17,'s')
-        c.poly([(2,13),(6,14),(2,16)],'.');c.line(9,19,7,17,'s')
-        c.ellipse(5,16,24,27,'#');c.ellipse(6,17,23,26,'f')
-        c.ellipse(7,18,20,23,'b');c.line(8,19,18,19,'w')
-        c.line(22,17,23,10,'#');c.line(22,16,23,12,'f')
-        c.ellipse(20,6,26,13,'#');c.ellipse(21,7,25,12,'f')
-        c.eye(23,8,eyes)
-        lift=(0,0,1,2,1,0,-1,0)[p]
-        c.line(22,21,27,17-lift,'#');c.ellipse(24,10-lift,31,18-lift,'#')
-        c.ellipse(25,11-lift,30,17-lift,'f');c.rect(28,10-lift,31,12-lift,'.')
-        for i,hip in enumerate((10,15,20)): _side_leg(c,hip,27,(p+i*2)%8)
     else: raise ValueError(figure)
     return c.rows()
 
@@ -340,5 +354,6 @@ def export(skins, slots, eyes, frames):
             if figure == 'rooster': palettes[f'{figure}/{name}']['r'] = '#b9719c'
     return {'width':SIZE,'height':SIZE,
             'sprites':{f'{fig}/{eye}/{f}':sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},
-            'walking_sprites':{f'{fig}/{eye}/{f}':walking_sprite(fig,eye,f) for fig in WALKING_FIGURES for eye in eyes for f in range(frames)},
+            'walking_frames':WALK_FRAMES,
+            'walking_sprites':{f'{fig}/{eye}/{f}':walking_sprite(fig,eye,f) for fig in WALKING_FIGURES for eye in eyes for f in range(WALK_FRAMES)},
             'palettes':palettes}

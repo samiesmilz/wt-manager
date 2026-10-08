@@ -40,8 +40,7 @@ public struct MascotWander {
         return origin == current.origin ? nil : origin.roundedToPixel
     }
 
-    /// Make enabling the feature feel responsive after the user closes the
-    /// settings window. Longer rests still keep the overall motion occasional.
+    /// Make enabling the feature feel responsive after enabling it. Longer rests still keep the overall motion occasional.
     public mutating func firstPause() -> TimeInterval { random(1.5...3.5) }
     public mutating func pauseAtWaypoint() -> TimeInterval { random(2.8...6.5) }
     public mutating func restAfterTrip() -> TimeInterval { random(34...68) }
@@ -70,10 +69,23 @@ public struct MascotWander {
         }
     }
 
-    /// Alternate the eight poses steadily, advancing four points with each
-    /// pose change. No extra planted hold interrupts the walking cadence.
-    /// Position and pose share one clock at a gentle 12 points/second.
-    public static let poseInterval: TimeInterval = 1.0 / 3.0
+    /// Detailed characters advance one art pixel (2 points) at 6 Hz. The
+    /// original 22x23 characters keep their 3-point pixels and advance at 4 Hz.
+    /// Both stay at 12 points/second; no independent body animation can slide.
+    public static let poseInterval: TimeInterval = 1.0 / 6.0
+
+    public static func poseInterval(figure: String) -> TimeInterval {
+        (figure == "cat" || figure == "crab") ? 0.25 : poseInterval
+    }
+
+    private static func increments(figure: String) -> [Double] {
+        switch figure {
+        case "cat", "crab": return Array(repeating: 3, count: 16)
+        case "rabbit": return [1,1,2,2,3,3,3,3,3,3,2,2,1,1,1,1]
+        case "snowman": return [1,2,3,2,1,2,3,2,1,2,3,2,1,2,3,2]
+        default: return Array(repeating: 2, count: 16)
+        }
+    }
 
     public struct StepSample {
         public let frame: Int
@@ -81,19 +93,29 @@ public struct MascotWander {
         public let finished: Bool
     }
 
-    public static func stepSample(distance: Double, elapsed: TimeInterval) -> StepSample {
-        let distance = max(0, distance)
-        let ticks = Int(floor(max(0, elapsed) / poseInterval + 1e-9))
-        let travelled = min(distance, Double(ticks) * 4)
-        return StepSample(frame: ticks % 8, travelled: travelled, finished: travelled >= distance)
+    public static func stepSample(distance: Double, elapsed: TimeInterval,
+                                  figure: String = "robot") -> StepSample {
+        let ticks = Int(floor(max(0, elapsed) / poseInterval(figure: figure) + 1e-9))
+        let advances = increments(figure: figure)
+        let travelled = Double(ticks / 16) * advances.reduce(0, +)
+            + advances.prefix(ticks % 16).reduce(0, +)
+        let clipped = min(max(0, distance), travelled)
+        return StepSample(frame: ticks % 16, travelled: clipped, finished: clipped >= max(0, distance))
     }
 
-    /// The final push is clipped to the remaining distance, never beyond the
-    /// destination. Long trips keep the same roughly 12-point/second pace.
-    public static func travelTime(from start: CGPoint, to end: CGPoint) -> TimeInterval {
-        let pushes = Int(ceil(hypot(end.x - start.x, end.y - start.y) / 4))
-        guard pushes > 0 else { return 0 }
-        return Double(pushes) * poseInterval
+    public static func travelTime(from start: CGPoint, to end: CGPoint,
+                                  figure: String = "robot") -> TimeInterval {
+        let distance = hypot(end.x-start.x, end.y-start.y)
+        guard distance > 0 else { return 0 }
+        let advances = increments(figure: figure)
+        let cycle = advances.reduce(0, +)
+        let cycles = Int(floor(distance / cycle))
+        var covered = Double(cycles) * cycle
+        var ticks = cycles * 16
+        for advance in advances where covered < distance {
+            covered += advance; ticks += 1
+        }
+        return Double(ticks) * poseInterval(figure: figure)
     }
 
     public static func facesLeft(from start: CGPoint, to end: CGPoint) -> Bool {

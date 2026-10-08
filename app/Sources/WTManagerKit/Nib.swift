@@ -33,10 +33,12 @@ public struct Mascot: Decodable {
         public let height: Int
         public let sprites: [String: [String]]
         public let walkingSprites: [String: [String]]?
+        public let walkingFrames: Int?
         public let palettes: [String: [String: String]]
         private enum CodingKeys: String, CodingKey {
             case width, height, sprites, palettes
             case walkingSprites = "walking_sprites"
+            case walkingFrames = "walking_frames"
         }
     }
     public let companion: Companion?
@@ -100,12 +102,14 @@ extension Mascot {
         let dedicatedArt = detailed ? companion : (!showSignal ? menu : nil)
         if let art = dedicatedArt,
            let rows = (walking
-                ? art.walkingSprites?["\(figure)/\(eyes)/\(frame % max(frames, 1))"]
+                ? art.walkingSprites?["\(figure)/\(eyes)/\(frame % max(art.walkingFrames ?? frames, 1))"]
                 : nil) ?? art.sprites["\(figure)/\(eyes)/\(frame % max(frames, 1))"],
            let palette = art.palettes["\(figure)/\(skin)"] ?? art.palettes["\(figure)/\(defaultSkin)"] {
             // Detailed art fits in full. Never crop or fractionally resample it.
-            let scale = max(1, floor(height / CGFloat(art.height)))
-            let size = NSSize(width: CGFloat(art.width) * scale, height: CGFloat(art.height) * scale)
+            let rowHeight = rows.count
+            let rowWidth = rows.first?.count ?? art.width
+            let scale = max(1, floor(height / CGFloat(rowHeight)))
+            let size = NSSize(width: CGFloat(rowWidth) * scale, height: CGFloat(rowHeight) * scale)
             let image = NSImage(size: size)
             image.lockFocus()
             NSGraphicsContext.current?.imageInterpolation = .none
@@ -119,7 +123,7 @@ extension Mascot {
                 for (x, ch) in row.enumerated() where ch != "." {
                     guard let color = Ink.color(palette[String(ch)] ?? "") else { continue }
                     color.setFill()
-                    NSRect(x: CGFloat(x)*scale, y: CGFloat(art.height-1-y)*scale,
+                    NSRect(x: CGFloat(x)*scale, y: CGFloat(rowHeight-1-y)*scale,
                            width: scale, height: scale).fill()
                 }
             }

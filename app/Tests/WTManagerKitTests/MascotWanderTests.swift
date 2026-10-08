@@ -61,25 +61,41 @@ final class MascotWanderTests: XCTestCase {
 
     func testEveryAlternatingPoseAdvancesWithoutExtraHold() {
         let samples = (0...8).map { MascotWander.stepSample(distance: 100, elapsed: Double($0) * MascotWander.poseInterval) }
-        XCTAssertEqual(samples.map(\.frame), [0, 1, 2, 3, 4, 5, 6, 7, 0])
-        XCTAssertEqual(samples.map(\.travelled), [0, 4, 8, 12, 16, 20, 24, 28, 32])
+        XCTAssertEqual(samples.map(\.frame), [0, 1, 2, 3, 4, 5, 6, 7, 8])
+        XCTAssertEqual(samples.map(\.travelled), [0, 2, 4, 6, 8, 10, 12, 14, 16])
         for tick in 0..<8 {
-            let between = MascotWander.stepSample(distance: 100, elapsed: Double(tick) * MascotWander.poseInterval + 0.32)
+            let between = MascotWander.stepSample(distance: 100, elapsed: Double(tick) * MascotWander.poseInterval + MascotWander.poseInterval * 0.95)
             XCTAssertEqual(between.frame, samples[tick].frame)
             XCTAssertEqual(between.travelled, samples[tick].travelled)
         }
     }
 
     func testFinalPartialStepStopsExactlyAtDestination() {
-        for distance in [0.0, 1, 7, 12, 13, 100, 500, 10000] {
-            let duration = MascotWander.travelTime(from: .zero, to: CGPoint(x: distance, y: 0))
-            let done = MascotWander.stepSample(distance: distance, elapsed: duration)
-            XCTAssertTrue(done.finished)
-            XCTAssertEqual(done.travelled, distance)
-            if distance > 0 {
-                XCTAssertFalse(MascotWander.stepSample(distance: distance, elapsed: duration - 0.001).finished)
+        for figure in ["cat", "crab", "rabbit", "snowman", "robot"] {
+            for distance in [0.0, 1, 7, 12, 13, 100, 500, 10000] {
+                let duration = MascotWander.travelTime(from: .zero,
+                    to: CGPoint(x: distance, y: 0), figure: figure)
+                let done = MascotWander.stepSample(distance: distance, elapsed: duration, figure: figure)
+                XCTAssertTrue(done.finished)
+                XCTAssertEqual(done.travelled, distance)
+                if distance > 0 {
+                    XCTAssertFalse(MascotWander.stepSample(distance: distance,
+                        elapsed: duration - 0.001, figure: figure).finished)
+                }
             }
         }
+    }
+
+    func testEachCharacterKeepsTheGentleAveragePace() {
+        for figure in ["cat", "crab", "rabbit", "snowman", "robot", "antenna"] {
+            let cycle = 16 * MascotWander.poseInterval(figure: figure)
+            let sample = MascotWander.stepSample(distance: 1000, elapsed: cycle, figure: figure)
+            XCTAssertEqual(sample.travelled / cycle, 12, accuracy: 0.001)
+            XCTAssertEqual(sample.frame, 0)
+        }
+        let crouched = MascotWander.stepSample(distance: 100, elapsed: 2 * MascotWander.poseInterval, figure: "rabbit")
+        let airborne = MascotWander.stepSample(distance: 100, elapsed: 8 * MascotWander.poseInterval, figure: "rabbit")
+        XCTAssertGreaterThan((airborne.travelled-crouched.travelled)/6, crouched.travelled/2)
     }
 
     func testFirstStrollStartsSoonAfterEnabling() {

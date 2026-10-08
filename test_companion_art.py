@@ -8,7 +8,7 @@ class CompanionArtTests(unittest.TestCase):
         art=C.export(M.SKINS,M.SLOTS,M.EYES,M.FRAMES)
         for fig in C.WALKING_FIGURES:
             for eye in M.EYES:
-                for frame in range(8):
+                for frame in range(C.WALK_FRAMES):
                     used=set(''.join(art['walking_sprites'][f'{fig}/{eye}/{frame}']))-{'.'}
                     for skin in M.SKINS: self.assertTrue(used<=art['palettes'][f'{fig}/{skin}'].keys(),fig)
         for fig in C.FIGURES:
@@ -45,15 +45,16 @@ class CompanionArtTests(unittest.TestCase):
     def test_walk_gaits_have_eight_distinct_bounded_frames(self):
         art=C.export(M.SKINS,M.SLOTS,M.EYES,M.FRAMES)
         for fig in C.WALKING_FIGURES:
-            frames=[art['walking_sprites'][f'{fig}/open/{f}'] for f in range(8)]
+            frames=[art['walking_sprites'][f'{fig}/open/{f}'] for f in range(C.WALK_FRAMES)]
             self.assertGreaterEqual(len({tuple(rows) for rows in frames}), 4, fig)
             for rows in frames:
-                self.assertEqual(len(rows), 32, fig)
-                self.assertTrue(all(len(row)==32 for row in rows), fig)
+                height,width=(23,22) if fig in ('cat','crab') else (32,32)
+                self.assertEqual(len(rows), height, fig)
+                self.assertTrue(all(len(row)==width for row in rows), fig)
 
     def test_machine_steps_lift_one_foot_while_the_other_is_grounded(self):
         for fig in ('robot','antenna'):
-            frames=[C.walking_sprite(fig,'open',f) for f in range(8)]
+            frames=[C.walking_sprite(fig,'open',f) for f in range(C.WALK_FRAMES)]
             self.assertGreaterEqual(len({tuple(rows[27:]) for rows in frames}),6,fig)
             for rows in frames:
                 self.assertTrue(any(ch!='.' for ch in rows[31]),fig)
@@ -62,20 +63,42 @@ class CompanionArtTests(unittest.TestCase):
 
     def test_walking_profiles_are_distinct_from_portraits_and_expressions_survive(self):
         for fig in C.WALKING_FIGURES:
-            for frame in range(8):
+            for frame in range(C.WALK_FRAMES):
                 if fig!='palm' and fig in C.FIGURES:
                     self.assertNotEqual(C.walking_sprite(fig,'open',frame),C.sprite(fig,'open',frame),fig)
                 if fig!='palm':
                     self.assertNotEqual(C.walking_sprite(fig,'wide',frame),C.walking_sprite(fig,'glance',frame),fig)
                     self.assertNotEqual(C.walking_sprite(fig,'open',frame),C.walking_sprite(fig,'shut',frame),fig)
 
-    def test_status_badge_cannot_cover_the_profile_feet_in_either_direction(self):
-        for fig in C.WALKING_FIGURES:
-            if fig=='palm': continue
+    def test_planted_foot_stays_fixed_in_screen_space(self):
+        for scale in (2,3):
+            screen_positions=[]
             for frame in range(8):
-                for row in C.walking_sprite(fig,'open',frame)[-5:]:
-                    self.assertEqual(row[:5],'.....',fig)
-                    self.assertEqual(row[-5:],'.....',fig)
+                toe,floor=C.foot_pose(14,frame)
+                screen_positions.append(frame*scale+toe*scale)
+                self.assertEqual(floor,31)
+            self.assertEqual(len(set(screen_positions)),1)
+
+    def test_recovering_foot_lifts_and_passes_ahead_of_support(self):
+        for near_hip,far_hip in ((21,20),(20,19),(14,13)):
+            crossings=[]
+            for phase in range(8,16):
+                swing_x,swing_y=C.foot_pose(far_hip,phase)
+                support_x,support_y=C.foot_pose(near_hip,(phase+8)%16)
+                self.assertLess(swing_y,support_y)
+                crossings.append(swing_x>support_x)
+                c=C.Canvas()
+                C._side_leg(c,far_hip,25,phase)
+                self.assertTrue(any(ch!='.' for ch in c.rows()[swing_y]))
+                self.assertTrue(all(ch=='.' for ch in c.rows()[31]))
+            self.assertTrue(any(crossings))
+
+    def test_original_profiles_keep_portrait_dimensions(self):
+        for fig in ('cat','crab'):
+            for frame in range(C.WALK_FRAMES):
+                rows=C.walking_sprite(fig,'open',frame)
+                self.assertEqual((len(rows[0]),len(rows)),(M.W,M.H))
+
 
 class MenuArtTests(unittest.TestCase):
     def test_small_icons_are_complete_and_expressions_remain_distinct(self):
