@@ -29,4 +29,11 @@ final class MascotWanderTests: XCTestCase {
         XCTAssertTrue(MascotWander.facesLeft(from: CGPoint(x: 100, y: 0), to: CGPoint(x: 40, y: 0)))
         XCTAssertFalse(MascotWander.facesLeft(from: CGPoint(x: 40, y: 0), to: CGPoint(x: 100, y: 0)))
     }
+
+    func testFirstStrollStartsSoonAfterEnabling() {
+        var wander = MascotWander(seed: 17)
+        for _ in 0..<100 {
+            XCTAssertTrue((1.5...3.5).contains(wander.firstPause()))
+        }
+    }
 }

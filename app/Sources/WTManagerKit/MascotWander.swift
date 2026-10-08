@@ -36,7 +36,9 @@ public struct MascotWander {
         return origin == current.origin ? nil : origin.roundedToPixel
     }
 
-    public mutating func firstPause() -> TimeInterval { random(18...32) }
+    /// Make enabling the feature feel responsive after the user closes the
+    /// settings window. Longer rests still keep the overall motion occasional.
+    public mutating func firstPause() -> TimeInterval { random(1.5...3.5) }
     public mutating func pauseAtWaypoint() -> TimeInterval { random(2.8...6.5) }
     public mutating func restAfterTrip() -> TimeInterval { random(34...68) }
     public mutating func tripLength() -> Int { Int(random(2...4)) }
