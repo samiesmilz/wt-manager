@@ -279,7 +279,6 @@ final class FloatingMascot {
                 : MascotWander.gaitFrame(distance: self.legDistance,
                     elapsed: ProcessInfo.processInfo.systemUptime - self.legStartedAt,
                     duration: self.legDuration)
-            self.drawn = nil
             self.gaitWork = nil
             self.sync()
             self.scheduleGaitFrame()

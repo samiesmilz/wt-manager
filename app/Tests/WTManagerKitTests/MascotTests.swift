@@ -163,6 +163,36 @@ final class MascotTests: XCTestCase {
         }
     }
 
+    func testWalkingUsesSideProfilesAndMirrorsTheWholePoseForLeftTravel() throws {
+        let m = try load()
+        for figure in ["cat", "crab", "robot", "rooster", "rabbit", "snowman", "orb", "antenna"] {
+            func render(walking: Bool, left: Bool = false) throws -> NSImage {
+                try XCTUnwrap(m.image(figure: figure, gauge: 0, eyes: "open", frame: 2,
+                    skin: "acorn", tint: "#3fb27f", fitting: 69, detailed: true,
+                    showSignal: false, walking: walking, facesLeft: left))
+            }
+            let right = try render(walking: true)
+            let left = try render(walking: true, left: true)
+            XCTAssertEqual(right.size, NSSize(width: 64, height: 64), figure)
+            XCTAssertNotEqual(right.tiffRepresentation, try render(walking: false).tiffRepresentation, figure)
+            let a = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(right.tiffRepresentation)))
+            let b = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(left.tiffRepresentation)))
+            XCTAssertEqual(a.pixelsWide, b.pixelsWide)
+            XCTAssertEqual(a.pixelsHigh, b.pixelsHigh)
+            // Sample every art pixel. A direction change must mirror the pose,
+            // including the forward eye/muzzle and the near/far walking limbs.
+            let sx = a.pixelsWide / 32, sy = a.pixelsHigh / 32
+            for y in 0..<32 { for x in 0..<32 {
+                let r = try XCTUnwrap(a.colorAt(x: x*sx, y: y*sy)?.usingColorSpace(.deviceRGB))
+                let l = try XCTUnwrap(b.colorAt(x: b.pixelsWide-1-x*sx, y: y*sy)?.usingColorSpace(.deviceRGB))
+                for pair in [(r.redComponent,l.redComponent), (r.greenComponent,l.greenComponent),
+                             (r.blueComponent,l.blueComponent), (r.alphaComponent,l.alphaComponent)] {
+                    XCTAssertEqual(pair.0, pair.1, accuracy: 0.001, figure)
+                }
+            } }
+        }
+    }
+
     func testOlderDataAndExistingCharactersKeepFallbackArtwork() throws {
         let m = try load()
         let encoderData = try Data(contentsOf: URL(fileURLWithPath: #filePath)

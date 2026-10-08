@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Decode the companion's `walking_sprites` JSON field correctly; the native app was silently drawing idle frames during movement.
+- Give all moving companions dedicated side profiles, mirrored for leftward travel; keep the front portraits for resting and Coco rooted.
+- Slow the pace again to 12 points per second and choose short, mostly horizontal routes. Preserve that pace on long returns instead of accelerating to meet a time limit.
+- Keep the walking feet clear of the status badge in either direction and redraw the pixel pose only when it changes.
 - Check the actual main window rather than treating the menu-bar icon's window as an open app window; this restores wandering and floating merge messages.
 - Unread merged-PR notices no longer stop mascot wandering indefinitely; speech banners stay still while the companion explores.
 - Keep Coco rooted: the palm catches a gust, topples in place, and springs upright instead of walking around the screen.

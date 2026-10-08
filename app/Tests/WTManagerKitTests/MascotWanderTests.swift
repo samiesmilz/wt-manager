@@ -40,7 +40,9 @@ final class MascotWanderTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(point.y, screen.minY + 20)
             XCTAssertLessThanOrEqual(point.x + current.width, screen.maxX - 20)
             XCTAssertLessThanOrEqual(point.y + current.height, screen.maxY - 20)
-            XCTAssertGreaterThanOrEqual(hypot(point.x-current.minX, point.y-current.minY), 150)
+            XCTAssertGreaterThanOrEqual(hypot(point.x-current.minX, point.y-current.minY), 80)
+            XCTAssertLessThanOrEqual(abs(point.x-current.minX), 280)
+            XCTAssertLessThanOrEqual(abs(point.y-current.minY), 25)
         }
     }
 
@@ -51,16 +53,16 @@ final class MascotWanderTests: XCTestCase {
     }
 
     func testTravelPaceAndFacingAreStable() {
-        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 300, y: 400)), 12.5, accuracy: 0.01)
-        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 10000, y: 0)), 60)
+        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 300, y: 400)), 500.0/12.0, accuracy: 0.01)
+        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 10000, y: 0)), 10000.0/12.0, accuracy: 0.01)
         XCTAssertTrue(MascotWander.facesLeft(from: CGPoint(x: 100, y: 0), to: CGPoint(x: 40, y: 0)))
         XCTAssertFalse(MascotWander.facesLeft(from: CGPoint(x: 40, y: 0), to: CGPoint(x: 100, y: 0)))
     }
 
     func testLegsFollowTravelDistanceRatherThanAnIndependentClock() {
         XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 0, duration: 10), 0)
-        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 5, duration: 10), 2)
-        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 2.5, duration: 5), 2)
+        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 5, duration: 10), 4)
+        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 2.5, duration: 5), 4)
         XCTAssertEqual(MascotWander.gaitFrame(distance: 0, elapsed: 5, duration: 10), 0)
         XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 5, duration: 0), 0)
     }

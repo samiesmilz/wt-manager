@@ -6,6 +6,11 @@ import menu_art as U
 class CompanionArtTests(unittest.TestCase):
     def test_every_expression_frame_has_complete_palette_and_bounds(self):
         art=C.export(M.SKINS,M.SLOTS,M.EYES,M.FRAMES)
+        for fig in C.WALKING_FIGURES:
+            for eye in M.EYES:
+                for frame in range(8):
+                    used=set(''.join(art['walking_sprites'][f'{fig}/{eye}/{frame}']))-{'.'}
+                    for skin in M.SKINS: self.assertTrue(used<=art['palettes'][f'{fig}/{skin}'].keys(),fig)
         for fig in C.FIGURES:
             for eye in M.EYES:
                 for f in range(M.FRAMES):
@@ -39,7 +44,7 @@ class CompanionArtTests(unittest.TestCase):
             self.assertNotEqual(rows[:23],M.sprite(0,'open',0,M.FIGURES[fig]))
     def test_walk_gaits_have_eight_distinct_bounded_frames(self):
         art=C.export(M.SKINS,M.SLOTS,M.EYES,M.FRAMES)
-        for fig in C.FIGURES:
+        for fig in C.WALKING_FIGURES:
             frames=[art['walking_sprites'][f'{fig}/open/{f}'] for f in range(8)]
             self.assertGreaterEqual(len({tuple(rows) for rows in frames}), 4, fig)
             for rows in frames:
@@ -52,8 +57,25 @@ class CompanionArtTests(unittest.TestCase):
             self.assertGreaterEqual(len({tuple(rows[27:]) for rows in frames}),6,fig)
             for rows in frames:
                 self.assertTrue(any(ch!='.' for ch in rows[31]),fig)
-            self.assertTrue(all(ch=='.' for ch in frames[2][31][16:]),fig)
-            self.assertTrue(all(ch=='.' for ch in frames[6][31][:16]),fig)
+            planted=lambda rows: [x for x,ch in enumerate(rows[31]) if ch!='.']
+            self.assertNotEqual(planted(frames[2]),planted(frames[6]),fig)
+
+    def test_walking_profiles_are_distinct_from_portraits_and_expressions_survive(self):
+        for fig in C.WALKING_FIGURES:
+            for frame in range(8):
+                if fig!='palm' and fig in C.FIGURES:
+                    self.assertNotEqual(C.walking_sprite(fig,'open',frame),C.sprite(fig,'open',frame),fig)
+                if fig!='palm':
+                    self.assertNotEqual(C.walking_sprite(fig,'wide',frame),C.walking_sprite(fig,'glance',frame),fig)
+                    self.assertNotEqual(C.walking_sprite(fig,'open',frame),C.walking_sprite(fig,'shut',frame),fig)
+
+    def test_status_badge_cannot_cover_the_profile_feet_in_either_direction(self):
+        for fig in C.WALKING_FIGURES:
+            if fig=='palm': continue
+            for frame in range(8):
+                for row in C.walking_sprite(fig,'open',frame)[-5:]:
+                    self.assertEqual(row[:5],'.....',fig)
+                    self.assertEqual(row[-5:],'.....',fig)
 
 class MenuArtTests(unittest.TestCase):
     def test_small_icons_are_complete_and_expressions_remain_distinct(self):

@@ -26,9 +26,13 @@ public struct MascotWander {
         let maxY = display.maxY - inset - size.height
         let origin = CGPoint(x: min(max(current.minX, minX), maxX),
                              y: min(max(current.minY, minY), maxY))
-        let minimumHop = min(150, hypot(maxX - minX, maxY - minY) * 0.22)
+        // Short, mostly horizontal strolls read as walking rather than flying
+        // diagonally across the desktop. Explore the display a little at a time.
+        let minimumHop = min(80, (maxX - minX) * 0.4)
         for _ in 0..<10 {
-            let candidate = CGPoint(x: random(minX...maxX), y: random(minY...maxY))
+            let direction = random(0...1) < 0.5 ? -1.0 : 1.0
+            let candidate = CGPoint(x: min(max(origin.x + direction * random(120...280), minX), maxX),
+                                    y: min(max(origin.y + random(-24...24), minY), maxY))
             if hypot(candidate.x - origin.x, candidate.y - origin.y) >= minimumHop {
                 return candidate.roundedToPixel
             }
@@ -66,18 +70,19 @@ public struct MascotWander {
         }
     }
 
-    /// A relaxed pixel-pet pace, with a ceiling for ultrawide displays.
+    /// A very gentle pace. Routes are bounded rather than accelerating long
+    /// routes with a duration ceiling, including the eventual return home.
     public static func travelTime(from start: CGPoint, to end: CGPoint) -> TimeInterval {
-        min(60, max(3, hypot(end.x - start.x, end.y - start.y) / 40))
+        max(4, hypot(end.x - start.x, end.y - start.y) / 12)
     }
 
     /// Match the platform's cubic ease, then advance one gait frame for each
-    /// five points travelled. Legs speed up and slow down with the body.
+    /// four points travelled. Legs speed up and slow down with the body.
     public static func gaitFrame(distance: Double, elapsed: Double, duration: Double) -> Int {
         guard duration > 0 else { return 0 }
         let t = min(1, max(0, elapsed / duration))
         let progress = t * t * (3 - 2 * t)
-        return Int(max(0, distance) * progress / 5) % 8
+        return Int(max(0, distance) * progress / 4) % 8
     }
 
     public static func facesLeft(from start: CGPoint, to end: CGPoint) -> Bool {

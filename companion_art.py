@@ -163,56 +163,168 @@ def sprite(figure,eyes,frame):
     else: raise ValueError(figure)
     return c.rows()
 
+WALKING_FIGURES = FIGURES + ('cat', 'crab')
+
+
+def _side_leg(c, hip, top, phase, fill='f', bird=False):
+    """One planted push followed by a lifted return, drawn facing right."""
+    stride=(3,1,-1,-3,-3,-1,1,3)
+    lift=(0,0,0,0,1,3,3,1)
+    toe=hip+stride[phase]; floor=31-lift[phase]
+    knee=hip+stride[phase]//2; knee_y=min(top+2,floor-1)
+    if bird:
+        c.line(hip,top,knee,knee_y,'a');c.line(knee,knee_y,toe,floor,'a')
+        c.line(toe-2,floor,toe+2,floor,'a')
+    else:
+        for dx in (-1,0,1):
+            c.line(hip+dx,top,knee+dx,knee_y,'#')
+            c.line(knee+dx,knee_y,toe+dx,floor-1,'#')
+        c.line(hip,top,knee,knee_y,fill);c.line(knee,knee_y,toe,floor-1,fill)
+        c.rect(toe-2,floor-1,toe+2,floor,'#')
+        c.line(toe-1,floor-1,toe+1,floor-1,fill)
+
+
 def walking_sprite(figure,eyes,frame):
-    """A short, figure-specific gait layered over that character's own gesture."""
-    phase=frame%8
-    rows=[list(row) for row in sprite(figure,eyes,phase)]
-    # The bunny hops, the pearl rolls with its highlight, and the snowball
-    # waddles. Their motion follows each character's own silhouette.
-    vertical={
-        'rabbit':(0,0,1,2,1,0,0,0),
-        'orb':(0,0,1,2,1,0,0,0),
-        'snowman':(0,0,1,1,0,0,0,0),
-    }.get(figure,(0,)*8)[phase]
-    if vertical:
-        shifted=[['.']*SIZE for _ in range(SIZE)]
-        for y,row in enumerate(rows):
-            dest=y-vertical
-            if 0<=dest<SIZE: shifted[dest]=row
-        rows=shifted
+    """Original right-facing side profiles. The native renderer mirrors left.
+
+    Walking changes the view of the character, not just its front-facing feet.
+    Idle/menu art stays unchanged. Far limbs precede the body; near limbs follow
+    it. Feet stop before the lower-right badge so the signal cannot hide a step.
+    """
+    c=Canvas();p=frame%8;bob=(0,0,-1,0,0,0,-1,0)[p]
+    swing=(2,1,0,-1,-2,-1,0,1)[p]
     if figure=='palm':
-        # A palm's walk is a gentle crown sway, not legs it does not have.
-        dx=(0,0,1,1,0,-1,-1,0)[phase]
-        for y in range(10):
-            source=rows[y];rows[y]=['.']*SIZE
-            for x,ch in enumerate(source):
-                if ch!='.' and 0<=x+dx<SIZE: rows[y][x+dx]=ch
-    if figure in ('robot','antenna','rooster'):
-        # Swing one leg through the air while the other plants and pushes.
-        # Redraw the whole leg, not just a one-pixel toe tap.
-        c=Canvas();c.p=rows
-        top=27 if figure=='antenna' else 25
-        for y in range(top,SIZE): c.p[y]=['.']*SIZE
-        hips=(12,22) if figure=='antenna' else ((12,20) if figure=='robot' else (13,22))
-        stride=(3,1,-1,-3,-3,-1,1,3)
-        lifts=(0,0,0,0,1,3,3,1)
-        for i,hip in enumerate(hips):
-            step=(phase+i*4)%8
-            toe=hip+stride[step];ground=31-lifts[step]
-            knee=hip+stride[step]//2
-            if figure=='rooster':
-                c.line(hip,top,knee,27,'a');c.line(knee,27,toe,ground,'a')
-                c.line(toe-2,ground,toe+2,ground,'a')
-            else:
-                knee_y=min(top+2,ground-1)
-                for dx in (-1,0,1):
-                    c.line(hip+dx,top,knee+dx,knee_y,'#')
-                    c.line(knee+dx,knee_y,toe+dx,ground-1,'#')
-                c.line(hip,top,knee,knee_y,'f');c.line(knee,knee_y,toe,ground-1,'f')
-                c.rect(toe-2,ground-1,toe+2,ground,'#')
-                c.line(toe-1,ground-1,toe+1,ground-1,'f')
-        rows=c.p
-    return [''.join(row) for row in rows]
+        # A rooted tree only sways/topples in place, never acquires a walk.
+        return sprite(figure,eyes,p)
+    if figure=='cat':
+        # Wity's plume remains behind a rounded body, with a little profile
+        # muzzle and one bright eye. Far paws are darker and partly occluded.
+        c.poly([(7,26),(2,23),(0,14),(1,7),(4,4),(7,6),(6,13),(5,19),(9,22)],'#')
+        c.poly([(6,24),(3,21),(2,13),(3,7),(4,6),(5,7),(4,15),(5,20),(8,23)],'s')
+        c.line(3,9,3,15,'b');c.put(4,7,'w')
+        _side_leg(c,11,26,(p+4)%8,'s');_side_leg(c,20,26,(p+4)%8,'s')
+        c.ellipse(6,18+bob,25,28+bob,'#');c.ellipse(7,19+bob,24,27+bob,'f')
+        c.ellipse(11,22+bob,21,27+bob,'b')
+        c.poly([(15,12+bob),(14,4+bob),(19,6+bob),(21,12+bob)],'#')
+        c.poly([(16,10+bob),(16,6+bob),(19,8+bob)],'s')
+        c.ellipse(14,8+bob,29,23+bob,'#');c.ellipse(15,9+bob,28,22+bob,'f')
+        c.poly([(22,11+bob),(22,3+bob),(27,6+bob),(27,13+bob)],'#')
+        c.poly([(23,10+bob),(23,5+bob),(25,7+bob),(25,11+bob)],'p')
+        c.ellipse(25,17+bob,30,21+bob,'#');c.ellipse(25,18+bob,29,20+bob,'b')
+        c.eye(24,12+bob,eyes);c.put(30,18+bob,'p');c.line(28,21+bob,29,21+bob,'#')
+        _side_leg(c,10,27,p);_side_leg(c,21,27,p)
+    elif figure=='rooster':
+        # Tail behind, beak ahead: Cooper's slim neck and long orange legs.
+        _side_leg(c,12,25,(p+4)%8,bird=True)
+        c.poly([(9,22),(2,18),(1,8),(4,9),(7,18)],'#')
+        c.poly([(9,23),(3,23),(0,15),(3,15),(7,20)],'#')
+        c.line(3,11,5,18,'b');c.line(3,17,6,21,'f')
+        c.ellipse(6,16+bob,24,25+bob,'#');c.ellipse(7,17+bob,23,24+bob,'f')
+        c.ellipse(10,18+bob,20,23+bob,'s');c.line(12,20+bob,17,21+bob,'b')
+        c.poly([(19,21+bob),(18,11+bob),(22,10+bob),(23,21+bob)],'#')
+        c.rect(19,12+bob,21,19+bob,'f')
+        c.ellipse(18,5+bob,28,15+bob,'#');c.ellipse(19,6+bob,27,14+bob,'f')
+        for x,y in ((19,3),(22,1),(25,3)): c.ellipse(x,y+bob,x+2,y+4+bob,'r')
+        c.ellipse(25,13+bob,27,17+bob,'r')
+        c.poly([(28,9+bob),(31,11+bob),(28,12+bob)],'#');c.line(28,11+bob,30,11+bob,'a')
+        c.eye(24,7+bob,eyes)
+        _side_leg(c,20,25,p,bird=True)
+    elif figure=='rabbit':
+        # Haunch drives a hop; tucked front paws and a small tail sit behind
+        # a projecting muzzle. Ear movement follows the hop, not a head-on bob.
+        hop=(0,0,1,3,3,2,1,0)[p];fold=(0,0,1,2,2,1,0,0)[p]
+        c.ellipse(4,22,11,28,'#');c.ellipse(5,23,10,27,'b')
+        c.ellipse(7,18,25,29,'#');c.ellipse(8,19,24,28,'f')
+        c.ellipse(8,23,18,30,'#');c.ellipse(9,24,17,29,'s')
+        extension=(3,2,0,-1,-1,0,2,3)[p]
+        c.ellipse(12,28,19+extension,31,'#');c.line(14,29,18+extension,29,'f')
+        c.line(23,24,23+extension//2,29,'#');c.ellipse(21,28,25,31,'#')
+        c.line(22,29,24,29,'f')
+        c.poly([(17,13),(13,4+fold),(15,1+fold),(19,5+fold),(21,15)],'#')
+        c.line(15,5+fold,18,12,'s')
+        c.ellipse(17,10,29,24,'#');c.ellipse(18,11,28,23,'f')
+        c.poly([(22,14),(20,4+fold),(22,1+fold),(25,4+fold),(25,14)],'#')
+        c.poly([(23,12),(22,5+fold),(23,3+fold),(24,6+fold),(24,12)],'f')
+        c.line(23,5+fold,23,10,'p')
+        c.ellipse(26,18,30,23,'b');c.put(30,19,'p');c.put(29,22,'#')
+        c.eye(25,13,eyes);c.put(25,20,'p')
+        if hop:
+            rows=c.p;c=Canvas()
+            for y,row in enumerate(rows):
+                for x,ch in enumerate(row):
+                    if ch!='.': c.put(x,y-hop,ch)
+    elif figure=='robot':
+        _side_leg(c,15,25,(p+4)%8,'s')
+        c.rect(13,19+bob,23,25+bob,'#');c.rect(14,20+bob,22,24+bob,'s')
+        c.rect(18,20+bob,22,23+bob,'f')
+        c.line(16,3+bob,16,6+bob,'#');c.ellipse(14,1+bob,18,4+bob,'#');c.put(16,2+bob,'l')
+        c.rect(10,6+bob,25,18+bob,'#');c.rect(12,5+bob,24,19+bob,'#')
+        c.rect(11,7+bob,24,17+bob,'s');c.rect(14,6+bob,24,8+bob,'f')
+        c.rect(20,9+bob,27,15+bob,'#');c.rect(21,10+bob,26,14+bob,'v')
+        c.eye(23,10+bob,eyes)
+        c.rect(8,10+bob,12,14+bob,'#');c.rect(9,11+bob,11,13+bob,'v')
+        c.rect(19,17+bob,24,17+bob,'h');c.put(20+(p%4),17+bob,'l')
+        c.poly([(15,19+bob),(18,20+bob),(18+swing,25+bob),(15+swing,25+bob)],'#')
+        c.line(16,20+bob,16+swing,24+bob,'f')
+        _side_leg(c,21,25,p)
+    elif figure=='antenna':
+        _side_leg(c,14,27,(p+4)%8,'s')
+        c.line(12,8+bob,9,3+bob,'#');c.line(9,3+bob,6,2+bob,'r')
+        c.line(22,8+bob,25,3+bob,'#');c.line(25,3+bob,28,2+bob,'r')
+        c.ellipse(7,6+bob,27,27+bob,'#');c.ellipse(8,7+bob,26,26+bob,'s')
+        c.ellipse(10,7+bob,26,24+bob,'f');c.ellipse(12,7+bob,23,13+bob,'r')
+        c.ellipse(13,8+bob,17,10+bob,'p')
+        c.ellipse(22,11+bob,27,18+bob,'h')
+        if eyes=='shut': c.line(23,15+bob,25,15+bob,'l')
+        elif eyes=='squint': c.rect(23,14+bob,25,15+bob,'l')
+        else:
+            c.ellipse(23,12+bob,26,15+bob,'l')
+            if eyes!='wide': c.put(25 if eyes=='glance' else 24,12+bob,'w')
+        c.ellipse(13+swing,18+bob,19+swing,24+bob,'#')
+        c.ellipse(14+swing,19+bob,18+swing,23+bob,'f')
+        _side_leg(c,20,27,p)
+    elif figure=='snowman':
+        roll=(0,0,1,1,0,0,-1,-1)[p];wave=(0,0,-1,-2,-2,-1,0,0)[p]
+        c.ellipse(8,19,25,31,'#');c.ellipse(9,20,24,30,'s');c.ellipse(12,20,24,28,'f')
+        c.line(22,21,28,18+wave,'t');c.line(28,18+wave,31,16+wave,'t')
+        c.line(28,18+wave,30,19+wave,'t')
+        c.ellipse(12+roll,8,26+roll,22,'#');c.ellipse(13+roll,9,25+roll,21,'f')
+        c.rect(12+roll,19,25+roll,21,'g');c.line(14+roll,19,24+roll,19,'l')
+        c.poly([(14,21),(17,21),(17-swing,28),(14-swing,28)],'g')
+        c.eye(23+roll,12,eyes);c.poly([(27+roll,15),(31,16),(27+roll,17)],'a')
+        c.put(24+roll,18,'#');c.put(23+roll,19,'#')
+        c.rect(14+roll,2,24+roll,8,'#');c.rect(15+roll,3,23+roll,7,'h')
+        c.rect(15+roll,7,23+roll,8,'r');c.rect(11+roll,9,27+roll,10,'#')
+        c.line(12+roll,9,26+roll,9,'h');c.put(16,24,'#');c.put(16,28,'#')
+    elif figure=='orb':
+        roll=(0,1,2,3,2,1,0,-1)[p]
+        c.ellipse(4,3,28,31,'#');c.ellipse(5,4,27,30,'s')
+        c.ellipse(8,4,27,28,'f');c.ellipse(10,5,25,24,'b')
+        c.ellipse(9+roll,6,16+roll,11,'w')
+        if eyes=='shut': c.line(22,16,25,16,'#')
+        elif eyes=='squint': c.line(22,14,25,17,'#')
+        else:
+            c.ellipse(22,11,24,16,'#');c.ellipse(23,14,25,18,'#')
+            if eyes!='wide': c.put(24 if eyes=='glance' else 23,12,'w')
+        c.put(26,21,'#')
+    elif figure=='crab':
+        # Nipper's shell, overlapping scuttle legs and forward claw are seen
+        # from the side; its stalk eye looks along the route.
+        for i,hip in enumerate((10,15,20)): _side_leg(c,hip,27,(p+4+i*2)%8,'s')
+        c.line(9,19,6,15,'#');c.ellipse(3,11,10,18,'#');c.ellipse(4,12,9,17,'s')
+        c.poly([(2,13),(6,14),(2,16)],'.');c.line(9,19,7,17,'s')
+        c.ellipse(5,16,24,27,'#');c.ellipse(6,17,23,26,'f')
+        c.ellipse(7,18,20,23,'b');c.line(8,19,18,19,'w')
+        c.line(22,17,23,10,'#');c.line(22,16,23,12,'f')
+        c.ellipse(20,6,26,13,'#');c.ellipse(21,7,25,12,'f')
+        c.eye(23,8,eyes)
+        lift=(0,0,1,2,1,0,-1,0)[p]
+        c.line(22,21,27,17-lift,'#');c.ellipse(24,10-lift,31,18-lift,'#')
+        c.ellipse(25,11-lift,30,17-lift,'f');c.rect(28,10-lift,31,12-lift,'.')
+        for i,hip in enumerate((10,15,20)): _side_leg(c,hip,27,(p+i*2)%8)
+    else: raise ValueError(figure)
+    return c.rows()
+
 
 # Accessory colours are identity, never the live state. The framed badge is
 # added by the native renderer and consumes the engine's mood and tint.
@@ -221,12 +333,12 @@ ACCESSORIES = {'h':'#202a3c','v':'#455d7e','r':'#bf4b58','g':'#277c60','l':'#83c
 
 def export(skins, slots, eyes, frames):
     palettes={}
-    for figure in FIGURES:
+    for figure in WALKING_FIGURES:
         for name,skin in skins.items():
             palettes[f'{figure}/{name}']={ch:skin[slot] for ch,slot in slots.items() if slot!='accent'} | ACCESSORIES
             if figure == 'antenna': palettes[f'{figure}/{name}'].update(r='#fb5966', l='#45d8d1')
             if figure == 'rooster': palettes[f'{figure}/{name}']['r'] = '#b9719c'
     return {'width':SIZE,'height':SIZE,
             'sprites':{f'{fig}/{eye}/{f}':sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},
-            'walking_sprites':{f'{fig}/{eye}/{f}':walking_sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},
+            'walking_sprites':{f'{fig}/{eye}/{f}':walking_sprite(fig,eye,f) for fig in WALKING_FIGURES for eye in eyes for f in range(frames)},
             'palettes':palettes}

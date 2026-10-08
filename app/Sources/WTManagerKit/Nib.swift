@@ -34,6 +34,10 @@ public struct Mascot: Decodable {
         public let sprites: [String: [String]]
         public let walkingSprites: [String: [String]]?
         public let palettes: [String: [String: String]]
+        private enum CodingKeys: String, CodingKey {
+            case width, height, sprites, palettes
+            case walkingSprites = "walking_sprites"
+        }
     }
     public let companion: Companion?
     public let menu: Companion?
