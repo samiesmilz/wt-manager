@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Advance the floating mascot and its walking pose together on each foot push, with a planted hold between steps; remove the independent window animation that made it slide.
+- Hide the floating status arrow during walking and restore it at rest.
 - Decode the companion's `walking_sprites` JSON field correctly; the native app was silently drawing idle frames during movement.
 - Give all moving companions dedicated side profiles, mirrored for leftward travel; keep the front portraits for resting and Coco rooted.
 - Slow the pace again to 12 points per second and choose short, mostly horizontal routes. Preserve that pace on long returns instead of accelerating to meet a time limit.

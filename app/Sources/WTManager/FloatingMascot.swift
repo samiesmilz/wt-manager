@@ -1,5 +1,4 @@
 import AppKit
-import QuartzCore
 import SwiftUI
 import WTManagerKit
 
@@ -17,7 +16,6 @@ final class FloatingMascot {
     private var wanderPlanner = MascotWander()
     private var wanderWork: DispatchWorkItem?
     private var gaitWork: DispatchWorkItem?
-    private var wanderGeneration = 0
     private var walking = false
     private var walkFrame = 0
     private var firstWander = true
@@ -29,7 +27,9 @@ final class FloatingMascot {
     private var movingFigure: String?
     private var speechOrigin: NSPoint?
     private var legStartedAt: TimeInterval = 0
-    private var legDuration: TimeInterval = 1
+    private var legOrigin = NSPoint.zero
+    private var legDestination = NSPoint.zero
+    private var legGoingHome = false
     private var legDistance: Double = 0
     private var userInteracting = false
     private let traceMovement = ProcessInfo.processInfo.environment["WT_MANAGER_TRACE_WANDER"] == "1"
@@ -88,7 +88,7 @@ final class FloatingMascot {
         if key != drawn {
             drawn = key
             view.image = store.image(height: 69, frame: frame, blinking: pulse.blinking,
-                                     detailed: true, walking: walking, facesLeft: facesLeft)
+                                     detailed: true, showSignal: !walking, walking: walking, facesLeft: facesLeft)
             let roamTip = store.mascotWanders ? " · occasional strolls; click or drag to interrupt" : ""
             view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · click to open wt-manager; drag to move\(roamTip); right-click for more actions"
             view.needsDisplay = true
@@ -162,7 +162,7 @@ final class FloatingMascot {
     }
 
     /// The existing clock advances character poses. One delayed action starts
-    /// each trip; AppKit animates the window between endpoints without polling.
+    /// each trip; each planted push advances the window and pose together.
     private func syncWander() {
         guard mayWander else { stopWander(at: nil); return }
         guard !walking, wanderWork == nil else { return }
@@ -224,39 +224,35 @@ final class FloatingMascot {
         facesLeft = MascotWander.facesLeft(from: current.origin, to: destination)
         walking = true
         walkFrame = 0
-        scheduleGaitFrame()
         drawn = nil
-        let generation = wanderGeneration
-        let duration = MascotWander.travelTime(from: current.origin, to: destination)
         legStartedAt = ProcessInfo.processInfo.systemUptime
-        legDuration = duration
+        legOrigin = current.origin
+        legDestination = destination
+        legGoingHome = goingHome
         legDistance = hypot(destination.x-current.minX, destination.y-current.minY)
         if traceMovement { NSLog("wt-manager wander: stroll from %@ to %@", NSStringFromPoint(current.origin), NSStringFromPoint(destination)) }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 1.0/3.0, 0, 2.0/3.0, 1)
-            self.panel.animator().setFrame(target, display: true)
-        } completionHandler: { [weak self] in
-            Task { @MainActor in
-                guard let self, self.wanderGeneration == generation, self.walking else { return }
-                if self.traceMovement { NSLog("wt-manager wander: arrived at %@", NSStringFromPoint(self.panel.frame.origin)) }
-                self.walking = false
-                self.gaitWork?.cancel(); self.gaitWork = nil
-                self.drawn = nil
-                if goingHome { self.legsLeft = 0; self.returningHome = false }
-                else {
-                    self.legsLeft -= 1
-                    if self.legsLeft == 0 { self.returningHome = true }
-                }
-                self.scheduleWander(after: goingHome
-                    ? self.wanderPlanner.restAfterTrip()
-                    : self.wanderPlanner.pauseAtWaypoint())
-            }
-        }
+        sync()
+        scheduleGaitFrame()
     }
 
-    /// Sample the distance-based gait only during a trip. The shared 220 ms
-    /// expression clock is intentionally slower for blinks and idles.
+    private func finishLeg() {
+        if traceMovement { NSLog("wt-manager wander: arrived at %@", NSStringFromPoint(panel.frame.origin)) }
+        walking = false
+        gaitWork = nil
+        drawn = nil
+        if legGoingHome { legsLeft = 0; returningHome = false }
+        else {
+            legsLeft -= 1
+            if legsLeft == 0 { returningHome = true }
+        }
+        scheduleWander(after: legGoingHome
+            ? wanderPlanner.restAfterTrip() : wanderPlanner.pauseAtWaypoint())
+        sync()
+    }
+
+    /// One low-frequency clock owns both the pixel pose and window position.
+    /// Between planted pushes, neither moves. No background travel animation
+    /// can carry the body forward while its feet are waiting.
     private func scheduleGaitFrame() {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.walking else { return }
@@ -275,21 +271,32 @@ final class FloatingMascot {
                     return
                 }
             }
-            self.walkFrame = self.rootedStartedAt != nil ? (self.walkFrame + 1) % 8
-                : MascotWander.gaitFrame(distance: self.legDistance,
-                    elapsed: ProcessInfo.processInfo.systemUptime - self.legStartedAt,
-                    duration: self.legDuration)
             self.gaitWork = nil
+            if self.rootedStartedAt != nil {
+                self.walkFrame = (self.walkFrame + 1) % 8
+            } else {
+                let sample = MascotWander.stepSample(distance: self.legDistance,
+                    elapsed: ProcessInfo.processInfo.systemUptime - self.legStartedAt)
+                self.walkFrame = sample.frame
+                let fraction = self.legDistance > 0 ? sample.travelled / self.legDistance : 1
+                self.panel.setFrameOrigin(NSPoint(
+                    x: self.legOrigin.x + (self.legDestination.x - self.legOrigin.x) * fraction,
+                    y: self.legOrigin.y + (self.legDestination.y - self.legOrigin.y) * fraction))
+                if sample.finished { self.finishLeg(); return }
+            }
             self.sync()
-            self.scheduleGaitFrame()
+            if self.walking { self.scheduleGaitFrame() }
         }
         gaitWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (rootedStartedAt == nil ? 0.08 : 0.06), execute: work)
+        let now = ProcessInfo.processInfo.systemUptime
+        let interval = MascotWander.poseInterval
+        let delay = rootedStartedAt != nil ? 0.06
+            : max(0.001, interval - (now - legStartedAt).truncatingRemainder(dividingBy: interval))
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func stopWander(at origin: NSPoint?) {
         guard walking || wanderWork != nil || returningHome || legsLeft != 0 else { return }
-        wanderGeneration &+= 1
         wanderWork?.cancel()
         wanderWork = nil
         if walking { panel.setFrameOrigin(origin ?? panel.frame.origin) }

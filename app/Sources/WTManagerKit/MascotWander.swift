@@ -70,19 +70,33 @@ public struct MascotWander {
         }
     }
 
-    /// A very gentle pace. Routes are bounded rather than accelerating long
-    /// routes with a duration ceiling, including the eventual return home.
-    public static func travelTime(from start: CGPoint, to end: CGPoint) -> TimeInterval {
-        max(4, hypot(end.x - start.x, end.y - start.y) / 12)
+    /// A four-pose step takes one second: three 4-point pushes, then a
+    /// planted hold. Position and pose share this clock, so neither can slide
+    /// independently. At the integral 2x pixel scale, a 2-pixel foot push
+    /// cancels the body's 4-point advance.
+    public static let poseInterval: TimeInterval = 0.25
+
+    public struct StepSample {
+        public let frame: Int
+        public let travelled: Double
+        public let finished: Bool
     }
 
-    /// Match the platform's cubic ease, then advance one gait frame for each
-    /// four points travelled. Legs speed up and slow down with the body.
-    public static func gaitFrame(distance: Double, elapsed: Double, duration: Double) -> Int {
-        guard duration > 0 else { return 0 }
-        let t = min(1, max(0, elapsed / duration))
-        let progress = t * t * (3 - 2 * t)
-        return Int(max(0, distance) * progress / 4) % 8
+    public static func stepSample(distance: Double, elapsed: TimeInterval) -> StepSample {
+        let distance = max(0, distance)
+        let ticks = Int(max(0, elapsed) / poseInterval)
+        let pushes = (ticks / 4) * 3 + min(ticks % 4, 3)
+        let travelled = min(distance, Double(pushes) * 4)
+        return StepSample(frame: ticks % 8, travelled: travelled, finished: travelled >= distance)
+    }
+
+    /// The final push is clipped to the remaining distance, never beyond the
+    /// destination. Long trips keep the same roughly 12-point/second pace.
+    public static func travelTime(from start: CGPoint, to end: CGPoint) -> TimeInterval {
+        let pushes = Int(ceil(hypot(end.x - start.x, end.y - start.y) / 4))
+        guard pushes > 0 else { return 0 }
+        let lastTick = ((pushes - 1) / 3) * 4 + (pushes - 1) % 3 + 1
+        return Double(lastTick) * poseInterval
     }
 
     public static func facesLeft(from start: CGPoint, to end: CGPoint) -> Bool {

@@ -53,18 +53,33 @@ final class MascotWanderTests: XCTestCase {
     }
 
     func testTravelPaceAndFacingAreStable() {
-        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 300, y: 400)), 500.0/12.0, accuracy: 0.01)
-        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 10000, y: 0)), 10000.0/12.0, accuracy: 0.01)
+        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 300, y: 400)), 500.0/12.0, accuracy: 0.34)
+        XCTAssertEqual(MascotWander.travelTime(from: .zero, to: CGPoint(x: 10000, y: 0)), 10000.0/12.0, accuracy: 0.34)
         XCTAssertTrue(MascotWander.facesLeft(from: CGPoint(x: 100, y: 0), to: CGPoint(x: 40, y: 0)))
         XCTAssertFalse(MascotWander.facesLeft(from: CGPoint(x: 40, y: 0), to: CGPoint(x: 100, y: 0)))
     }
 
-    func testLegsFollowTravelDistanceRatherThanAnIndependentClock() {
-        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 0, duration: 10), 0)
-        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 5, duration: 10), 4)
-        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 2.5, duration: 5), 4)
-        XCTAssertEqual(MascotWander.gaitFrame(distance: 0, elapsed: 5, duration: 10), 0)
-        XCTAssertEqual(MascotWander.gaitFrame(distance: 100, elapsed: 5, duration: 0), 0)
+    func testPositionAdvancesOnlyWithPushAndHoldsBetweenSteps() {
+        let samples = (0...8).map { MascotWander.stepSample(distance: 100, elapsed: Double($0) * 0.25) }
+        XCTAssertEqual(samples.map(\.frame), [0, 1, 2, 3, 4, 5, 6, 7, 0])
+        XCTAssertEqual(samples.map(\.travelled), [0, 4, 8, 12, 12, 16, 20, 24, 24])
+        for tick in 0..<8 {
+            let between = MascotWander.stepSample(distance: 100, elapsed: Double(tick) * 0.25 + 0.24)
+            XCTAssertEqual(between.frame, samples[tick].frame)
+            XCTAssertEqual(between.travelled, samples[tick].travelled)
+        }
+    }
+
+    func testFinalPartialStepStopsExactlyAtDestination() {
+        for distance in [0.0, 1, 7, 12, 13, 100, 500, 10000] {
+            let duration = MascotWander.travelTime(from: .zero, to: CGPoint(x: distance, y: 0))
+            let done = MascotWander.stepSample(distance: distance, elapsed: duration)
+            XCTAssertTrue(done.finished)
+            XCTAssertEqual(done.travelled, distance)
+            if distance > 0 {
+                XCTAssertFalse(MascotWander.stepSample(distance: distance, elapsed: duration - 0.001).finished)
+            }
+        }
     }
 
     func testFirstStrollStartsSoonAfterEnabling() {
