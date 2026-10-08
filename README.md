@@ -116,6 +116,8 @@ The first scan quietly establishes a baseline. Messages and dismissals persist l
 
 The seven new companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions use separate 22px portraits with larger facial features and no framed badge. Wity retains its original silhouette. Cooper has a slim neck, longer legs and alternating toe lifts; Pip has a softer face and simpler muzzle. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
 
+You can also let the floating companion take occasional screen strolls from **Appearance → Let the mascot wander**. This is off by default. Each character uses a gait suited to its shape: for example, the rabbit hops, the palm sways its crown, and the little machines alternate their steps. The companion pauses between short walks, turns to face its direction, then returns to the position you chose. Clicking or dragging stops it at once. Wandering pauses while the wt-manager window is open or a merge message is waiting, and macOS Reduce Motion pauses all movement. The walking frames run only while travelling; macOS eases the window between destinations.
+
 ![Detailed pixel companions and simplified menu-bar mascots](docs/images/mascots.png)
 
 | Companion | Personality |

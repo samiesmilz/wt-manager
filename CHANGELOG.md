@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- Add optional mascot strolls with character-specific pixel gaits, eased travel, natural pauses, turns and a return to the user's resting spot.
+- Keep wandering off by default; pause it while wt-manager is open, when a merge message needs attention, and when macOS Reduce Motion is enabled.
+- Let a click or drag interrupt a stroll immediately; never save random stops as the user's preferred position.
+- Animate the walking pose only during movement and use native window easing between destinations.
+
 ## 0.7.3
 
 - Draw dedicated 22px menu-bar icons with larger faces, clearer eyes and distinct silhouettes. Preserve Wity’s original drawing.
