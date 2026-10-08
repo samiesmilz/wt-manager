@@ -48,10 +48,10 @@ public struct MascotWander {
     public mutating func tripLength() -> Int { Int(random(2...4)) }
 
     /// Only active interaction pauses this optional decoration. Unread PR
-    /// notifications are intentionally not part of the movement permission.
-    public static func isEnabled(wandering: Bool, floating: Bool, windowOpen: Bool,
+    /// notifications and main-window visibility do not gate movement.
+    public static func isEnabled(wandering: Bool, floating: Bool,
                                  committing: Bool, reduceMotion: Bool, interacting: Bool = false) -> Bool {
-        wandering && floating && !windowOpen && !committing && !reduceMotion && !interacting
+        wandering && floating && !committing && !reduceMotion && !interacting
     }
 
     public static func staysRooted(figure: String) -> Bool { figure == "palm" }

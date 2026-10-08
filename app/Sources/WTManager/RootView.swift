@@ -305,7 +305,7 @@ struct Header: View {
                 Toggle("Mascot merge messages", isOn: $store.mergeNudges)
                 Toggle("Let the mascot wander", isOn: $store.mascotWanders)
                     .help("Starts within a few seconds after this window closes. Coco stays put and occasionally topples in a gust. Pauses during cleanup or while macOS Reduce Motion is on.")
-                Text("Close this window to start. Coco stays rooted and plays in the breeze. PR messages stay readable without stopping strolls. Reduce Motion pauses movement.")
+                Text("Walks with this window open or closed. Coco stays rooted and plays in the breeze. PR messages stay readable without stopping strolls. Reduce Motion pauses movement.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)

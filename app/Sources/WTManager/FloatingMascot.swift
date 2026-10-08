@@ -156,7 +156,7 @@ final class FloatingMascot {
 
     private var mayWander: Bool {
         return MascotWander.isEnabled(wandering: store.mascotWanders, floating: store.floatingMascot,
-            windowOpen: mainWindowIsVisible(), committing: store.plan?.stage == .committing,
+            committing: store.plan?.stage == .committing,
             reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             interacting: userInteracting)
     }

@@ -3,14 +3,14 @@ import XCTest
 
 final class MascotWanderTests: XCTestCase {
     func testOnlyActiveInteractionAndAccessibilityPauseMovement() {
-        XCTAssertTrue(MascotWander.isEnabled(wandering: true, floating: true, windowOpen: false,
+        XCTAssertTrue(MascotWander.isEnabled(wandering: true, floating: true,
                                             committing: false, reduceMotion: false))
-        XCTAssertFalse(MascotWander.isEnabled(wandering: true, floating: true, windowOpen: false,
+        XCTAssertFalse(MascotWander.isEnabled(wandering: true, floating: true,
                     committing: false, reduceMotion: false, interacting: true))
-        for disabledInput in 0..<5 {
+        for disabledInput in 0..<4 {
             XCTAssertFalse(MascotWander.isEnabled(wandering: disabledInput != 0,
-                floating: disabledInput != 1, windowOpen: disabledInput == 2,
-                committing: disabledInput == 3, reduceMotion: disabledInput == 4))
+                floating: disabledInput != 1,
+                committing: disabledInput == 2, reduceMotion: disabledInput == 3))
         }
     }
 
