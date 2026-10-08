@@ -615,6 +615,34 @@ def sprite(cheek: int = 0, eyes: str = "open", frame: int = 0,
     return c.rows()
 
 
+def walking_sprite(cheek: int, eyes: str, frame: int, fig: Figure):
+    """Keep the original 22px silhouettes, adding a tiny figure-specific gait."""
+    phase = frame % FRAMES
+    rows = [list(row) for row in sprite(cheek, eyes, phase, fig)]
+    if fig.id == "cat":
+        # Alternate the cat's two paws: its tail already has its own idle wag.
+        dx = (0, 0, 1, 1, 0, 0, -1, -1)[phase]
+        for left, right in ((4, 9), (12, 17)):
+            paw = [(x, rows[22][x]) for x in range(left, right + 1) if rows[22][x] != "."]
+            for x, _ in paw:
+                rows[22][x] = "."
+            for x, ch in paw:
+                if left <= x + dx <= right:
+                    rows[22][x + dx] = ch
+    elif fig.id == "crab":
+        # Six short legs scuttle in alternating groups below its rigid shell.
+        dx = (0, 1, 1, 0, 0, -1, -1, 0)[phase]
+        for left, right in ((2, 6), (7, 11), (12, 16), (17, 20)):
+            for y in (21, 22):
+                leg = [(x, rows[y][x]) for x in range(left, right + 1) if rows[y][x] != "."]
+                for x, _ in leg:
+                    rows[y][x] = "."
+                for x, ch in leg:
+                    if left <= x + dx <= right:
+                        rows[y][x + dx] = ch
+    return ["".join(row) for row in rows]
+
+
 # ── mood ─────────────────────────────────────────────────────────────────────
 # A small glyph beside the head. The third channel: colour, mark and motion all
 # carry the mood, so none of them has to survive alone at a small size.
@@ -845,12 +873,15 @@ def export() -> dict:
     from companion_art import export as export_companions
     from menu_art import export as export_menu
     sprites = {}
+    walk_sprites = {}
     for fig in FIGURES.values():
         for gauge_level in range(len(POUCH)):
             for eye in EYES:
                 for frame in range(FRAMES):
                     sprites[f"{fig.id}/{gauge_level}/{eye}/{frame}"] = \
                         sprite(gauge_level, eye, frame, fig)
+                    walk_sprites[f"{fig.id}/{gauge_level}/{eye}/{frame}"] = \
+                        walking_sprite(gauge_level, eye, frame, fig)
     return {
         "version": 1, "width": W, "height": H, "frames": FRAMES,
         "slots": SLOTS, "skins": SKINS, "tints": TINTS,
@@ -868,6 +899,7 @@ def export() -> dict:
                   for name, (e, m, t, b) in MOODS.items()},
         "marks": MARKS,
         "sprites": sprites,
+        "walk_sprites": walk_sprites,
     }
 
 
