@@ -46,6 +46,15 @@ class CompanionArtTests(unittest.TestCase):
                 self.assertEqual(len(rows), 32, fig)
                 self.assertTrue(all(len(row)==32 for row in rows), fig)
 
+    def test_machine_steps_lift_one_foot_while_the_other_is_grounded(self):
+        for fig in ('robot','antenna'):
+            frames=[C.walking_sprite(fig,'open',f) for f in range(8)]
+            self.assertGreaterEqual(len({tuple(rows[27:]) for rows in frames}),6,fig)
+            for rows in frames:
+                self.assertTrue(any(ch!='.' for ch in rows[31]),fig)
+            self.assertTrue(all(ch=='.' for ch in frames[2][31][16:]),fig)
+            self.assertTrue(all(ch=='.' for ch in frames[6][31][:16]),fig)
+
 class MenuArtTests(unittest.TestCase):
     def test_small_icons_are_complete_and_expressions_remain_distinct(self):
         art=U.export(M.SKINS,M.FRAMES)

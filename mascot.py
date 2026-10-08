@@ -619,27 +619,17 @@ def walking_sprite(cheek: int, eyes: str, frame: int, fig: Figure):
     """Keep the original 22px silhouettes, adding a tiny figure-specific gait."""
     phase = frame % FRAMES
     rows = [list(row) for row in sprite(cheek, eyes, phase, fig)]
-    if fig.id == "cat":
-        # Alternate the cat's two paws: its tail already has its own idle wag.
-        dx = (0, 0, 1, 1, 0, 0, -1, -1)[phase]
-        for left, right in ((4, 9), (12, 17)):
-            paw = [(x, rows[22][x]) for x in range(left, right + 1) if rows[22][x] != "."]
-            for x, _ in paw:
-                rows[22][x] = "."
-            for x, ch in paw:
-                if left <= x + dx <= right:
-                    rows[22][x + dx] = ch
-    elif fig.id == "crab":
-        # Six short legs scuttle in alternating groups below its rigid shell.
-        dx = (0, 1, 1, 0, 0, -1, -1, 0)[phase]
-        for left, right in ((2, 6), (7, 11), (12, 16), (17, 20)):
-            for y in (21, 22):
-                leg = [(x, rows[y][x]) for x in range(left, right + 1) if rows[y][x] != "."]
-                for x, _ in leg:
-                    rows[y][x] = "."
-                for x, ch in leg:
-                    if left <= x + dx <= right:
-                        rows[y][x + dx] = ch
+    if fig.id in ("cat", "crab"):
+        groups=((4,9),(12,17)) if fig.id=="cat" else ((2,6),(7,11),(12,16),(17,20))
+        parts=[[(x,y,rows[y][x]) for y in (21,22) for x in range(left,right+1)
+                if rows[y][x]!="."] for left,right in groups]
+        for y in (21,22): rows[y]=["."]*22
+        for i,part in enumerate(parts):
+            step=(phase+i*4)%8
+            dx=(1,0,-1,-1,-1,0,1,1)[step]
+            lift=(0,0,0,0,1,1,1,0)[step]
+            for x,y,ch in part:
+                if 0<=x+dx<22 and 0<=y-lift<23: rows[y-lift][x+dx]=ch
     return ["".join(row) for row in rows]
 
 

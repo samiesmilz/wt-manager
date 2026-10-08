@@ -25,12 +25,23 @@ final class FloatingMascot {
     private var returningHome = false
     private var legsLeft = 0
     private var homeOrigin = NSPoint.zero
+    private var rootedStartedAt: TimeInterval?
+    private var movingFigure: String?
+    private var speechOrigin: NSPoint?
+    private var legStartedAt: TimeInterval = 0
+    private var legDuration: TimeInterval = 1
+    private var legDistance: Double = 0
+    private var userInteracting = false
+    private let traceMovement = ProcessInfo.processInfo.environment["WT_MANAGER_TRACE_WANDER"] == "1"
     private let openWindow: () -> Void
+    private let mainWindowIsVisible: () -> Bool
     private let positionKey = "wtmanager.floatingPosition.v1"
     private let size = NSSize(width: 84, height: 84)
 
-    init(store: Store, openWindow: @escaping () -> Void, menu: @escaping () -> NSMenu) {
+    init(store: Store, openWindow: @escaping () -> Void,
+         mainWindowIsVisible: @escaping () -> Bool, menu: @escaping () -> NSMenu) {
         self.openWindow = openWindow
+        self.mainWindowIsVisible = mainWindowIsVisible
         self.store = store
         panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -50,6 +61,7 @@ final class FloatingMascot {
         view.interactionBegan = { [weak self] point, local in
             self?.interruptForUser(globalPoint: point, localPoint: local)
         }
+        view.interactionEnded = { [weak self] in self?.userInteracting = false }
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.button)
         view.setAccessibilityLabel("Open wt-manager")
@@ -68,6 +80,7 @@ final class FloatingMascot {
 
     func sync() {
         guard store.floatingMascot else { stopWander(at: nil); panel.orderOut(nil); speech?.orderOut(nil); return }
+        if let movingFigure, movingFigure != store.figure { stopWander(at: nil); firstWander = true }
         let pulse = Pulse.shared
         syncWander()
         let frame = walking ? walkFrame : pulse.wag
@@ -85,8 +98,7 @@ final class FloatingMascot {
     }
 
     private func syncSpeech() {
-        let mainVisible = NSApp.windows.contains { $0.isVisible && !($0 is NSPanel) }
-        guard store.mergeNudges, !mainVisible, store.plan?.stage != .committing,
+        guard store.mergeNudges, !mainWindowIsVisible(), store.plan?.stage != .committing,
               let nudge = store.prLifecycle.pending.first else { speech?.orderOut(nil); return }
         if speech == nil {
             let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 180),
@@ -101,6 +113,7 @@ final class FloatingMascot {
         let speechKey = "\(nudge.id)/\(nudge.paths)/\(nudge.occupiedKb ?? -1)/\(nudge.blocked)"
         if spoken != speechKey {
             spoken = speechKey
+            speechOrigin = nil
             let host = NSHostingView(rootView: MergeSpeechBanner(store: store, nudge: nudge,
                 compact: true, onReview: openWindow).background(Color(nsColor: .windowBackgroundColor)))
             host.sizingOptions = []
@@ -108,7 +121,9 @@ final class FloatingMascot {
             host.autoresizingMask = [.width, .height]
             speech.contentView = host
         }
-        let origin = NSPoint(x: panel.frame.maxX + 8, y: panel.frame.minY)
+        // Keep an unread banner still and readable while the mascot explores.
+        if speechOrigin == nil { speechOrigin = NSPoint(x: panel.frame.maxX + 8, y: panel.frame.minY) }
+        let origin = speechOrigin!
         speech.setFrame(FloatingPlacement.frame(origin: origin, size: speech.frame.size,
                         screens: NSScreen.screens.map(\.visibleFrame)), display: true)
         if !speech.isVisible { speech.orderFrontRegardless() }
@@ -140,11 +155,10 @@ final class FloatingMascot {
     }
 
     private var mayWander: Bool {
-        guard store.mascotWanders, store.floatingMascot,
-              store.prLifecycle.pending.isEmpty, store.plan?.stage != .committing,
-              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return false }
-        let mainVisible = NSApp.windows.contains { $0.isVisible && !($0 is NSPanel) }
-        return !mainVisible
+        return MascotWander.isEnabled(wandering: store.mascotWanders, floating: store.floatingMascot,
+            windowOpen: mainWindowIsVisible(), committing: store.plan?.stage == .committing,
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            interacting: userInteracting)
     }
 
     /// The existing clock advances character poses. One delayed action starts
@@ -170,6 +184,17 @@ final class FloatingMascot {
 
     private func startNextLeg() {
         guard mayWander else { return }
+        movingFigure = store.figure
+        if MascotWander.staysRooted(figure: store.figure) {
+            facesLeft = false
+            if traceMovement { NSLog("wt-manager wander: rooted gesture started at %@", NSStringFromPoint(panel.frame.origin)) }
+            firstWander = false
+            walking = true
+            walkFrame = 0
+            rootedStartedAt = ProcessInfo.processInfo.systemUptime
+            scheduleGaitFrame()
+            return
+        }
         if !returningHome && legsLeft == 0 { legsLeft = wanderPlanner.tripLength() }
         firstWander = false
         let current = panel.frame
@@ -203,13 +228,18 @@ final class FloatingMascot {
         drawn = nil
         let generation = wanderGeneration
         let duration = MascotWander.travelTime(from: current.origin, to: destination)
+        legStartedAt = ProcessInfo.processInfo.systemUptime
+        legDuration = duration
+        legDistance = hypot(destination.x-current.minX, destination.y-current.minY)
+        if traceMovement { NSLog("wt-manager wander: stroll from %@ to %@", NSStringFromPoint(current.origin), NSStringFromPoint(destination)) }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = duration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 1.0/3.0, 0, 2.0/3.0, 1)
             self.panel.animator().setFrame(target, display: true)
         } completionHandler: { [weak self] in
             Task { @MainActor in
                 guard let self, self.wanderGeneration == generation, self.walking else { return }
+                if self.traceMovement { NSLog("wt-manager wander: arrived at %@", NSStringFromPoint(self.panel.frame.origin)) }
                 self.walking = false
                 self.gaitWork?.cancel(); self.gaitWork = nil
                 self.drawn = nil
@@ -225,19 +255,37 @@ final class FloatingMascot {
         }
     }
 
-    /// Run the 8-frame pixel gait only during a trip. The shared 220 ms
+    /// Sample the distance-based gait only during a trip. The shared 220 ms
     /// expression clock is intentionally slower for blinks and idles.
     private func scheduleGaitFrame() {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.walking else { return }
-            self.walkFrame = (self.walkFrame + 1) % 8
+            if let start = self.rootedStartedAt {
+                let progress = (ProcessInfo.processInfo.systemUptime - start) / 3.6
+                self.view.rotation = MascotWander.rootedAngle(progress: progress)
+                self.view.needsDisplay = true
+                if progress >= 1 {
+                    if self.traceMovement { NSLog("wt-manager wander: rooted recovery at %@", NSStringFromPoint(self.panel.frame.origin)) }
+                    self.walking = false
+                    self.rootedStartedAt = nil
+                    self.view.rotation = 0
+                    self.gaitWork = nil
+                    self.drawn = nil
+                    self.scheduleWander(after: self.wanderPlanner.restAfterTrip())
+                    return
+                }
+            }
+            self.walkFrame = self.rootedStartedAt != nil ? (self.walkFrame + 1) % 8
+                : MascotWander.gaitFrame(distance: self.legDistance,
+                    elapsed: ProcessInfo.processInfo.systemUptime - self.legStartedAt,
+                    duration: self.legDuration)
             self.drawn = nil
             self.gaitWork = nil
             self.sync()
             self.scheduleGaitFrame()
         }
         gaitWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (rootedStartedAt == nil ? 0.08 : 0.06), execute: work)
     }
 
     private func stopWander(at origin: NSPoint?) {
@@ -248,12 +296,18 @@ final class FloatingMascot {
         if walking { panel.setFrameOrigin(origin ?? panel.frame.origin) }
         gaitWork?.cancel(); gaitWork = nil
         walking = false
+        firstWander = true
+        rootedStartedAt = nil
+        movingFigure = nil
+        view.rotation = 0
+        view.needsDisplay = true
         returningHome = false
         legsLeft = 0
         drawn = nil
     }
 
     private func interruptForUser(globalPoint: NSPoint, localPoint: NSPoint) {
+        userInteracting = true
         let origin = NSPoint(x: globalPoint.x-localPoint.x, y: globalPoint.y-localPoint.y)
         stopWander(at: origin)
     }
@@ -262,10 +316,12 @@ final class FloatingMascot {
 @MainActor
 private final class FloatingMascotView: NSView {
     var image: NSImage?
+    var rotation: Double = 0
     var makeMenu: (() -> NSMenu)?
     var openWindow: (() -> Void)?
     var didMove: (() -> Void)?
     var interactionBegan: ((NSPoint, NSPoint) -> Void)?
+    var interactionEnded: (() -> Void)?
     private var pressPoint: NSPoint?
     private var pressOrigin: NSPoint?
     private var moved = false
@@ -278,6 +334,26 @@ private final class FloatingMascotView: NSView {
         let rect = NSRect(x: floor((bounds.width - image.size.width) / 2),
                           y: floor((bounds.height - image.size.height) / 2),
                           width: image.size.width, height: image.size.height)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        if rotation != 0 {
+            let pivot = NSPoint(x: rect.midX, y: rect.minY)
+            let turn = AffineTransform(rotationByDegrees: CGFloat(-rotation))
+            let corners = [NSPoint(x: rect.minX, y: rect.minY), NSPoint(x: rect.maxX, y: rect.minY),
+                           NSPoint(x: rect.minX, y: rect.maxY), NSPoint(x: rect.maxX, y: rect.maxY)]
+                .map { turn.transform(NSPoint(x: $0.x - pivot.x, y: $0.y - pivot.y)) }
+            let minX = corners.map(\.x).min()!, maxX = corners.map(\.x).max()!
+            let minY = corners.map(\.y).min()!, maxY = corners.map(\.y).max()!
+            let scale = min(1, min((bounds.width - 4) / (maxX - minX), (bounds.height - 4) / (maxY - minY)))
+            let x = min(max(pivot.x, 2 - minX * scale), bounds.width - 2 - maxX * scale)
+            let y = min(max(pivot.y, 2 - minY * scale), bounds.height - 2 - maxY * scale)
+            let transform = NSAffineTransform()
+            transform.translateX(by: x, yBy: y)
+            transform.rotate(byDegrees: CGFloat(-rotation))
+            transform.scale(by: scale)
+            transform.translateX(by: -pivot.x, yBy: -pivot.y)
+            transform.concat()
+        }
         image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
@@ -301,16 +377,19 @@ private final class FloatingMascotView: NSView {
     override func mouseUp(with event: NSEvent) {
         if moved { didMove?() } else { openWindow?() }
         pressPoint = nil; pressOrigin = nil
+        interactionEnded?()
     }
     override func rightMouseDown(with event: NSEvent) {
         let current = NSEvent.mouseLocation
         interactionBegan?(current, event.locationInWindow)
         showMenu(event)
+        interactionEnded?()
     }
     override func accessibilityPerformPress() -> Bool {
         guard let openWindow else { return false }
         interactionBegan?(window?.frame.origin ?? .zero, .zero)
         openWindow()
+        interactionEnded?()
         return true
     }
     private func showMenu(_ event: NSEvent) {

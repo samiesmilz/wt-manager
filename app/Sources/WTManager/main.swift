@@ -33,7 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 MainActor.assumeIsolated { self?.drawStatusItem(); self?.floating?.sync() }
             }
 
-        floating = FloatingMascot(store: store, openWindow: { [weak self] in self?.openWindow() }) { [weak self] in
+        floating = FloatingMascot(store: store, openWindow: { [weak self] in self?.openWindow() },
+            mainWindowIsVisible: { [weak self] in self?.window?.isVisible == true }) { [weak self] in
             guard let self else { return NSMenu() }
             let menu = NSMenu(); menu.autoenablesItems = false; menu.delegate = self
             self.menuNeedsUpdate(menu)

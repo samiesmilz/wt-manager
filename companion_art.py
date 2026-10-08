@@ -187,19 +187,31 @@ def walking_sprite(figure,eyes,frame):
             source=rows[y];rows[y]=['.']*SIZE
             for x,ch in enumerate(source):
                 if ch!='.' and 0<=x+dx<SIZE: rows[y][x+dx]=ch
-    if figure in ('robot','antenna'):
-        # Small alternating toe taps, under each character's own upper-body gesture.
-        offsets=(0,0,1,1,0,0,-1,-1)
-        feet=((8,14),(18,24)) if figure=='robot' else ((10,14),(20,24))
-        for foot,(left,right) in enumerate(feet):
-            dx=offsets[(phase+(0 if foot==0 else 4))%8]
-            source=[]
-            for y in ((29,30,31) if figure=='robot' else (30,31)):
-                for x in range(left,right+1):
-                    ch=rows[y][x]
-                    if ch!='.': source.append((x,y,ch));rows[y][x]='.'
-            for x,y,ch in source:
-                if 0<=x+dx<SIZE: rows[y][x+dx]=ch
+    if figure in ('robot','antenna','rooster'):
+        # Swing one leg through the air while the other plants and pushes.
+        # Redraw the whole leg, not just a one-pixel toe tap.
+        c=Canvas();c.p=rows
+        top=27 if figure=='antenna' else 25
+        for y in range(top,SIZE): c.p[y]=['.']*SIZE
+        hips=(12,22) if figure=='antenna' else ((12,20) if figure=='robot' else (13,22))
+        stride=(3,1,-1,-3,-3,-1,1,3)
+        lifts=(0,0,0,0,1,3,3,1)
+        for i,hip in enumerate(hips):
+            step=(phase+i*4)%8
+            toe=hip+stride[step];ground=31-lifts[step]
+            knee=hip+stride[step]//2
+            if figure=='rooster':
+                c.line(hip,top,knee,27,'a');c.line(knee,27,toe,ground,'a')
+                c.line(toe-2,ground,toe+2,ground,'a')
+            else:
+                knee_y=min(top+2,ground-1)
+                for dx in (-1,0,1):
+                    c.line(hip+dx,top,knee+dx,knee_y,'#')
+                    c.line(knee+dx,knee_y,toe+dx,ground-1,'#')
+                c.line(hip,top,knee,knee_y,'f');c.line(knee,knee_y,toe,ground-1,'f')
+                c.rect(toe-2,ground-1,toe+2,ground,'#')
+                c.line(toe-1,ground-1,toe+1,ground-1,'f')
+        rows=c.p
     return [''.join(row) for row in rows]
 
 # Accessory colours are identity, never the live state. The framed badge is

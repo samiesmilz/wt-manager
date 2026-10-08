@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Check the actual main window rather than treating the menu-bar icon's window as an open app window; this restores wandering and floating merge messages.
+- Unread merged-PR notices no longer stop mascot wandering indefinitely; speech banners stay still while the companion explores.
+- Keep Coco rooted: the palm catches a gust, topples in place, and springs upright instead of walking around the screen.
+- Slow strolls to a relaxed pace, advance the walking pose by distance travelled, and give the legged companions clear alternating planted and lifted steps.
+
 ## 0.8.0
 
 - Add optional mascot strolls with character-specific pixel gaits, eased travel, natural pauses, turns and a return to the user's resting spot.
