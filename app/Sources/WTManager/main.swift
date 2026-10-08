@@ -166,6 +166,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let floatingItem = item("Show floating mascot", #selector(toggleFloating), key: "")
         floatingItem.state = store.floatingMascot ? .on : .off
         menu.addItem(floatingItem)
+        let wanderItem = item("Let the mascot wander", #selector(toggleWandering), key: "")
+        wanderItem.state = store.mascotWanders ? .on : .off
+        menu.addItem(wanderItem)
         menu.addItem(item("Reset mascot position", #selector(resetFloating), key: ""))
         menu.addItem(.separator())
         menu.addItem(item("Refresh now", #selector(refresh), key: "r"))
@@ -185,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func toggleFloating() { store.floatingMascot.toggle(); floating?.sync() }
+    @objc private func toggleWandering() { store.mascotWanders.toggle(); floating?.sync() }
     @objc private func resetFloating() { store.floatingMascot = true; floating?.resetPosition(); floating?.sync() }
     @objc private func quitApp() { store.quit() }
     @objc private func checkUpdates() { store.updates.check(manual: true) }

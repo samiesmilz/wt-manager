@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 import WTManagerKit
 
@@ -13,6 +14,17 @@ final class FloatingMascot {
     private var drawn: String?
     private var speech: NSPanel?
     private var spoken: String?
+    private var wanderPlanner = MascotWander()
+    private var wanderWork: DispatchWorkItem?
+    private var gaitWork: DispatchWorkItem?
+    private var wanderGeneration = 0
+    private var walking = false
+    private var walkFrame = 0
+    private var firstWander = true
+    private var facesLeft = false
+    private var returningHome = false
+    private var legsLeft = 0
+    private var homeOrigin = NSPoint.zero
     private let openWindow: () -> Void
     private let positionKey = "wtmanager.floatingPosition.v1"
     private let size = NSSize(width: 84, height: 84)
@@ -34,28 +46,38 @@ final class FloatingMascot {
         panel.contentView = view
         view.makeMenu = menu
         view.openWindow = openWindow
-        view.didMove = { [weak self] in self?.keepReachableAndSave() }
+        view.didMove = { [weak self] in self?.keepReachableAndSave(userInitiated: true) }
+        view.interactionBegan = { [weak self] point, local in
+            self?.interruptForUser(globalPoint: point, localPoint: local)
+        }
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.button)
         view.setAccessibilityLabel("Open wt-manager")
-        view.setAccessibilityHelp("Click to open wt-manager. Drag to move. Right-click for more actions.")
+        view.setAccessibilityHelp("Click to open wt-manager. Drag to move. Optional strolls can be interrupted with a click or drag.")
         restorePosition()
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.keepReachableAndSave() }
+                MainActor.assumeIsolated {
+                    self?.stopWander(at: nil)
+                    self?.keepReachableAndSave(userInitiated: false)
+                }
             }
     }
 
     deinit { if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) } }
 
     func sync() {
-        guard store.floatingMascot else { panel.orderOut(nil); speech?.orderOut(nil); return }
+        guard store.floatingMascot else { stopWander(at: nil); panel.orderOut(nil); speech?.orderOut(nil); return }
         let pulse = Pulse.shared
-        let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(pulse.wag)/\(pulse.blinking)"
+        syncWander()
+        let frame = walking ? walkFrame : pulse.wag
+        let key = "\(store.figure)/\(store.skin)/\(store.face?.gauge ?? 0)/\(store.face?.eyes ?? "shut")/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(frame)/\(pulse.blinking)/\(walking)/\(facesLeft)"
         if key != drawn {
             drawn = key
-            view.image = store.image(height: 69, frame: pulse.wag, blinking: pulse.blinking, detailed: true)
-            view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · click to open wt-manager; drag to move; right-click for more actions"
+            view.image = store.image(height: 69, frame: frame, blinking: pulse.blinking,
+                                     detailed: true, walking: walking, facesLeft: facesLeft)
+            let roamTip = store.mascotWanders ? " · occasional strolls; click or drag to interrupt" : ""
+            view.toolTip = "\(store.face?.meaning ?? "Reading your repos") · click to open wt-manager; drag to move\(roamTip); right-click for more actions"
             view.needsDisplay = true
         }
         if !panel.isVisible { panel.orderFrontRegardless() }
@@ -93,21 +115,147 @@ final class FloatingMascot {
     }
 
     func resetPosition() {
+        stopWander(at: nil)
         UserDefaults.standard.removeObject(forKey: positionKey)
         restorePosition()
+        sync()
     }
 
     private func restorePosition() {
         let stored = UserDefaults.standard.array(forKey: positionKey) as? [Double]
         let origin = stored.flatMap { $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil }
-        panel.setFrame(FloatingPlacement.frame(origin: origin, size: size,
-                       screens: NSScreen.screens.map(\.visibleFrame)), display: true)
+        let frame = FloatingPlacement.frame(origin: origin, size: size,
+                           screens: NSScreen.screens.map(\.visibleFrame))
+        panel.setFrame(frame, display: true)
+        homeOrigin = frame.origin
     }
 
-    private func keepReachableAndSave() {
-        panel.setFrame(FloatingPlacement.frame(origin: panel.frame.origin, size: size,
-                       screens: NSScreen.screens.map(\.visibleFrame)), display: true)
-        UserDefaults.standard.set([Double(panel.frame.minX), Double(panel.frame.minY)], forKey: positionKey)
+    private func keepReachableAndSave(userInitiated: Bool) {
+        let frame = FloatingPlacement.frame(origin: panel.frame.origin, size: size,
+                           screens: NSScreen.screens.map(\.visibleFrame))
+        panel.setFrame(frame, display: true)
+        guard userInitiated else { return }
+        homeOrigin = frame.origin
+        UserDefaults.standard.set([Double(homeOrigin.x), Double(homeOrigin.y)], forKey: positionKey)
+    }
+
+    private var mayWander: Bool {
+        guard store.mascotWanders, store.floatingMascot,
+              store.prLifecycle.pending.isEmpty, store.plan?.stage != .committing,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return false }
+        let mainVisible = NSApp.windows.contains { $0.isVisible && !($0 is NSPanel) }
+        return !mainVisible
+    }
+
+    /// The existing clock advances character poses. One delayed action starts
+    /// each trip; AppKit animates the window between endpoints without polling.
+    private func syncWander() {
+        guard mayWander else { stopWander(at: nil); return }
+        guard !walking, wanderWork == nil else { return }
+        let delay = firstWander ? wanderPlanner.firstPause()
+            : (returningHome || legsLeft > 0 ? wanderPlanner.pauseAtWaypoint() : wanderPlanner.restAfterTrip())
+        scheduleWander(after: delay)
+    }
+
+    private func scheduleWander(after delay: TimeInterval) {
+        guard mayWander, wanderWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.wanderWork = nil
+            self.startNextLeg()
+        }
+        wanderWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func startNextLeg() {
+        guard mayWander else { return }
+        if !returningHome && legsLeft == 0 { legsLeft = wanderPlanner.tripLength() }
+        firstWander = false
+        let current = panel.frame
+        let displays = NSScreen.screens.map(\.visibleFrame)
+        let goingHome = returningHome
+        let destination: CGPoint?
+        if goingHome {
+            destination = FloatingPlacement.frame(origin: homeOrigin, size: size, screens: displays).origin
+        } else {
+            destination = wanderPlanner.destination(from: current, size: size, displays: displays)
+        }
+        guard let destination else {
+            legsLeft = 0; returningHome = false
+            scheduleWander(after: wanderPlanner.restAfterTrip())
+            return
+        }
+        let target = NSRect(origin: destination, size: size)
+        guard hypot(target.minX-current.minX, target.minY-current.minY) > 6 else {
+            if goingHome { legsLeft = 0; returningHome = false } else {
+                legsLeft -= 1
+                if legsLeft == 0 { returningHome = true }
+            }
+            scheduleWander(after: goingHome || returningHome
+                ? wanderPlanner.restAfterTrip() : wanderPlanner.pauseAtWaypoint())
+            return
+        }
+        facesLeft = MascotWander.facesLeft(from: current.origin, to: destination)
+        walking = true
+        walkFrame = 0
+        scheduleGaitFrame()
+        drawn = nil
+        let generation = wanderGeneration
+        let duration = MascotWander.travelTime(from: current.origin, to: destination)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            self.panel.animator().setFrame(target, display: true)
+        } completionHandler: { [weak self] in
+            Task { @MainActor in
+                guard let self, self.wanderGeneration == generation, self.walking else { return }
+                self.walking = false
+                self.gaitWork?.cancel(); self.gaitWork = nil
+                self.drawn = nil
+                if goingHome { self.legsLeft = 0; self.returningHome = false }
+                else {
+                    self.legsLeft -= 1
+                    if self.legsLeft == 0 { self.returningHome = true }
+                }
+                self.scheduleWander(after: goingHome
+                    ? self.wanderPlanner.restAfterTrip()
+                    : self.wanderPlanner.pauseAtWaypoint())
+            }
+        }
+    }
+
+    /// Run the 8-frame pixel gait only during a trip. The shared 220 ms
+    /// expression clock is intentionally slower for blinks and idles.
+    private func scheduleGaitFrame() {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.walking else { return }
+            self.walkFrame = (self.walkFrame + 1) % 8
+            self.drawn = nil
+            self.gaitWork = nil
+            self.sync()
+            self.scheduleGaitFrame()
+        }
+        gaitWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14, execute: work)
+    }
+
+    private func stopWander(at origin: NSPoint?) {
+        guard walking || wanderWork != nil || returningHome || legsLeft != 0 else { return }
+        wanderGeneration &+= 1
+        wanderWork?.cancel()
+        wanderWork = nil
+        if walking { panel.setFrameOrigin(origin ?? panel.frame.origin) }
+        gaitWork?.cancel(); gaitWork = nil
+        walking = false
+        returningHome = false
+        legsLeft = 0
+        drawn = nil
+    }
+
+    private func interruptForUser(globalPoint: NSPoint, localPoint: NSPoint) {
+        let origin = NSPoint(x: globalPoint.x-localPoint.x, y: globalPoint.y-localPoint.y)
+        stopWander(at: origin)
     }
 }
 
@@ -117,6 +265,7 @@ private final class FloatingMascotView: NSView {
     var makeMenu: (() -> NSMenu)?
     var openWindow: (() -> Void)?
     var didMove: (() -> Void)?
+    var interactionBegan: ((NSPoint, NSPoint) -> Void)?
     private var pressPoint: NSPoint?
     private var pressOrigin: NSPoint?
     private var moved = false
@@ -133,8 +282,12 @@ private final class FloatingMascotView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        pressPoint = NSEvent.mouseLocation
-        pressOrigin = window?.frame.origin
+        let current = NSEvent.mouseLocation
+        pressPoint = current
+        let local = event.locationInWindow
+        let origin = NSPoint(x: current.x-local.x, y: current.y-local.y)
+        interactionBegan?(current, local)
+        pressOrigin = origin
         moved = false
     }
     override func mouseDragged(with event: NSEvent) {
@@ -149,9 +302,14 @@ private final class FloatingMascotView: NSView {
         if moved { didMove?() } else { openWindow?() }
         pressPoint = nil; pressOrigin = nil
     }
-    override func rightMouseDown(with event: NSEvent) { showMenu(event) }
+    override func rightMouseDown(with event: NSEvent) {
+        let current = NSEvent.mouseLocation
+        interactionBegan?(current, event.locationInWindow)
+        showMenu(event)
+    }
     override func accessibilityPerformPress() -> Bool {
         guard let openWindow else { return false }
+        interactionBegan?(window?.frame.origin ?? .zero, .zero)
         openWindow()
         return true
     }

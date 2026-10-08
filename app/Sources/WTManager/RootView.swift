@@ -303,6 +303,11 @@ struct Header: View {
                 Button("Check for updates…") { store.updates.check(manual: true) }
                 Toggle("Check updates automatically", isOn: $store.automaticUpdates)
                 Toggle("Mascot merge messages", isOn: $store.mergeNudges)
+                Toggle("Let the mascot wander", isOn: $store.mascotWanders)
+                    .help("Starts within a few seconds after this window closes. Pauses while wt-manager or a merge message is open, or while macOS Reduce Motion is on.")
+                Text("Strolls start shortly after this window closes. An open merge message or macOS Reduce Motion also pauses them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
                 Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()
