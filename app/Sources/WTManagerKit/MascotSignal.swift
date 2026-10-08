@@ -31,12 +31,18 @@ public enum MascotSignal {
         return rows.map { String($0) }
     }
 
-    public static func adding(to image: NSImage, mood: String, tint: String? = nil) -> NSImage {
+    public static func adding(to image: NSImage, mood: String, tint: String? = nil,
+                              facesLeft: Bool = false) -> NSImage {
         let result = NSImage(size: image.size)
         let scale: CGFloat = 1
         result.lockFocus()
         NSGraphicsContext.current?.imageInterpolation = .none
-        image.draw(at: .zero, from: .zero, operation: .sourceOver, fraction: 1)
+        if facesLeft {
+            let context = NSGraphicsContext.current?.cgContext
+            context?.saveGState(); context?.translateBy(x: image.size.width, y: 0); context?.scaleBy(x: -1, y: 1)
+            image.draw(at: .zero, from: .zero, operation: .sourceOver, fraction: 1)
+            context?.restoreGState()
+        } else { image.draw(at: .zero, from: .zero, operation: .sourceOver, fraction: 1) }
         draw(mood: mood, tint: tint, at: NSPoint(x: image.size.width - 9 * scale, y: 0), scale: scale)
         result.unlockFocus()
         return result
