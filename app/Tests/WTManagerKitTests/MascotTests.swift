@@ -53,6 +53,16 @@ final class MascotTests: XCTestCase {
         }
     }
 
+    func testEveryDrawnCoatNamesARealCharacterAndARealCoat() throws {
+        // A typo here previews one coat and puts on another, or nothing.
+        let m = try load()
+        let ids = Set(m.figures.map(\.id))
+        for (figure, coat) in Mascot.drawnCoats {
+            XCTAssertTrue(ids.contains(figure), "no character \(figure)")
+            XCTAssertNotNil(m.skins[coat], "\(figure) is drawn in \(coat), which does not exist")
+        }
+    }
+
     func testAFigureNobodyShipsFallsBackRatherThanVanishing() throws {
         // A saved preference outlives the character it names — a cast member
         // renamed or dropped between releases would otherwise leave the app

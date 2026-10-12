@@ -731,7 +731,7 @@ private struct CastSheet: View {
                         VStack(spacing: 4) {
                             if let image = store.mascot?.image(
                                 figure: f.id, gauge: 2, eyes: "open", frame: 0,
-                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry", "pup": "snow", "rex": "moss"][f.id] ?? store.skin,
+                                skin: Mascot.drawnCoats[f.id] ?? store.skin,
                                 tint: store.face?.tint ?? "#3fb27f",
                                 fitting: size, detailed: size > 30, showSignal: size > 30) {
                                 Image(nsImage: image).interpolation(.none)
@@ -764,7 +764,7 @@ private struct MotionSheet: View {
                     ForEach(0..<8, id: \.self) { frame in
                         VStack(spacing: 5) {
                             if let image = store.mascot?.image(figure: figure.id, gauge: 0, eyes: "open", frame: frame,
-                                skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry", "pup": "snow", "rex": "moss"][figure.id] ?? "acorn",
+                                skin: Mascot.drawnCoats[figure.id] ?? "acorn",
                                 tint: "#3fb27f", fitting: 69, mood: "proud", detailed: true) {
                                 Image(nsImage: image).interpolation(.none)
                             }
@@ -794,7 +794,7 @@ private struct SignalSheet: View {
                     ForEach(MascotSignal.moods, id: \.self) { mood in
                         let eyes = ["lost": "squint", "working": "shut", "alarmed": "wide", "nudging": "glance", "burdened": "squint", "calm": "open", "proud": "open", "asleep": "shut"][mood] ?? "open"
                         if let image = store.mascot?.image(figure: figure.id, gauge: 0, eyes: eyes, frame: 0,
-                            skin: ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry", "pup": "snow", "rex": "moss"][figure.id] ?? "acorn",
+                            skin: Mascot.drawnCoats[figure.id] ?? "acorn",
                             tint: MascotSignal.colors[mood] ?? "#8b93a1", fitting: 22, mood: mood) {
                             Image(nsImage: image).interpolation(.none).frame(width: 70, height: 34)
                         }

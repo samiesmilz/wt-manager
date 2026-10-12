@@ -91,6 +91,15 @@ public enum Ink {
 }
 
 extension Mascot {
+    /// The coat each character was drawn in. The picker previews a character
+    /// in it and choosing the character puts it on, so every surface has to
+    /// agree — which is why there is one table. It was copied into five views,
+    /// and adding a character meant finding all five.
+    public static let drawnCoats: [String: String] = [
+        "robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost",
+        "palm": "tropical", "orb": "pearl", "antenna": "cherry", "pup": "snow", "rex": "moss",
+    ]
+
     /// One frame as an image, sized to fit `height` points.
     ///
     /// Drawn at an integral pixel scale and never interpolated: a pixel

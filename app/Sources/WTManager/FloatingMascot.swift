@@ -318,6 +318,9 @@ final class FloatingMascot {
         userInteracting = true
         let origin = NSPoint(x: globalPoint.x-localPoint.x, y: globalPoint.y-localPoint.y)
         stopWander(at: origin)
+        // Being clicked or put somewhere counts as a rest, not a fresh start:
+        // the quick first stroll walked off a few seconds after a drag.
+        firstWander = false
     }
 }
 

@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
 
+- Add Bork, a snow-white puppy with a red bandana, and Chomp, a tiny rex with arms that miss its mouth. Each has a front portrait, a menu-bar portrait and a walking profile.
+- Bork trots on diagonal pairs with a wagging tail and a swinging ear; Chomp stomps on thick legs, its body dropping as each foot lands and its head a beat later. Both walk on the shared planted-foot gait, so neither skates.
 - Keep Coco rooted in place: a gust sways its drawn fronds and trunk while the base and sand stay put. The old 76° topple rotated, shifted and shrank the whole tree to fit its window, so it looked like it was flying.
-- Redraw Bork and Chomp's walks on the shared planted-foot gait at the standard pace: Bork trots on diagonal pairs with a wagging tail and swinging ear; Chomp stomps on two-pixel legs, its body dropping as each foot lands and its head a beat later. Their old lunge and lurch moved the window faster than their feet, so they skated.
-- Add Bork and Chomp: one tooth for Chomp as its caption says, and separate feet.
+- Clicking or dragging the mascot now counts as a rest: it no longer walks off again a few seconds after you put it somewhere.
+- Keep each character's drawn coat in one shared table instead of five copies.
 
 - Expand walking to 16 poses with lifted recovery arcs and forward foot placement; align leg attachments so the recovering foot passes the planted foot.
 - Match Wity and Nipper’s walking art to their original portrait grids and anchor all floating drawings to a shared foot baseline.

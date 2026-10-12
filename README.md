@@ -118,7 +118,7 @@ Detailed companions have separate **32×32 drawings**, shown at **64×64pt** on 
 
 You can also let the floating companion take slow, short screen strolls from **Appearance → Let the mascot wander**. This is off by default. Moving companions use separate side profiles, facing their direction of travel, then turn back to their front portraits when resting. Their gaits suit their shapes: the rabbit hops with a planted back foot, the crab scuttles, Bork trots on diagonal pairs, Chomp stomps on thick legs with its head landing a beat late, and the little machines lift each foot ahead before landing. Mallow rolls. Walking keeps each character’s portrait scale and foot baseline, with a brief blend when turning into or out of its profile. Coco stays rooted: a gust sways its fronds and trunk while its base and sand never move. The companion pauses between mostly horizontal walks, then returns to the position you chose at the same gentle pace. Clicking or dragging stops it at once. The first stroll starts a few seconds after enabling wandering, whether the wt-manager window is open or closed. Wandering pauses during cleanup and while macOS Reduce Motion is enabled. Unread PR messages stay still and readable without stopping the mascot. The body advances with each alternating walking pose and hides its status arrow while walking. The pose clock runs only during travel.
 
-![Side-profile walking poses: Wity, Nipper, Byte, Cooper, Pip, Flurry, Mallow and Bop](docs/images/walking.gif)
+![Side-profile walking poses: Wity, Nipper, Byte, Cooper, Pip, Flurry, Mallow, Bop, Bork and Chomp](docs/images/walking.gif)
 
 ![Detailed pixel companions and simplified menu-bar mascots](docs/images/mascots.png)
 
