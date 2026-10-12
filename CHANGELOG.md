@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep Coco rooted in place: a gust sways its drawn fronds and trunk while the base and sand stay put. The old 76° topple rotated, shifted and shrank the whole tree to fit its window, so it looked like it was flying.
+- Redraw Bork and Chomp's walks on the shared planted-foot gait at the standard pace: Bork trots on diagonal pairs with a wagging tail and swinging ear; Chomp stomps on two-pixel legs, its body dropping as each foot lands and its head a beat later. Their old lunge and lurch moved the window faster than their feet, so they skated.
+- Add Bork and Chomp: one tooth for Chomp as its caption says, and separate feet.
+
 - Expand walking to 16 poses with lifted recovery arcs and forward foot placement; align leg attachments so the recovering foot passes the planted foot.
 - Match Wity and Nipper’s walking art to their original portrait grids and anchor all floating drawings to a shared foot baseline.
 - Use smaller, more frequent advances at the same slow average pace, with hop-specific rabbit travel and snowman waddling.

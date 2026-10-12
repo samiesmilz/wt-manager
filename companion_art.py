@@ -214,7 +214,10 @@ def foot_pose(hip, phase, floor=31):
     phase %= WALK_FRAMES
     return hip+STRIDE[phase], floor-LIFT[phase]
 
-def _side_leg(c, hip, top, phase, fill='f', bird=False, floor=31, slim=False):
+def _side_leg(c, hip, top, phase, fill='f', bird=False, floor=31, slim=False, width=1):
+    # `width` thickens the fill, not the outline: a heavy leg is one stroke
+    # several pixels wide. Two thin legs drawn side by side left a dark seam
+    # down the middle of each.
     toe,ground=foot_pose(hip,phase,floor)
     knee=hip+STRIDE[phase % WALK_FRAMES]//2
     knee_y=min(top+2,ground-1)
@@ -222,12 +225,13 @@ def _side_leg(c, hip, top, phase, fill='f', bird=False, floor=31, slim=False):
         c.line(hip,top,knee,knee_y,'a');c.line(knee,knee_y,toe,ground,'a')
         c.line(toe-1,ground,toe+1,ground,'a')
     else:
-        for dx in ((0,) if slim else (-1,0,1)):
+        for dx in ((0,) if slim else range(-1,width+1)):
             c.line(hip+dx,top,knee+dx,knee_y,'#')
             c.line(knee+dx,knee_y,toe+dx,ground-1,'#')
-        c.line(hip,top,knee,knee_y,fill);c.line(knee,knee_y,toe,ground-1,fill)
-        c.rect(toe-1,ground-1,toe+1,ground,'#')
-        c.put(toe,ground-1,fill)
+        for dx in range(width):
+            c.line(hip+dx,top,knee+dx,knee_y,fill);c.line(knee+dx,knee_y,toe+dx,ground-1,fill)
+        c.rect(toe-1,ground-1,toe+width,ground,'#')
+        c.line(toe,ground-1,toe+width-1,ground-1,fill)
 
 def _mini_eye(c,x,y,eyes):
     if eyes=='shut': c.line(x,y+1,x+1,y+1,'#')
@@ -274,7 +278,7 @@ def walking_sprite(figure,eyes,frame):
     c=Canvas();g=frame%WALK_FRAMES;p=g//2;bob=(0,0,-1,0,0,0,-1,0)[p]
     swing=(2,1,0,-1,-2,-1,0,1)[p]
     if figure=='palm':
-        # A rooted tree only sways/topples in place, never acquires a walk.
+        # A rooted tree only sways in place, never acquires a walk.
         return sprite(figure,eyes,g)
     if figure=='rooster':
         # Tail behind, beak ahead: Cooper's slim neck and long orange legs.
@@ -372,43 +376,42 @@ def walking_sprite(figure,eyes,frame):
             c.ellipse(ex,ey,ex+3,ey+5,'#');c.ellipse(ex+2,ey+3,ex+5,ey+8,'#')
             if eyes!='wide': c.put(ex+(2 if eyes=='glance' else 1),ey+1,'w')
     elif figure=='pup':
-        # Lunge in profile: one ear, a snout, a neck bandana. Back paw stays down.
-        reach=(0,1,2,3,4,3,2,0,-1,-2,-2,-1,0,1,2,1)[g]
-        flap=(0,1,2,3,2,1,0,0,1,2,3,2,1,0,0,1)[g]
-        up=max(0,reach-1)
-        c.ellipse(2,18,8,24,'#');c.ellipse(3,19,7,23,'b')
-        c.ellipse(6,15,20,26,'#');c.ellipse(7,16,19,25,'f');c.rect(9,20,16,24,'s')
-        c.rect(8,24,13,31,'#');c.rect(9,25,12,30,'f')
-        c.rect(12,8,16,18+flap,'#');c.rect(13,9,15,17+flap,'f');c.rect(14,11,14,16+flap,'p')
-        c.ellipse(15,7,25,18,'#');c.ellipse(16,8,24,17,'f')
-        c.line(17,9,20,10,'#')
-        c.dot_eye(20,10,eyes)
-        c.rect(23,11,30,16,'#');c.rect(24,12,29,15,'f')
-        c.rect(28,12,30,13,'#');c.put(27,15,'w');c.rect(25,16,29,17,'p')
-        c.rect(15,16,23,18,'#');c.rect(16,16,22,17,'r');c.rect(12,17,15,19,'r')
-        c.rect(15+reach,22,20+reach,30-up,'#');c.rect(16+reach,23,19+reach,29-up,'f')
-        c.rect(14+reach,30-up,21+reach,31-up,'#')
+        # A trot: diagonal legs move together on the shared planted-foot gait,
+        # so no paw slides while the window travels. The tail wags and the ear
+        # swings a beat behind; neither changes length.
+        wag=(0,1,2,1,0,-1,-2,-1)[p];ear=(0,0,1,1,0,0,-1,-1)[(p+1)%8]
+        _side_leg(c,9,23,(g+8)%16,'s');_side_leg(c,18,23,g,'s')
+        c.poly([(9,19),(4,13+wag),(3,11+wag),(5,11+wag),(10,17)],'#')
+        c.poly([(9,18),(5,13+wag),(4,12+wag),(9,17)],'f')
+        c.ellipse(6,16,22,26,'#');c.ellipse(7,17,21,25,'f')
+        _side_leg(c,10,23,g);_side_leg(c,19,23,(g+8)%16)
+        c.ellipse(15,6,25,17,'#');c.ellipse(16,7,24,16,'f')
+        c.rect(23,10,30,15,'#');c.rect(24,11,29,14,'f')
+        c.rect(28,11,30,12,'#');c.put(27,14,'w');c.rect(25,15,27,16,'p')
+        c.line(18,8,21,9,'#');c.dot_eye(20,10,eyes)
+        c.rect(15+ear,8,18+ear,17,'#');c.rect(16+ear,9,17+ear,16,'f');c.line(16+ear,10,16+ear,15,'p')
+        c.rect(15,16,23,18,'#');c.rect(16,17,22,17,'r');c.rect(13,17,15,19,'#');c.put(14,18,'r')
     elif figure=='rex':
-        # Stomp, snap, and a tiny arm that misses. One foot stays down.
-        lift=(0,1,2,3,2,1,0,0,0,0,0,0,0,0,0,0)
-        bite=(1,0,0,0,1,2,3,2,1,0,0,0,1,2,3,2)[g]
-        sway=(0,0,1,1,0,-1,-1,0,0,1,1,0,-1,-1,0,0)[g]
-        def leg(x,phase):
-            up=lift[phase%16]
-            c.rect(x,24,x+4,30-up,'#');c.rect(x+1,25,x+3,29-up,'f')
-            c.rect(x-1,30-up,x+5,31-up,'#')
-        leg(8,(g+8)%16)
-        c.poly([(8,22),(2,20),(0,14),(2,16),(6,18)],'#')
-        c.poly([(7,21),(3,19),(2,16),(4,17),(6,20)],'f')
-        c.ellipse(8,14,22,26,'#');c.ellipse(9,15,21,25,'f');c.rect(12,18,18,24,'b')
-        c.rect(18,16,23,19,'#');c.rect(19,17,22,18,'f');c.put(23,19,'#');c.put(24,18+sway,'#')
-        c.rect(14+sway,4,28+sway,16,'#');c.rect(15+sway,5,27+sway,15,'f')
-        c.line(16+sway,6,20+sway,7,'#')
-        c.dot_eye(22+sway,7,eyes)
-        c.rect(24+sway,10,31,14,'#');c.rect(25+sway,11,30,13,'f');c.put(28+sway,12,'w')
-        c.rect(22+sway,14,30,16+bite,'#');c.rect(23+sway,15,29,16+bite,'f')
-        if bite: c.rect(25+sway,15,28+sway,15+bite,'p')
-        leg(16,g)
+        # A stomp: the body drops as each foot lands and the heavy head lands a
+        # frame later. Both feet use the shared planted-foot gait; the arm is
+        # too short to reach anything, and the jaw snaps once a stride.
+        dip=1 if g in (0,1,8,9) else 0
+        nod=1 if g in (1,2,9,10) else 0
+        bite=(0,0,0,0,1,2,2,1,0,0,0,0,0,0,0,0)[g]
+        sway=(0,1,1,0,0,-1,-1,0)[p]
+        # Legs two pixels thick: a rex's, not a bird's, on the same gait.
+        _side_leg(c,11,24,(g+8)%16,'s',width=2)
+        c.poly([(10,23+dip),(1,18+sway),(0,15+sway),(2,15+sway),(10,18+dip)],'#')
+        c.poly([(10,22+dip),(2,17+sway),(2,16+sway),(10,19+dip)],'f')
+        c.ellipse(8,14+dip,22,26,'#');c.ellipse(9,15+dip,21,25,'f');c.ellipse(14,18+dip,20,25,'b')
+        _side_leg(c,15,24,g,width=2)
+        y=nod
+        c.rect(14,4+y,28,16+y,'#');c.rect(15,5+y,27,15+y,'f')
+        c.line(16,6+y,20,7+y,'#');c.dot_eye(22,7+y,eyes)
+        c.rect(24,10+y,31,14+y,'#');c.rect(25,11+y,30,13+y,'f');c.put(28,12+y,'w')
+        c.rect(22,14+y,30,16+y+bite,'#');c.rect(23,15+y,29,15+y+bite,'f')
+        if bite: c.rect(25,15+y,28,14+y+bite,'p')
+        c.rect(20,17+dip,23,19+dip,'#');c.put(21,18+dip,'f');c.put(23,20+dip,'#')
     else: raise ValueError(figure)
     return c.rows()
 

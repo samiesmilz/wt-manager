@@ -14,20 +14,15 @@ final class MascotWanderTests: XCTestCase {
         }
     }
 
-    func testPalmTopplesInPlaceAndRecoversWithoutDrift() {
+    func testOnlyThePalmStaysRootedAndItsGustIsUnhurried() {
         XCTAssertTrue(MascotWander.staysRooted(figure: "palm"))
-        XCTAssertFalse(MascotWander.staysRooted(figure: "antenna"))
-        XCTAssertEqual(MascotWander.rootedAngle(progress: 0), 0, accuracy: 0.001)
-        XCTAssertEqual(MascotWander.rootedAngle(progress: 0.5), 76, accuracy: 0.001)
-        XCTAssertEqual(MascotWander.rootedAngle(progress: 1), 0, accuracy: 0.001)
-        for step in 0...100 {
-            let p = Double(step) / 100
-            XCTAssertTrue((-8...76).contains(MascotWander.rootedAngle(progress: p)))
-            if step > 0 {
-                XCTAssertLessThan(abs(MascotWander.rootedAngle(progress: p)
-                                     - MascotWander.rootedAngle(progress: p - 0.01)), 4)
-            }
+        for figure in ["cat", "crab", "robot", "rabbit", "antenna", "pup", "rex"] {
+            XCTAssertFalse(MascotWander.staysRooted(figure: figure), figure)
         }
+        // The gust is drawn frames, not a rotation; at 0.06s a frame the
+        // fronds flapped rather than swayed.
+        XCTAssertGreaterThanOrEqual(MascotWander.gustFrameInterval, 0.15)
+        XCTAssertGreaterThan(MascotWander.gustDuration / MascotWander.gustFrameInterval, 8)
     }
     func testDestinationsStayInsideTheCurrentDisplayAndChangeLocation() {
         var wander = MascotWander(seed: 3)
@@ -92,6 +87,15 @@ final class MascotWanderTests: XCTestCase {
             let sample = MascotWander.stepSample(distance: 1000, elapsed: cycle, figure: figure)
             XCTAssertEqual(sample.travelled / cycle, 12, accuracy: 0.001)
             XCTAssertEqual(sample.frame, 0)
+        }
+        // Walkers on the shared leg gait advance exactly one art pixel per
+        // pose; any other rhythm makes their planted foot skate.
+        for figure in ["pup", "rex", "robot", "antenna"] {
+            for tick in 1...16 {
+                let sample = MascotWander.stepSample(distance: 1000,
+                    elapsed: Double(tick) * MascotWander.poseInterval(figure: figure), figure: figure)
+                XCTAssertEqual(sample.travelled, Double(2 * tick), accuracy: 0.001, "\(figure) \(tick)")
+            }
         }
         let crouched = MascotWander.stepSample(distance: 100, elapsed: 2 * MascotWander.poseInterval, figure: "rabbit")
         let airborne = MascotWander.stepSample(distance: 100, elapsed: 8 * MascotWander.poseInterval, figure: "rabbit")

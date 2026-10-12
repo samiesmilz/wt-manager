@@ -93,6 +93,32 @@ class CompanionArtTests(unittest.TestCase):
                 self.assertTrue(all(ch=='.' for ch in c.rows()[31]))
             self.assertTrue(any(crossings))
 
+    def test_bork_and_chomp_plant_a_foot_that_holds_still_on_screen(self):
+        # The window moves one art pixel a pose, so a planted paw must move
+        # back one pixel a pose in the drawing. Some floor pixel, shifted by
+        # the distance travelled, has to stay put through the whole stance.
+        # Their first walks lunged and lurched with feet that did not follow.
+        for fig in ('pup', 'rex'):
+            for start in (0, 8):
+                held = None
+                for frame in range(start, start + 8):
+                    floor = C.walking_sprite(fig, 'open', frame)[31]
+                    on_screen = {x + frame for x, ch in enumerate(floor) if ch != '.'}
+                    held = on_screen if held is None else held & on_screen
+                self.assertTrue(held, '%s skates from frame %d' % (fig, start))
+
+    def test_a_thick_leg_is_one_stroke_with_the_same_foot(self):
+        # Width thickens the fill without moving the foot, so a heavy walker
+        # stays on the planted-foot gait.
+        for phase in range(C.WALK_FRAMES):
+            thin, thick = C.Canvas(), C.Canvas()
+            C._side_leg(thin, 14, 24, phase)
+            C._side_leg(thick, 14, 24, phase, width=2)
+            toe, ground = C.foot_pose(14, phase)
+            self.assertEqual(thick.rows()[ground-1][toe], 'f')
+            self.assertEqual(thick.rows()[ground-1][toe+1], 'f')
+            self.assertEqual(thin.rows()[ground-1][toe], 'f')
+
     def test_walkers_keep_a_foot_or_body_on_the_floor(self):
         for fig in ('rabbit', 'pup', 'rex', 'snowman', 'robot', 'antenna', 'orb'):
             for frame in range(C.WALK_FRAMES):

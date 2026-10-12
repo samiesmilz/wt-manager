@@ -263,14 +263,10 @@ final class FloatingMascot {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.walking else { return }
             if let start = self.rootedStartedAt {
-                let progress = (ProcessInfo.processInfo.systemUptime - start) / 3.6
-                self.view.rotation = MascotWander.rootedAngle(progress: progress)
-                self.view.needsDisplay = true
-                if progress >= 1 {
+                if ProcessInfo.processInfo.systemUptime - start >= MascotWander.gustDuration {
                     if self.traceMovement { NSLog("wt-manager wander: rooted recovery at %@", NSStringFromPoint(self.panel.frame.origin)) }
                     self.walking = false
                     self.rootedStartedAt = nil
-                    self.view.rotation = 0
                     self.gaitWork = nil
                     self.drawn = nil
                     self.scheduleWander(after: self.wanderPlanner.restAfterTrip())
@@ -296,7 +292,7 @@ final class FloatingMascot {
         gaitWork = work
         let now = ProcessInfo.processInfo.systemUptime
         let interval = MascotWander.poseInterval(figure: store.figure)
-        let delay = rootedStartedAt != nil ? 0.06
+        let delay = rootedStartedAt != nil ? MascotWander.gustFrameInterval
             : max(0.001, interval - (now - legStartedAt).truncatingRemainder(dividingBy: interval))
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
@@ -311,7 +307,6 @@ final class FloatingMascot {
         firstWander = true
         rootedStartedAt = nil
         movingFigure = nil
-        view.rotation = 0
         view.cancelTransition()
         view.needsDisplay = true
         returningHome = false
@@ -360,7 +355,6 @@ private final class FloatingMascotView: NSView {
         transitionWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04, execute: work)
     }
-    var rotation: Double = 0
     var makeMenu: (() -> NSMenu)?
     var openWindow: (() -> Void)?
     var didMove: (() -> Void)?
@@ -378,26 +372,6 @@ private final class FloatingMascotView: NSView {
         let rect = NSRect(x: floor((bounds.width - image.size.width) / 2),
                           y: 10,
                           width: image.size.width, height: image.size.height)
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        if rotation != 0 {
-            let pivot = NSPoint(x: rect.midX, y: rect.minY)
-            let turn = AffineTransform(rotationByDegrees: CGFloat(-rotation))
-            let corners = [NSPoint(x: rect.minX, y: rect.minY), NSPoint(x: rect.maxX, y: rect.minY),
-                           NSPoint(x: rect.minX, y: rect.maxY), NSPoint(x: rect.maxX, y: rect.maxY)]
-                .map { turn.transform(NSPoint(x: $0.x - pivot.x, y: $0.y - pivot.y)) }
-            let minX = corners.map(\.x).min()!, maxX = corners.map(\.x).max()!
-            let minY = corners.map(\.y).min()!, maxY = corners.map(\.y).max()!
-            let scale = min(1, min((bounds.width - 4) / (maxX - minX), (bounds.height - 4) / (maxY - minY)))
-            let x = min(max(pivot.x, 2 - minX * scale), bounds.width - 2 - maxX * scale)
-            let y = min(max(pivot.y, 2 - minY * scale), bounds.height - 2 - maxY * scale)
-            let transform = NSAffineTransform()
-            transform.translateX(by: x, yBy: y)
-            transform.rotate(byDegrees: CGFloat(-rotation))
-            transform.scale(by: scale)
-            transform.translateX(by: -pivot.x, yBy: -pivot.y)
-            transform.concat()
-        }
         if let previousImage {
             let oldRect = NSRect(x: floor((bounds.width-previousImage.size.width)/2), y: 10,
                                  width: previousImage.size.width, height: previousImage.size.height)

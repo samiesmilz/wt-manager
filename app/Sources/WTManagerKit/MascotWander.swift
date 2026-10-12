@@ -55,19 +55,14 @@ public struct MascotWander {
 
     public static func staysRooted(figure: String) -> Bool { figure == "palm" }
 
-    /// A palm catches a gust, topples, pauses, then springs upright. The panel
-    /// stays at its saved location; only the drawing rotates within it.
-    public static func rootedAngle(progress: Double) -> Double {
-        let p = min(1, max(0, progress))
-        func ease(_ t: Double) -> Double { t * t * (3 - 2 * t) }
-        switch p {
-        case ..<0.15: return -8 * sin(p / 0.15 * .pi)
-        case ..<0.46: return 76 * ease((p - 0.15) / 0.31)
-        case ..<0.58: return 76
-        case ..<0.87: return 76 * (1 - ease((p - 0.58) / 0.29))
-        default: return -6 * sin((p - 0.87) / 0.13 * .pi)
-        }
-    }
+    /// A palm catches a gust in its own drawn frames: the fronds and upper
+    /// trunk sway while the base and sand stay on their pixels, and the panel
+    /// never moves. It used to topple 76° by rotating the whole picture, which
+    /// then had to be shifted and shrunk to fit the panel — so the base left
+    /// its spot and the tree read as flying, not rooted.
+    public static let gustDuration: TimeInterval = 3.6
+    /// Slower than a stride, faster than the idle sway: a gust, not a flap.
+    public static let gustFrameInterval: TimeInterval = 0.2
 
     /// Detailed characters advance one art pixel (2 points) at 6 Hz. The
     /// original 22x23 characters keep their 3-point pixels and advance at 4 Hz.
@@ -83,8 +78,10 @@ public struct MascotWander {
         case "cat", "crab": return Array(repeating: 3, count: 16)
         case "rabbit": return [1,1,2,2,3,3,3,3,3,3,2,2,1,1,1,1]
         case "snowman": return [1,2,3,2,1,2,3,2,1,2,3,2,1,2,3,2]
-        case "pup": return [1,1,2,2,3,3,2,2,1,1,2,2,3,3,2,2]
-        case "rex": return [1,1,1,5,1,1,1,5,1,1,1,5,1,1,1,5]
+        // Every walker on the shared leg gait moves one art pixel (2 points)
+        // a pose, because its planted foot slides back one pixel a pose to
+        // stay put on screen. Bork and Chomp once lunged and lurched at their
+        // own pace, and with nothing in their legs to match it they skated.
         default: return Array(repeating: 2, count: 16)
         }
     }
