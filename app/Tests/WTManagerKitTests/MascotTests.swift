@@ -165,7 +165,7 @@ final class MascotTests: XCTestCase {
 
     func testWalkingUsesSideProfilesAndMirrorsTheWholePoseForLeftTravel() throws {
         let m = try load()
-        for figure in ["cat", "crab", "robot", "rooster", "rabbit", "snowman", "orb", "antenna"] {
+        for figure in ["cat", "crab", "robot", "rooster", "rabbit", "snowman", "orb", "antenna", "pup", "rex"] {
             func render(walking: Bool, left: Bool = false) throws -> NSImage {
                 try XCTUnwrap(m.image(figure: figure, gauge: 0, eyes: "open", frame: 2,
                     skin: "acorn", tint: "#3fb27f", fitting: 69, detailed: true,

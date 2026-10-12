@@ -391,6 +391,31 @@ ANTENNA = figure(Figure(
     parts=[Part(range(0,2),[(0,0),(0,0),(1,0),(1,0),(0,0),(-1,0),(-1,0),(0,0)])],
 ))
 
+# A dopey puppy that thinks the bandana makes him dangerous.
+PUP = figure(Figure(
+    id="pup", name="Bork", tell="bandana and snaggletooth", tail=None,
+    crown=["#ff#........#ff#",
+           "#fff#......#fff#",
+           "#fff########fff#",
+           ".#ffffffffffff#."],
+    accent=[(4, 8), (5, 8), (6, 8), (7, 8), (8, 8), (9, 8), (10, 8), (11, 8)],
+    muzzle=[(7, 7, '#'), (8, 7, '#'), (8, 9, 'w'), (7, 10, 'p'), (8, 10, 'p')],
+    body=["..#ffffffffff#..", ".#ffffffffffff#.", "#ffff#....#ffff#",
+          ".#fff#....#fff#.", "..####....####..", "...##......##..."],
+))
+
+# Tiny arms, a huge head, and one tooth it is very proud of.
+REX = figure(Figure(
+    id="rex", name="Chomp", tell="tiny arms and one tooth", tail=None,
+    crown=["....########....", "..############..",
+           ".###ff####ff###.", ".#f##f####f##f#."],
+    eyes=(4, 4),
+    accent=[(7, 8), (8, 8)],
+    muzzle=[(6, 8, '#'), (9, 8, '#'), (7, 9, 'p'), (8, 9, 'p')],
+    body=["##..########..##", ".#.#ffffffff#.#.", "..#ffffffffff#..",
+          "...#ff#..#ff#...", "....###..###....", ".....##..##....."],
+))
+
 # Distinct idle actions, with pauses between gestures. The face's expression
 # and status accent stay intact; only the named parts are redrawn.
 def _shift_row(row, dx):
@@ -446,6 +471,21 @@ _fronds = [PALM.crown,
     [".....ffff.......", "...ffffffffff...", "..fffffffffffff.", "ffff..ff...ffff."],
     ["..fff..fff......", ".fffffffffff....", "ffff.ffffffffff.", "fff...ff..ffff.."]]
 PALM.poses = tuple(dict(enumerate(_fronds[i])) for i in (0, 1, 1, 2, 2, 1, 0, 3))
+
+_bork_ears = [
+    PUP.crown,
+    ["#ff#.........##.", "#fff#.....#fff#.", "#fff########fff#", ".#ffffffffffff#."],
+    [".##.........#ff#", ".#fff#...#ffff#.", "#fff########fff#", ".#ffffffffffff#."],
+    ["#ff#......##....", "#fff#..#fff#....", "#fff#######fff#.", ".#ffffffffff#..."],
+]
+PUP.poses = tuple(dict(enumerate(_bork_ears[i])) for i in (0, 0, 1, 2, 2, 1, 0, 3))
+
+_chomp_arms = ("##..########..##", "#...########...#", ".#..########..#.", "#..#########..#.")
+_chomp_jaw = "..###..#pp#..###"
+REX.poses = tuple(
+    {10: _chomp_arms[i], **({9: _chomp_jaw} if i in (1, 2) else {})}
+    for i in (0, 0, 1, 2, 2, 1, 3, 0)
+)
 
 DEFAULT_FIGURE = CAT.id
 

@@ -87,7 +87,7 @@ final class MascotWanderTests: XCTestCase {
     }
 
     func testEachCharacterKeepsTheGentleAveragePace() {
-        for figure in ["cat", "crab", "rabbit", "snowman", "robot", "antenna"] {
+        for figure in ["cat", "crab", "rabbit", "snowman", "robot", "antenna", "pup", "rex"] {
             let cycle = 16 * MascotWander.poseInterval(figure: figure)
             let sample = MascotWander.stepSample(distance: 1000, elapsed: cycle, figure: figure)
             XCTAssertEqual(sample.travelled / cycle, 12, accuracy: 0.001)

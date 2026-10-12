@@ -83,6 +83,8 @@ public struct MascotWander {
         case "cat", "crab": return Array(repeating: 3, count: 16)
         case "rabbit": return [1,1,2,2,3,3,3,3,3,3,2,2,1,1,1,1]
         case "snowman": return [1,2,3,2,1,2,3,2,1,2,3,2,1,2,3,2]
+        case "pup": return [1,1,2,2,3,3,2,2,1,1,2,2,3,3,2,2]
+        case "rex": return [1,1,1,5,1,1,1,5,1,1,1,5,1,1,1,5]
         default: return Array(repeating: 2, count: 16)
         }
     }

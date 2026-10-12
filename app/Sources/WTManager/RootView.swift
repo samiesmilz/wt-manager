@@ -45,7 +45,7 @@ struct RootView: View {
         .sheet(item: $store.plan) { PlanSheet(store: store, plan: $0) }
         .sheet(isPresented: $store.showingSettings) { SettingsSheet(store: store) }
         .onChange(of: store.figure) { figure in
-            if let coat = ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"][figure] { store.skin = coat }
+            if let coat = ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut", "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry", "pup": "snow", "rex": "moss"][figure] { store.skin = coat }
         }
         .onChange(of: store.section) { next in
             // Status chips describe the current group. A selection from the
@@ -337,7 +337,8 @@ struct Header: View {
 struct MascotSwitcher: View {
     @ObservedObject var store: Store
     private let coats = ["robot": "graphite", "rooster": "sunrise", "rabbit": "chestnut",
-                         "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry"]
+                         "snowman": "frost", "palm": "tropical", "orb": "pearl", "antenna": "cherry",
+                         "pup": "snow", "rex": "moss"]
 
     var body: some View {
         if let mascot = store.mascot {

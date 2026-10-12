@@ -93,6 +93,12 @@ class CompanionArtTests(unittest.TestCase):
                 self.assertTrue(all(ch=='.' for ch in c.rows()[31]))
             self.assertTrue(any(crossings))
 
+    def test_walkers_keep_a_foot_or_body_on_the_floor(self):
+        for fig in ('rabbit', 'pup', 'rex', 'snowman', 'robot', 'antenna', 'orb'):
+            for frame in range(C.WALK_FRAMES):
+                rows = C.walking_sprite(fig, 'open', frame)
+                self.assertTrue(any(ch != '.' for ch in rows[-1]), '%s frame %d' % (fig, frame))
+
     def test_original_profiles_keep_portrait_dimensions(self):
         for fig in ('cat','crab'):
             for frame in range(C.WALK_FRAMES):

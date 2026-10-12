@@ -3,7 +3,7 @@
 These are independent from the 32px desktop drawings. Wity keeps its original art.
 """
 SIZE = 22
-FIGURES = ('crab', 'robot', 'rooster', 'rabbit', 'snowman', 'palm', 'orb', 'antenna')
+FIGURES = ('crab', 'robot', 'rooster', 'rabbit', 'snowman', 'palm', 'orb', 'antenna', 'pup', 'rex')
 class Canvas:
     def __init__(self): self.p = [['.']*SIZE for _ in range(SIZE)]
     def put(self,x,y,c):
@@ -91,6 +91,27 @@ def sprite(figure,eyes,frame):
         if blink not in ('shut','squint'):
             c.put(8,9,'e');c.put(14,9,'e')
         c.rect(9,14,12,14,'v');c.put(6,13,'p');c.put(17,13,'p');c.put(8,6,'w')
+    elif figure=='pup':
+        flop=1 if f in (2,3,4) else 0
+        c.rect(2,7,6,16,'f');c.rect(15,6+flop,19,15+flop,'f')
+        c.oval(5,4,16,15,'f');c.rect(7,16,10,20,'f');c.rect(13,16,16,20,'f');c.outline()
+        c.rect(3,9,5,14,'p');c.rect(16,8+flop,18,13+flop,'p')
+        c.eye(6,7,blink,width=2);c.eye(13,7,blink,width=2)
+        c.line(7,6,9,7,'#');c.line(12,7,14,6,'#')
+        c.rect(9,11,12,11,'#');c.put(11,13,'w');c.rect(9,14,12,15,'p')
+        c.rect(6,15,15,15,'o')
+        if f in (3,4): c.rect(8,14,13,16,'p');c.put(12,13,'w')
+    elif figure=='rex':
+        snap=f in (3,4,5);arm=1 if f in (2,6) else 0
+        c.oval(5,1,16,11,'f');c.rect(1,9-arm,4,12-arm,'f');c.rect(17,9+arm,20,12+arm,'f')
+        c.rect(7,12,10,20,'f');c.rect(12,12,15,20,'f');c.outline()
+        c.line(6,2,8,3,'#');c.line(13,3,15,2,'#')
+        c.eye(6,4,blink,width=2);c.eye(12,4,blink,width=2)
+        c.put(9,8,'w')
+        if snap:
+            c.rect(8,9,13,11,'#');c.rect(9,10,12,11,'p');c.put(10,9,'w')
+        else:
+            c.line(8,9,13,9,'#')
     elif figure=='crab':
         c.oval(4,7,17,19,'f');c.rect(3,19,6,20,'s');c.rect(15,19,18,20,'s')
         c.line(3,14,1,11,'f');c.line(18,14,20,11,'f');c.oval(1,4,4,10,'f');c.oval(17,4,20,10,'f');c.outline()

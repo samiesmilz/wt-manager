@@ -8,7 +8,7 @@ from math import sin, pi
 WALK_FRAMES = 16
 
 SIZE = 32
-FIGURES = ('robot', 'rooster', 'rabbit', 'snowman', 'palm', 'orb', 'antenna')
+FIGURES = ('robot', 'rooster', 'rabbit', 'snowman', 'palm', 'orb', 'antenna', 'pup', 'rex')
 
 class Canvas:
     def __init__(self, size=SIZE, height=None):
@@ -40,6 +40,12 @@ class Canvas:
         elif eyes=='squint': self.rect(x,y+1,x+2,y+2,'#')
         else:
             self.rect(x,y,x+2,y+3,'#')
+            if eyes!='wide': self.put(x+(1 if eyes=='glance' else 0),y,'w')
+    def dot_eye(self,x,y,eyes):
+        if eyes=='shut': self.line(x,y+1,x+1,y+1,'#')
+        elif eyes=='squint': self.rect(x,y+1,x+1,y+1,'#')
+        else:
+            self.rect(x,y,x+1,y+1,'#')
             if eyes!='wide': self.put(x+(1 if eyes=='glance' else 0),y,'w')
     def rows(self): return [''.join(r) for r in self.p]
 
@@ -164,6 +170,35 @@ def sprite(figure,eyes,frame):
             else:
                 c.ellipse(x,13,x+2,15,'l')
                 if eyes!='wide': c.put(x+(1 if eyes=='glance' else 0),13,'w')
+    elif figure=='pup':
+        # Dopey charge: floppy ears, a red bandana, one tooth, tongue out.
+        flap=(0,0,1,2,2,1,0,0)[f];bark=(0,0,1,2,2,1,0,0)[f]
+        c.rect(3,8,8,19,'#');c.rect(4,9,7,18,'f');c.rect(5,11,6,17,'p')
+        c.rect(23,7+flap,28,18+flap,'#');c.rect(24,8+flap,27,17+flap,'f');c.rect(25,10+flap,26,16+flap,'p')
+        c.rect(8,5,23,18,'#');c.rect(9,6,22,17,'f');c.rect(11,4,20,6,'#');c.rect(12,5,19,6,'f')
+        c.line(10,9,13,10,'#');c.line(18,10,21,9,'#')
+        c.dot_eye(11,11,eyes);c.dot_eye(18,11,eyes)
+        c.put(10,15,'p');c.put(21,15,'p');c.rect(14,14,17,15,'#')
+        c.rect(13,16,18,16+bark,'#');c.put(16,16,'w');c.rect(14,17,17,17+bark,'p')
+        c.rect(9,18,23,20,'#');c.rect(10,18,22,19,'r')
+        c.rect(9,20,23,26,'#');c.rect(10,21,22,25,'f');c.rect(12,22,20,25,'s')
+        c.rect(10,26,14,31,'#');c.rect(11,27,13,30,'f');c.rect(9,30,15,31,'#')
+        c.rect(18,26,22,31,'#');c.rect(19,27,21,30,'f');c.rect(17,30,23,31,'#')
+    elif figure=='rex':
+        # Vacant eyes, angry brows, a snap, and arms that cannot reach the mouth.
+        snap=(0,0,1,2,3,2,1,0)[f];arm=(0,1,2,1,0,-1,0,1)[f]
+        c.rect(10,22,15,31,'#');c.rect(11,23,14,30,'f');c.rect(9,29,15,31,'#')
+        c.rect(17,22,22,31,'#');c.rect(18,23,21,30,'f');c.rect(17,29,23,31,'#')
+        c.rect(8,16,24,24,'#');c.rect(9,17,23,23,'f');c.rect(12,19,20,23,'b')
+        c.rect(2,17+arm,7,21+arm,'#');c.rect(3,18+arm,6,20+arm,'f');c.put(2,21+arm,'#');c.put(4,22+arm,'#')
+        c.rect(25,17-arm,30,21-arm,'#');c.rect(26,18-arm,29,20-arm,'f');c.put(28,22-arm,'#');c.put(30,21-arm,'#')
+        c.rect(5,2,27,15,'#');c.rect(6,3,26,14,'f');c.rect(8,1,24,4,'#');c.rect(9,2,23,3,'f')
+        c.line(9,6,13,7,'#');c.line(19,7,23,6,'#')
+        c.dot_eye(10,7,eyes);c.dot_eye(19,8,eyes)
+        c.put(9,11,'p');c.put(22,11,'p')
+        c.rect(12,12,21,14,'#');c.put(15,13,'w')
+        c.rect(11,14,22,15+snap,'#');c.rect(12,15,21,15+snap,'f')
+        if snap: c.rect(14,15,18,14+snap,'p')
     else: raise ValueError(figure)
     return c.rows()
 
@@ -194,38 +229,37 @@ def _side_leg(c, hip, top, phase, fill='f', bird=False, floor=31, slim=False):
         c.rect(toe-1,ground-1,toe+1,ground,'#')
         c.put(toe,ground-1,fill)
 
+def _mini_eye(c,x,y,eyes):
+    if eyes=='shut': c.line(x,y+1,x+1,y+1,'#')
+    elif eyes=='squint': c.rect(x,y,x+1,y,'#')
+    else:
+        c.rect(x,y,x+1,y+1,'#')
+        if eyes!='wide': c.put(x+(1 if eyes=='glance' else 0),y,'w')
+
 def _original_profile(figure,eyes,phase):
     # The original characters keep their original 22x23 pixel grid. No size
     # or outline-weight jump when the front portrait becomes a profile.
     c=Canvas(22,23);g=phase%WALK_FRAMES
     if figure=='cat':
-        _side_leg(c,7,18,g,'s',floor=22,slim=True)
-        _side_leg(c,13,18,(g+8)%16,'s',floor=22,slim=True)
-        c.poly([(7,19),(2,16),(0,9),(1,3),(4,0),(6,2),(5,7),(3,10),(4,14),(8,17)],'#')
-        c.poly([(6,17),(3,14),(2,8),(3,3),(4,2),(4,6),(2,10),(4,15)],'s')
-        c.line(2,5,2,8,'w')
-        c.ellipse(5,13,17,20,'#');c.ellipse(6,14,16,19,'f')
-        c.ellipse(8,15,15,19,'b')
-        c.poly([(8,10),(7,4),(11,5),(13,10)],'#')
-        c.poly([(9,8),(9,6),(11,7)],'s')
-        c.ellipse(7,6,19,17,'#');c.ellipse(8,7,18,16,'f')
-        c.poly([(14,8),(15,3),(19,5),(20,10)],'#')
-        c.poly([(16,7),(16,5),(18,6)],'p')
-        c.ellipse(16,12,21,16,'#');c.ellipse(17,13,20,15,'b');c.put(21,13,'p')
-        c.eye(16,9,eyes);c.put(18,16,'#')
-        _side_leg(c,8,18,(g+8)%16,floor=22,slim=True)
-        _side_leg(c,14,18,g,floor=22,slim=True)
+        _side_leg(c,6,16,(g+8)%16,'s',floor=22,slim=True)
+        c.poly([(7,15),(2,12),(1,6),(3,4),(5,8),(6,14)],'#')
+        c.poly([(6,14),(3,11),(2,7),(4,6),(5,12)],'s')
+        c.ellipse(4,12,15,20,'#');c.ellipse(5,13,14,19,'f');c.ellipse(6,15,12,19,'b')
+        c.poly([(11,8),(13,1),(16,8)],'#');c.poly([(13,6),(14,3),(15,6)],'p')
+        c.ellipse(10,5,19,14,'#');c.ellipse(11,6,18,13,'f')
+        c.ellipse(15,9,21,15,'#');c.ellipse(16,10,20,14,'b');c.put(21,11,'p')
+        _mini_eye(c,15,7,eyes)
+        _side_leg(c,8,16,g,floor=22,slim=True)
+        _side_leg(c,13,16,(g+8)%16,floor=22,slim=True)
     else:
-        for i,hip in enumerate((7,11,15)):
-            _side_leg(c,hip,18,(g+8+i*4)%16,'s',floor=22,slim=True)
-        c.line(7,15,4,11,'#');c.ellipse(0,7,6,13,'#');c.ellipse(1,8,5,12,'s')
-        c.poly([(0,8),(3,10),(0,11)],'.')
-        c.ellipse(4,13,17,19,'#');c.ellipse(5,14,16,18,'f');c.line(7,15,13,15,'w')
-        c.line(16,14,17,6,'#');c.ellipse(14,3,20,9,'#');c.ellipse(15,4,19,8,'f')
-        c.eye(17,5,eyes)
-        c.line(15,15,19,12,'#');c.ellipse(17,9,21,14,'#');c.ellipse(18,10,20,13,'f')
-        for i,hip in enumerate((7,11,15)):
-            _side_leg(c,hip,18,(g+i*4)%16,floor=22,slim=True)
+        for i,hip in enumerate((4,8,12)):
+            _side_leg(c,hip,16,(g+8+i*5)%16,'s',floor=22,slim=True)
+        c.ellipse(3,11,15,19,'#');c.ellipse(4,12,14,18,'f');c.line(6,14,12,14,'w')
+        c.line(13,12,16,6,'#');c.ellipse(15,3,20,8,'#');c.ellipse(16,4,19,7,'f')
+        _mini_eye(c,17,4,eyes)
+        c.ellipse(13,8,21,15,'#');c.ellipse(14,9,20,14,'f');c.line(15,11,19,12,'w')
+        for i,hip in enumerate((5,9,13)):
+            _side_leg(c,hip,16,(g+i*5)%16,floor=22,slim=True)
     return c.rows()
 
 
@@ -259,83 +293,122 @@ def walking_sprite(figure,eyes,frame):
         c.eye(24,7+bob,eyes)
         _side_leg(c,20,25,g,bird=True)
     elif figure=='rabbit':
-        # Haunch drives a hop; tucked front paws and a small tail sit behind
-        # a projecting muzzle. Ear movement follows the hop, not a head-on bob.
-        hop=(0,0,1,2,3,4,5,5,5,4,3,2,1,0,0,0)[g];fold=(0,0,1,2,2,1,0,0)[p]
-        c.ellipse(4,22,11,28,'#');c.ellipse(5,23,10,27,'b')
-        c.ellipse(7,18,25,29,'#');c.ellipse(8,19,24,28,'f')
-        c.ellipse(8,23,18,30,'#');c.ellipse(9,24,17,29,'s')
-        extension=(3,2,0,-1,-1,0,2,3)[p]
-        c.ellipse(12,28,19+extension,31,'#');c.line(14,29,18+extension,29,'f')
-        c.line(23,24,23+extension//2,29,'#');c.ellipse(21,28,25,31,'#')
-        c.line(22,29,24,29,'f')
-        c.poly([(17,13),(13,4+fold),(15,1+fold),(19,5+fold),(21,15)],'#')
-        c.line(15,5+fold,18,12,'s')
-        c.ellipse(17,10,29,24,'#');c.ellipse(18,11,28,23,'f')
-        c.poly([(22,14),(20,4+fold),(22,1+fold),(25,4+fold),(25,14)],'#')
-        c.poly([(23,12),(22,5+fold),(23,3+fold),(24,6+fold),(24,12)],'f')
-        c.line(23,5+fold,23,10,'p')
-        c.ellipse(26,18,30,23,'b');c.put(30,19,'p');c.put(29,22,'#')
-        c.eye(25,13,eyes);c.put(25,20,'p')
-        if hop:
-            rows=c.p;c=Canvas()
-            for y,row in enumerate(rows):
-                for x,ch in enumerate(row):
-                    if ch!='.': c.put(x,y-hop,ch)
+        # Hop compresses the haunch and lags the ears. The back paw stays on the floor.
+        hop=(0,0,1,1,2,2,3,2,2,1,1,0,0,0,0,0)[g]
+        lag=(0,0,0,1,1,2,2,3,2,2,1,0,0,0,0,0)[g]
+        reach=(0,1,2,3,3,2,1,0,-1,-2,-2,-1,0,1,0,0)[g]
+        y=lambda n: n-hop
+        c.ellipse(3,y(22),9,y(28),'#');c.ellipse(4,y(23),8,y(27),'b')
+        c.ellipse(6,y(16),22,y(27),'#');c.ellipse(7,y(17),21,y(26),'f')
+        c.ellipse(7,y(21),16,y(29),'#');c.ellipse(8,y(22),15,y(28),'s')
+        c.rect(8,y(27),14,31,'#');c.rect(9,y(28),13,30,'f')
+        # Ears first, so the head covers their roots. Tips lean back as the hop rises.
+        bx=15-lag
+        c.rect(bx,y(3),bx+3,y(14),'#');c.rect(bx+1,y(4),bx+2,y(13),'p')
+        c.rect(bx+3,y(2),bx+6,y(14),'#');c.rect(bx+4,y(3),bx+5,y(13),'f')
+        c.line(bx+4,y(4),bx+4,y(12),'p')
+        c.ellipse(16,y(10),27,y(20),'#');c.ellipse(17,y(11),26,y(19),'f')
+        c.ellipse(23,y(14),30,y(19),'b');c.put(29,y(15),'p');c.put(25,y(16),'p')
+        c.eye(22,y(12),eyes)
+        fx=16+reach;paw=hop if reach>0 else 0
+        c.rect(fx,y(25),fx+5,30-paw,'#');c.rect(fx+1,y(26),fx+4,29-paw,'f')
+        c.rect(fx,30-paw,fx+6,31-paw,'#')
     elif figure=='robot':
-        _side_leg(c,20,25,(g+8)%16,'s')
-        c.rect(13,19+bob,23,25+bob,'#');c.rect(14,20+bob,22,24+bob,'s')
-        c.rect(18,20+bob,22,23+bob,'f')
-        c.line(16,3+bob,16,6+bob,'#');c.ellipse(14,1+bob,18,4+bob,'#');c.put(16,2+bob,'l')
-        c.rect(10,6+bob,25,18+bob,'#');c.rect(12,5+bob,24,19+bob,'#')
-        c.rect(11,7+bob,24,17+bob,'s');c.rect(14,6+bob,24,8+bob,'f')
-        c.rect(20,9+bob,27,15+bob,'#');c.rect(21,10+bob,26,14+bob,'v')
-        c.eye(23,10+bob,eyes)
-        c.rect(8,10+bob,12,14+bob,'#');c.rect(9,11+bob,11,13+bob,'v')
-        c.rect(19,17+bob,24,17+bob,'h');c.put(20+(p%4),17+bob,'l')
-        c.poly([(15,19+bob),(18,20+bob),(18+swing,25+bob),(15+swing,25+bob)],'#')
-        c.line(16,20+bob,16+swing,24+bob,'f')
-        _side_leg(c,21,25,g)
+        # Narrow chassis, one pod behind, visor on the leading face.
+        _side_leg(c,16,24,(g+8)%16,'s')
+        c.rect(14,18,23,25,'#');c.rect(15,19,22,24,'s');c.rect(17,19,22,23,'f')
+        c.poly([(20,19),(23,18),(24+swing,25),(20+swing,25)],'#')
+        c.line(22,20,22+swing,24,'f')
+        c.rect(8,10,14,16,'#');c.rect(9,11,13,15,'v')
+        c.rect(12,5,23,17,'#');c.rect(13,6,21,16,'f');c.rect(14,6,20,8,'s')
+        c.line(17,1,17,5,'#');c.ellipse(15,0,19,3,'#');c.put(17,1,'l')
+        c.rect(19,7,27,16,'#');c.rect(20,8,26,15,'v')
+        c.eye(21,9,eyes);c.put(22,15,'l')
+        _side_leg(c,19,24,g)
     elif figure=='antenna':
-        _side_leg(c,19,27,(g+8)%16,'s')
-        c.line(12,8+bob,9,3+bob,'#');c.line(9,3+bob,6,2+bob,'r')
-        c.line(22,8+bob,25,3+bob,'#');c.line(25,3+bob,28,2+bob,'r')
-        c.ellipse(7,6+bob,27,27+bob,'#');c.ellipse(8,7+bob,26,26+bob,'s')
-        c.ellipse(10,7+bob,26,24+bob,'f');c.ellipse(12,7+bob,23,13+bob,'r')
-        c.ellipse(13,8+bob,17,10+bob,'p')
-        c.ellipse(22,11+bob,27,18+bob,'h')
-        if eyes=='shut': c.line(23,15+bob,25,15+bob,'l')
-        elif eyes=='squint': c.rect(23,14+bob,25,15+bob,'l')
+        # One antenna and one arm lead; the far pair tuck behind the round body.
+        _side_leg(c,16,26,(g+8)%16,'s',slim=True)
+        c.line(11,12,8,7,'#');c.put(7,6,'r')
+        c.ellipse(9,8,25,26,'#');c.ellipse(10,9,24,25,'s');c.ellipse(12,9,24,23,'f')
+        c.ellipse(16,9,23,14,'r')
+        c.line(20,9,24,3,'#');c.line(24,3,27,2,'r')
+        c.ellipse(19,12,25,18,'h')
+        if eyes=='shut': c.line(21,15,23,15,'l')
+        elif eyes=='squint': c.rect(21,14,23,15,'l')
         else:
-            c.ellipse(23,12+bob,26,15+bob,'l')
-            if eyes!='wide': c.put(25 if eyes=='glance' else 24,12+bob,'w')
-        c.ellipse(13+swing,18+bob,19+swing,24+bob,'#')
-        c.ellipse(14+swing,19+bob,18+swing,23+bob,'f')
-        _side_leg(c,20,27,g)
+            c.ellipse(20,12,24,16,'l')
+            if eyes!='wide': c.put(23 if eyes=='glance' else 21,13,'w')
+        c.ellipse(6,16,11,21,'#');c.ellipse(7,17,10,20,'f')
+        c.ellipse(22+swing,17,28+swing,23,'#');c.ellipse(23+swing,18,27+swing,22,'f')
+        _side_leg(c,19,26,g,slim=True)
     elif figure=='snowman':
-        roll=(0,0,1,1,0,0,-1,-1)[p];wave=(0,0,-1,-2,-2,-1,0,0)[p]
-        c.ellipse(8,19,25,31,'#');c.ellipse(9,20,24,30,'s');c.ellipse(12,20,24,28,'f')
-        c.line(22,21,28,18+wave,'t');c.line(28,18+wave,31,16+wave,'t')
-        c.line(28,18+wave,30,19+wave,'t')
-        c.ellipse(12+roll,8,26+roll,22,'#');c.ellipse(13+roll,9,25+roll,21,'f')
-        c.rect(12+roll,19,25+roll,21,'g');c.line(14+roll,19,24+roll,19,'l')
-        c.poly([(14,21),(17,21),(17-swing,28),(14-swing,28)],'g')
-        c.eye(23+roll,12,eyes);c.poly([(27+roll,15),(31,16),(27+roll,17)],'a')
-        c.put(24+roll,18,'#');c.put(23+roll,19,'#')
-        c.rect(14+roll,2,24+roll,8,'#');c.rect(15+roll,3,23+roll,7,'h')
-        c.rect(15+roll,7,23+roll,8,'r');c.rect(11+roll,9,27+roll,10,'#')
-        c.line(12+roll,9,26+roll,9,'h');c.put(16,24,'#');c.put(16,28,'#')
+        # Profile hat, carrot leading, scarf trailing. The bottom ball stays planted.
+        lean=(0,1,1,0,-1,-1,0,1)[p];wave=(0,-1,-2,-1,0,1,2,1)[p]
+        c.ellipse(8,20,24,31,'#');c.ellipse(9,21,23,30,'s');c.ellipse(12,21,22,28,'f')
+        c.put(18,24,'#');c.put(18,28,'#')
+        c.line(10,22,2,26+wave,'t');c.line(4,24+wave,1,22+wave,'t')
+        c.ellipse(12+lean,8,24+lean,21,'#');c.ellipse(13+lean,9,23+lean,20,'f')
+        c.rect(13+lean,17,23+lean,19,'g');c.line(14+lean,17,22+lean,17,'l')
+        c.poly([(12+lean,18),(8+lean,18),(4-swing,26),(8-swing,26)],'g')
+        c.eye(20+lean,11,eyes)
+        c.poly([(23+lean,13),(31,14),(23+lean,16)],'a');c.put(23+lean,14,'q')
+        c.rect(15+lean,2,22+lean,7,'#');c.rect(16+lean,3,21+lean,6,'h')
+        c.rect(16+lean,6,21+lean,7,'r');c.rect(11+lean,8,26+lean,9,'#');c.line(12+lean,8,25+lean,8,'h')
+        c.line(22,22,28,18+wave,'t');c.line(28,18+wave,30,16+wave,'t')
     elif figure=='orb':
-        roll=(0,1,2,3,4,4,3,2,1,0,-1,-2,-3,-3,-2,-1)[g]
-        c.ellipse(4,3,28,31,'#');c.ellipse(5,4,27,30,'s')
-        c.ellipse(8,4,27,28,'f');c.ellipse(10,5,25,24,'b')
-        c.ellipse(9+roll,6,16+roll,11,'w')
-        if eyes=='shut': c.line(22,16,25,16,'#')
-        elif eyes=='squint': c.line(22,14,25,17,'#')
+        # Same pearl and diagonal eyes. The highlight and the gaze travel with the roll.
+        squash=(0,0,1,1,2,1,0,0,1,1,2,1,0,0,1,0)[g]
+        lead=(0,0,1,1,2,2,2,1,1,0,0,0,1,1,0,0)[g]
+        c.ellipse(5-squash,4+squash,27+squash,31,'#')
+        c.ellipse(6-squash,5+squash,26+squash,30,'s')
+        c.ellipse(7-squash,5+squash,25+squash,28,'f')
+        c.ellipse(9,6+squash,22,22,'b')
+        hx=(4,6,8,11,14,17,19,17,14,11,8,6,5,4,5,4)[g]
+        c.ellipse(hx,6,hx+7,12,'w')
+        ex,ey=17+lead,12
+        if eyes=='shut': c.line(ex,ey+4,ex+4,ey+4,'#')
+        elif eyes=='squint': c.line(ex,ey+1,ex+4,ey+5,'#')
         else:
-            c.ellipse(22,11,24,16,'#');c.ellipse(23,14,25,18,'#')
-            if eyes!='wide': c.put(24 if eyes=='glance' else 23,12,'w')
-        c.put(26,21,'#')
+            c.ellipse(ex,ey,ex+3,ey+5,'#');c.ellipse(ex+2,ey+3,ex+5,ey+8,'#')
+            if eyes!='wide': c.put(ex+(2 if eyes=='glance' else 1),ey+1,'w')
+    elif figure=='pup':
+        # Lunge in profile: one ear, a snout, a neck bandana. Back paw stays down.
+        reach=(0,1,2,3,4,3,2,0,-1,-2,-2,-1,0,1,2,1)[g]
+        flap=(0,1,2,3,2,1,0,0,1,2,3,2,1,0,0,1)[g]
+        up=max(0,reach-1)
+        c.ellipse(2,18,8,24,'#');c.ellipse(3,19,7,23,'b')
+        c.ellipse(6,15,20,26,'#');c.ellipse(7,16,19,25,'f');c.rect(9,20,16,24,'s')
+        c.rect(8,24,13,31,'#');c.rect(9,25,12,30,'f')
+        c.rect(12,8,16,18+flap,'#');c.rect(13,9,15,17+flap,'f');c.rect(14,11,14,16+flap,'p')
+        c.ellipse(15,7,25,18,'#');c.ellipse(16,8,24,17,'f')
+        c.line(17,9,20,10,'#')
+        c.dot_eye(20,10,eyes)
+        c.rect(23,11,30,16,'#');c.rect(24,12,29,15,'f')
+        c.rect(28,12,30,13,'#');c.put(27,15,'w');c.rect(25,16,29,17,'p')
+        c.rect(15,16,23,18,'#');c.rect(16,16,22,17,'r');c.rect(12,17,15,19,'r')
+        c.rect(15+reach,22,20+reach,30-up,'#');c.rect(16+reach,23,19+reach,29-up,'f')
+        c.rect(14+reach,30-up,21+reach,31-up,'#')
+    elif figure=='rex':
+        # Stomp, snap, and a tiny arm that misses. One foot stays down.
+        lift=(0,1,2,3,2,1,0,0,0,0,0,0,0,0,0,0)
+        bite=(1,0,0,0,1,2,3,2,1,0,0,0,1,2,3,2)[g]
+        sway=(0,0,1,1,0,-1,-1,0,0,1,1,0,-1,-1,0,0)[g]
+        def leg(x,phase):
+            up=lift[phase%16]
+            c.rect(x,24,x+4,30-up,'#');c.rect(x+1,25,x+3,29-up,'f')
+            c.rect(x-1,30-up,x+5,31-up,'#')
+        leg(8,(g+8)%16)
+        c.poly([(8,22),(2,20),(0,14),(2,16),(6,18)],'#')
+        c.poly([(7,21),(3,19),(2,16),(4,17),(6,20)],'f')
+        c.ellipse(8,14,22,26,'#');c.ellipse(9,15,21,25,'f');c.rect(12,18,18,24,'b')
+        c.rect(18,16,23,19,'#');c.rect(19,17,22,18,'f');c.put(23,19,'#');c.put(24,18+sway,'#')
+        c.rect(14+sway,4,28+sway,16,'#');c.rect(15+sway,5,27+sway,15,'f')
+        c.line(16+sway,6,20+sway,7,'#')
+        c.dot_eye(22+sway,7,eyes)
+        c.rect(24+sway,10,31,14,'#');c.rect(25+sway,11,30,13,'f');c.put(28+sway,12,'w')
+        c.rect(22+sway,14,30,16+bite,'#');c.rect(23+sway,15,29,16+bite,'f')
+        if bite: c.rect(25+sway,15,28+sway,15+bite,'p')
+        leg(16,g)
     else: raise ValueError(figure)
     return c.rows()
 
