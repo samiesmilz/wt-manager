@@ -3235,8 +3235,14 @@ def cmd_agent(wts: List[Worktree], args) -> int:
     counts: Dict[str, int] = {}
     for w in wts:
         counts[w.status] = counts.get(w.status, 0) + 1
+    measured_paths = getattr(args, "measured_paths", None)
+    partial = measured_paths is not None
     reclaim = sum(w.reclaim_kb for w in wts if w.reclaim_kb > 0)
     total = sum(w.size_kb for w in wts if w.size_kb > 0)
+    # A few measured worktrees are not the whole machine: totals from them
+    # would empty the gauge, so the carried figure stands until a full pass.
+    if partial:
+        reclaim, total = getattr(args, "reclaim_kb", None) or 0, 0
     if not reclaim and getattr(args, "reclaim_kb", None):
         reclaim = args.reclaim_kb
     ungrounded = sum(1 for w in wts if w.base_source in ("unresolved", "guess"))
@@ -3256,7 +3262,9 @@ def cmd_agent(wts: List[Worktree], args) -> int:
         "counts": counts,
         "reclaim_kb": reclaim,
         "total_kb": total,
-        "measured_disk": any(w.size_kb > 0 for w in wts),
+        "measured_disk": (not partial) and any(w.size_kb > 0 for w in wts),
+        # Present only for a partial measure: which worktrees' sizes are new.
+        **({"measured_paths": measured_paths} if partial else {}),
         "notices": notice_lines(),
         "roots": load_config().get("roots", []),
         # The sentence, decided here beside the mood it is derived from. A
@@ -3461,6 +3469,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="use this reclaimable total instead of measuring. lets a "
                          "long-running client refresh counts often and disk rarely, "
                          "without the gauge falsely emptying in between")
+    ag.add_argument("--measure", metavar="PATH", action="append",
+                    help="with --no-size: measure only these worktrees (repeatable). "
+                         "lets a client that holds the other sizes see a new "
+                         "worktree's size now instead of at the next full measure")
 
     cf = sub.add_parser("config", help="show or create the config file")
     cf.add_argument("--init", action="store_true", help="write a starter config")
@@ -3524,6 +3536,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         die(str(e))
     except OSError as e:
         die(f"scan refused: {e}")
+
+    # A partial measure: the client already holds every other size, and a
+    # full pass would re-walk all of them to learn one new worktree's.
+    if args.cmd == "agent" and getattr(args, "measure", None):
+        wanted = {os.path.realpath(os.path.expanduser(p)) for p in args.measure}
+        picked = [w for w in wts if os.path.realpath(w.path) in wanted]
+        with futures.ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(lambda w: measure(w, True), picked))
+        save_size_cache()
+        args.measured_paths = [w.path for w in picked]
 
     if args.repo:
         pats = [r.lower() for r in args.repo]

@@ -119,6 +119,29 @@ class CompanionArtTests(unittest.TestCase):
             self.assertEqual(thick.rows()[ground-1][toe+1], 'f')
             self.assertEqual(thin.rows()[ground-1][toe], 'f')
 
+    def test_every_character_holds_the_balloon_string_on_its_body(self):
+        # The string must start on the character in every frame, or the
+        # balloon floats from a point in mid-air while an arm swings away.
+        def front(fig, f):
+            return (M.sprite(0, 'open', f, M.FIGURES[fig]) if fig in ('cat', 'crab')
+                    else C.sprite(fig, 'open', f))
+        def touches(rows, x, y):
+            return any(0 <= y+dy < len(rows) and 0 <= x+dx < len(rows[0])
+                       and rows[y+dy][x+dx] != '.' for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+        self.assertEqual(set(C.HAND_FRONT), {f.id for f in M.FIGURES.values()})
+        for fig in C.HAND_FRONT:
+            for f in range(M.FRAMES):
+                self.assertTrue(touches(front(fig, f), *C.hand_point(fig, f)), '%s front %d' % (fig, f))
+            for f in range(C.WALK_FRAMES):
+                self.assertTrue(touches(C.walking_sprite(fig, 'open', f), *C.hand_point(fig, f, True)),
+                                '%s walking %d' % (fig, f))
+
+    def test_hands_reach_the_app_for_every_frame(self):
+        art = C.export(M.SKINS, M.SLOTS, M.EYES, M.FRAMES)
+        for fig in C.HAND_FRONT:
+            self.assertEqual(len(art['hands'][fig]['front']), M.FRAMES, fig)
+            self.assertEqual(len(art['hands'][fig]['walk']), C.WALK_FRAMES, fig)
+
     def test_walkers_keep_a_foot_or_body_on_the_floor(self):
         for fig in ('rabbit', 'pup', 'rex', 'snowman', 'robot', 'antenna', 'orb'):
             for frame in range(C.WALK_FRAMES):

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- The floating character now holds a disk balloon showing how much wt-manager could free: finished worktrees that are free to go, plus rebuildable caches everywhere else. Green below 5 GB, yellow to 20 GB, orange above, one colour higher when the disk is over 90% full; it grows in three sizes and announces each half-gigabyte step.
+- The balloon is held by each character's hand (or tied on), sways in a breeze from the side to almost overhead, trails and overshoots on strolls, tugs restlessly in orange, and floats away when there is nothing left to free. Reduce Motion holds it still.
+- A new worktree is measured as soon as it appears (`agent --measure PATH`), so the balloon grows without waiting for the hourly measure.
+- The floating window grows to 112×184pt for the balloon; only the character and balloon take clicks. The status badge leaves the floating character; the window and menu bar keep the mood.
+- `--snapshot-balloon DIR` renders the floating view in each balloon state.
+- The Disk badge and the Disk page now lead with the balloon's number, what you could free, split into finished worktrees and rebuildable output. One definition of a removable worktree serves the remove button and the balloon.
+- Fix: removing worktrees subtracted their whole size from the rebuildable total, so 36 GB removed showed "32 GB" with 57 GB still there, and the engine carried the wrong figure until the hourly measure. Only their caches are subtracted now.
+- The completion banner and rewards card say "freed" for this cleanup and "freed in all" for the running total, with the distance to the next rank, instead of two "reclaimed" figures side by side.
+
 ## 0.9.0
 
 - Add Bork, a snow-white puppy with a red bandana, and Chomp, a tiny rex with arms that miss its mouth. Each has a front portrait, a menu-bar portrait and a walking profile.

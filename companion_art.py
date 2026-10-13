@@ -186,7 +186,7 @@ def sprite(figure,eyes,frame):
         c.rect(18,26,22,31,'#');c.rect(19,27,21,30,'f');c.rect(17,30,23,31,'#')
     elif figure=='rex':
         # Vacant eyes, angry brows, a snap, and arms that cannot reach the mouth.
-        snap=(0,0,1,2,3,2,1,0)[f];arm=(0,1,2,1,0,-1,0,1)[f]
+        snap=(0,0,1,2,3,2,1,0)[f];arm=REX_ARM[f]
         c.rect(10,22,15,31,'#');c.rect(11,23,14,30,'f');c.rect(9,29,15,31,'#')
         c.rect(17,22,22,31,'#');c.rect(18,23,21,30,'f');c.rect(17,29,23,31,'#')
         c.rect(8,16,24,24,'#');c.rect(9,17,23,23,'f');c.rect(12,19,20,23,'b')
@@ -208,6 +208,41 @@ WALKING_FIGURES = FIGURES + ('cat', 'crab')
 # Eight planted poses followed by an airborne recovery. The swing overshoots
 # the next contact slightly, visibly passing ahead of the weight-bearing foot.
 STRIDE = (4,3,2,1,0,-1,-2,-3,-4,-3,-1,1,3,5,6,5)
+
+# Motion shared between a drawing and the hand that holds the disk balloon,
+# so the string follows the hand rather than a point the hand swings away from.
+SWING = (2,1,0,-1,-2,-1,0,1)
+RABBIT_HOP = (0,0,1,1,2,2,3,2,2,1,1,0,0,0,0,0)
+SNOW_WAVE = (0,-1,-2,-1,0,1,2,1)
+REX_ARM = (0,1,2,1,0,-1,0,1)
+REX_DIP = (1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0)
+
+# Where each character holds the balloon's string, in its own art grid (Wity
+# and Nipper's front portraits are their original 22x23 sprites). Front poses
+# hold it out on the viewer's right; walking profiles face right and hold it
+# in the leading hand, mirrored by the renderer for leftward travel. Those
+# with no hands tie it on: Bork to his bandana, Mallow and Wity to a side,
+# Cooper to his back, Coco to the trunk.
+HAND_FRONT = {'cat':(18,19),'crab':(17,8),'robot':(27,24),'rooster':(28,21),
+              'rabbit':(27,20),'snowman':(28,13),'palm':(23,24),'orb':(29,19),
+              'antenna':(31,18),'pup':(28,18),'rex':(29,20)}
+HAND_WALK = {'cat':(16,15),'crab':(20,7),'robot':(23,25),'rooster':(30,12),
+             'rabbit':(24,19),'snowman':(30,16),'palm':(23,24),'orb':(27,17),
+             'antenna':(28,20),'pup':(16,17),'rex':(23,20)}
+
+def hand_point(figure, frame, walking=False):
+    """The string's root on this frame. Parts that swing carry it with them."""
+    if not walking:
+        x, y = HAND_FRONT[figure]
+        if figure == 'rex': y -= REX_ARM[frame % 8]
+        return x, y
+    g = frame % WALK_FRAMES; p = g // 2
+    x, y = HAND_WALK[figure]
+    if figure in ('robot', 'antenna'): x += SWING[p]
+    elif figure == 'snowman': y += SNOW_WAVE[p]
+    elif figure == 'rabbit': y -= RABBIT_HOP[g]
+    elif figure == 'rex': y += REX_DIP[g]
+    return x, y
 LIFT = (0,0,0,0,0,0,0,0,1,2,3,4,4,3,2,1)
 
 def foot_pose(hip, phase, floor=31):
@@ -276,7 +311,7 @@ def walking_sprite(figure,eyes,frame):
     """
     if figure in ('cat','crab'): return _original_profile(figure,eyes,frame)
     c=Canvas();g=frame%WALK_FRAMES;p=g//2;bob=(0,0,-1,0,0,0,-1,0)[p]
-    swing=(2,1,0,-1,-2,-1,0,1)[p]
+    swing=SWING[p]
     if figure=='palm':
         # A rooted tree only sways in place, never acquires a walk.
         return sprite(figure,eyes,g)
@@ -298,7 +333,7 @@ def walking_sprite(figure,eyes,frame):
         _side_leg(c,20,25,g,bird=True)
     elif figure=='rabbit':
         # Hop compresses the haunch and lags the ears. The back paw stays on the floor.
-        hop=(0,0,1,1,2,2,3,2,2,1,1,0,0,0,0,0)[g]
+        hop=RABBIT_HOP[g]
         lag=(0,0,0,1,1,2,2,3,2,2,1,0,0,0,0,0)[g]
         reach=(0,1,2,3,3,2,1,0,-1,-2,-2,-1,0,1,0,0)[g]
         y=lambda n: n-hop
@@ -347,7 +382,7 @@ def walking_sprite(figure,eyes,frame):
         _side_leg(c,19,26,g,slim=True)
     elif figure=='snowman':
         # Profile hat, carrot leading, scarf trailing. The bottom ball stays planted.
-        lean=(0,1,1,0,-1,-1,0,1)[p];wave=(0,-1,-2,-1,0,1,2,1)[p]
+        lean=(0,1,1,0,-1,-1,0,1)[p];wave=SNOW_WAVE[p]
         c.ellipse(8,20,24,31,'#');c.ellipse(9,21,23,30,'s');c.ellipse(12,21,22,28,'f')
         c.put(18,24,'#');c.put(18,28,'#')
         c.line(10,22,2,26+wave,'t');c.line(4,24+wave,1,22+wave,'t')
@@ -395,7 +430,7 @@ def walking_sprite(figure,eyes,frame):
         # A stomp: the body drops as each foot lands and the heavy head lands a
         # frame later. Both feet use the shared planted-foot gait; the arm is
         # too short to reach anything, and the jaw snaps once a stride.
-        dip=1 if g in (0,1,8,9) else 0
+        dip=REX_DIP[g]
         nod=1 if g in (1,2,9,10) else 0
         bite=(0,0,0,0,1,2,2,1,0,0,0,0,0,0,0,0)[g]
         sway=(0,1,1,0,0,-1,-1,0)[p]
@@ -431,5 +466,8 @@ def export(skins, slots, eyes, frames):
     return {'width':SIZE,'height':SIZE,
             'sprites':{f'{fig}/{eye}/{f}':sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},
             'walking_frames':WALK_FRAMES,
+            'hands':{fig:{'front':[list(hand_point(fig,f)) for f in range(frames)],
+                          'walk':[list(hand_point(fig,f,True)) for f in range(WALK_FRAMES)]}
+                     for fig in HAND_FRONT},
             'walking_sprites':{f'{fig}/{eye}/{f}':walking_sprite(fig,eye,f) for fig in WALKING_FIGURES for eye in eyes for f in range(WALK_FRAMES)},
             'palettes':palettes}

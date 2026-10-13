@@ -49,17 +49,18 @@ final class Engine {
         return FileManager.default.isReadableFile(atPath: dev.path) ? dev : nil
     }
 
-    func refresh(measureDisk: Bool, progress: ((Progress) -> Void)? = nil, completion: @escaping (Result<Envelope, Error>) -> Void) {
+    func refresh(measureDisk: Bool, measure paths: [String] = [], progress: ((Progress) -> Void)? = nil,
+                 completion: @escaping (Result<Envelope, Error>) -> Void) {
         queue.async {
-            let result = self.run(measureDisk: measureDisk, progress: progress)
-            if case .success(let env) = result, env.reclaimKb > 0 {
+            let result = self.run(measureDisk: measureDisk, paths: paths, progress: progress)
+            if case .success(let env) = result, env.reclaimKb > 0, env.measuredPaths == nil {
                 self.lastReclaimKb = env.reclaimKb
             }
             DispatchQueue.main.async { completion(result) }
         }
     }
 
-    private func run(measureDisk: Bool, progress: ((Progress) -> Void)?) -> Result<Envelope, Error> {
+    private func run(measureDisk: Bool, paths: [String], progress: ((Progress) -> Void)?) -> Result<Envelope, Error> {
         guard let script = scriptURL else {
             return .failure(Err("wtmanager.py not found in the bundle"))
         }
@@ -70,6 +71,7 @@ final class Engine {
         if !measureDisk {
             args += ["--no-size"]
             if lastReclaimKb > 0 { args += ["--reclaim-kb", String(lastReclaimKb)] }
+            for p in paths { args += ["--measure", p] }
         }
         let task = Process()
         task.executableURL = python

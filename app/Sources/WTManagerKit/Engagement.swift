@@ -71,8 +71,13 @@ public struct CleanupHistory: Codable {
     }
     public static let milestonesKb = [1, 5, 25, 100, 500].map { $0 * 1024 * 1024 }
     public var level: Int { Self.milestonesKb.filter { reclaimedKb >= $0 }.count }
-    public var rank: String { ["Fresh start", "Space Scout", "Cache Ranger", "Disk Guardian", "Storage Hero", "Space Legend"][level] }
+    public static let ranks = ["Fresh start", "Space Scout", "Cache Ranger", "Disk Guardian", "Storage Hero", "Space Legend"]
+    public var rank: String { Self.ranks[level] }
     public var nextMilestoneKb: Int? { Self.milestonesKb.first { $0 > reclaimedKb } }
+    /// The rank the next milestone brings, if there is one.
+    public var nextRank: String? {
+        nextMilestoneKb == nil ? nil : Self.ranks[level + 1]
+    }
     public var levelFraction: Double {
         guard let next = nextMilestoneKb else { return 1 }
         let floor = level == 0 ? 0 : Self.milestonesKb[level - 1]

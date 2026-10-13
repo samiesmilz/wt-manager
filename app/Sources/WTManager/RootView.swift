@@ -100,8 +100,8 @@ struct Sidebar: View {
                 .padding(.horizontal, 17).padding(.bottom, 18)
 
             entry("overview", "Overview", "square.grid.2x2", nil)
-            entry("disk", "Disk", "internaldrive", store.disk.map { Store.human($0.reclaim) },
-                  tint: store.disk == nil ? nil : Palette.reclaim)
+            entry("disk", "Disk", "internaldrive", store.freeable.map { Store.human($0.totalKb) },
+                  tint: store.freeable == nil ? nil : Palette.reclaim)
 
             heading("Worktrees")
 

@@ -26,6 +26,9 @@ final class Store: ObservableObject {
     /// Disk tab and every row's size vanished for fifty-five minutes of each
     /// hour and reappeared after the next measurement.
     private var lastSizes: [String: (size: Int, reclaim: Int)] = [:]
+    /// New worktrees already sent for a one-off measure, so one that cannot
+    /// be measured is not asked about again on every refresh.
+    private var measureAttempted: Set<String> = []
     @Published var plan: Plan?
     @Published var completion: Plan?
     @Published private(set) var scanProgress: Engine.Progress?
@@ -172,12 +175,12 @@ final class Store: ObservableObject {
         refreshWhenIdle(measureDisk: false)
     }
 
-    func refresh(measureDisk: Bool, then next: (() -> Void)? = nil) {
+    func refresh(measureDisk: Bool, measure paths: [String] = [], then next: (() -> Void)? = nil) {
         guard !busy else { return }
         busy = true
-        phase = measureDisk ? "measuring disk" : "reading repos"
+        phase = measureDisk || !paths.isEmpty ? "measuring disk" : "reading repos"
         scanProgress = nil
-        engine.refresh(measureDisk: measureDisk, progress: { [weak self] p in
+        engine.refresh(measureDisk: measureDisk, measure: paths, progress: { [weak self] p in
             self?.scanProgress = p
         }) { [weak self] result in
             guard let self else { return }
@@ -206,8 +209,14 @@ final class Store: ObservableObject {
                     for w in env.worktrees { sizes[w.path] = (w.sizeKb, w.reclaimKb) }
                     self.lastSizes = sizes
                 } else {
+                    // A partial pass measured a few new worktrees; keep theirs
+                    // and carry every other size, which it left unmeasured.
+                    let fresh = Set(env.measuredPaths ?? [])
                     for i in env.worktrees.indices {
-                        if let s = self.lastSizes[env.worktrees[i].path] {
+                        let w = env.worktrees[i]
+                        if fresh.contains(w.path), w.sizeKb >= 0 {
+                            self.lastSizes[w.path] = (w.sizeKb, max(w.reclaimKb, 0))
+                        } else if let s = self.lastSizes[w.path] {
                             env.worktrees[i].sizeKb = s.size
                             env.worktrees[i].reclaimKb = s.reclaim
                         }
@@ -228,6 +237,15 @@ final class Store: ObservableObject {
             if let d = self.pendingDisk {
                 self.pendingDisk = nil
                 self.refresh(measureDisk: d)
+            } else if !self.lastSizes.isEmpty, let env = self.envelope {
+                // A worktree that appeared since the last full measure: size it
+                // now, so the balloon grows when it lands, not at the hour.
+                let unseen = env.worktrees.map(\.path)
+                    .filter { self.lastSizes[$0] == nil && !self.measureAttempted.contains($0) }
+                if !unseen.isEmpty {
+                    self.measureAttempted.formUnion(unseen)
+                    self.refresh(measureDisk: false, measure: unseen)
+                }
             }
         }
     }
@@ -286,7 +304,8 @@ final class Store: ObservableObject {
     /// The blink is applied here rather than in the art, because it belongs to
     /// the clock and not to the mood: every mood that has its eyes open blinks,
     /// and the ones already shut simply keep them shut.
-    func image(height: CGFloat, frame: Int = 0, blinking: Bool = false, detailed: Bool = false,
+    func image(height: CGFloat, frame: Int = 0, blinking: Bool = false, glancing: Bool = false,
+               detailed: Bool = false,
                showSignal: Bool = true, walking: Bool = false, facesLeft: Bool = false) -> NSImage? {
         if usingOwnImage {
             // Custom pictures get the same status badge as every character.
@@ -298,7 +317,7 @@ final class Store: ObservableObject {
         }
         return mascot?.image(figure: figure,
                              gauge: face?.gauge ?? 0,
-                             eyes: blinking ? "shut" : (face?.eyes ?? "shut"),
+                             eyes: blinking ? "shut" : glancing ? "glance" : (face?.eyes ?? "shut"),
                              frame: frame,
                              skin: skin,
                              tint: face?.tint ?? "#8b93a1",
@@ -690,10 +709,12 @@ extension Store {
     }
 
     var removalCandidates: [Worktree] {
-        (envelope?.worktrees ?? []).filter {
-            ["merged", "empty"].contains($0.status) && !$0.primary && !$0.isBase && !$0.removalBlocked
-        }
+        (envelope?.worktrees ?? []).filter(\.removable)
     }
+
+    /// What cleaning up could free — the balloon's number, the Disk badge and
+    /// the Disk page's headline, all from one calculation.
+    var freeable: DiskBalloon.Freeable? { DiskBalloon.freeable(envelope?.worktrees ?? []) }
 
     func reclaimCandidates(staleOnly: Bool = false) -> [Worktree] {
         (envelope?.worktrees ?? []).filter {
@@ -1035,9 +1056,16 @@ extension Store {
         let touched = Set(r.completedPaths)
         switch plan?.action.kind {
         case .reap:
+            // The rebuildable total only ever counted these worktrees' caches,
+            // so that is all it loses. Subtracting everything freed took the
+            // whole worktrees out of it: 36 GB removed turned 68 GB of caches
+            // into "32 GB rebuildable" when 57 GB were still there, and the
+            // engine carried the wrong figure forward until the hourly measure.
+            let removedCaches = env.worktrees.filter { touched.contains($0.path) }
+                .reduce(0) { $0 + max($1.reclaimKb, 0) }
             env.worktrees.removeAll { touched.contains($0.path) }
             let freed = r.freedKb
-            disk = disk.map { (total: max($0.total - freed, 0), reclaim: max($0.reclaim - freed, 0)) }
+            disk = disk.map { (total: max($0.total - freed, 0), reclaim: max($0.reclaim - removedCaches, 0)) }
         case .clean:
             for i in env.worktrees.indices where touched.contains(env.worktrees[i].path) {
                 env.worktrees[i].sizeKb = max(env.worktrees[i].sizeKb - env.worktrees[i].reclaimKb, 0)

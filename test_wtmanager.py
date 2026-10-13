@@ -532,6 +532,44 @@ class Refusals(unittest.TestCase):
                          "a sweep listed every worktree it did not want")
 
 
+class PartialMeasure(unittest.TestCase):
+    """`agent --no-size --measure P`: one new worktree's size, now.
+
+    The app holds every other size from its last full pass. A full pass to
+    learn one new worktree would re-walk all of them, so the balloon would wait
+    an hour to grow. A partial pass must not pretend to be a full one, or the
+    app would replace every size it holds with "unmeasured"."""
+
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+        self.new = self.fx.worktree("new", "feat/new")
+        self.old = self.fx.worktree("old", "feat/old")
+
+    def agent(self, *extra):
+        import subprocess
+        r = subprocess.run([sys.executable, T.__file__, "--color=never", "--here", "agent",
+                            "--no-size", *extra], capture_output=True, text=True,
+                           cwd=self.fx.main, env=dict(os.environ))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_only_the_named_worktree_is_measured_and_it_says_so(self):
+        env = self.agent("--measure", self.new, "--reclaim-kb", "777")
+        sizes = {os.path.realpath(w["path"]): w["size_kb"] for w in env["worktrees"]}
+        self.assertGreater(sizes[os.path.realpath(self.new)], 0)
+        self.assertLessEqual(sizes[os.path.realpath(self.old)], 0)
+        self.assertEqual([os.path.realpath(p) for p in env["measured_paths"]],
+                         [os.path.realpath(self.new)])
+        self.assertFalse(env["measured_disk"], "a partial pass claimed to be a full one")
+        # Totals from one worktree would empty the gauge; the carried one stands.
+        self.assertEqual(env["reclaim_kb"], 777)
+
+    def test_a_counts_only_pass_carries_no_partial_marker(self):
+        self.assertNotIn("measured_paths", self.agent())
+
+
 class Character(unittest.TestCase):
     def test_no_two_expressions_draw_the_same(self):
         # Five expressions in a two-pixel cell is close to the ceiling, and a

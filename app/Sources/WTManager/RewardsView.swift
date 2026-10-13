@@ -43,7 +43,7 @@ struct CleanupScoreCard: View {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(store.history.rank).font(.system(size: 16, weight: .bold, design: .rounded))
-                        Text("\(store.history.reclaimedKb == 0 ? "0 B" : Store.human(store.history.reclaimedKb)) reclaimed · \(store.history.cleanups) cleanup\(store.history.cleanups == 1 ? "" : "s")")
+                        Text("\(store.history.reclaimedKb == 0 ? "0 B" : Store.human(store.history.reclaimedKb)) freed in all · \(store.history.cleanups) cleanup\(store.history.cleanups == 1 ? "" : "s")")
                             .font(.system(size: 11)).foregroundStyle(Palette.muted)
                     }
                     Spacer(minLength: 0)
@@ -54,7 +54,7 @@ struct CleanupScoreCard: View {
                     .tint(Palette.reclaim)
                     .accessibilityLabel("Progress toward next reclaim milestone")
                 if let next = store.history.nextMilestoneKb {
-                    Text("\(Store.human(next - store.history.reclaimedKb)) to the next badge")
+                    Text("\(Store.human(next - store.history.reclaimedKb)) to \(store.history.nextRank ?? "the next badge")")
                         .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
                 } else {
                     Text("Space Legend unlocked. Every safe cleanup still counts.")
@@ -79,7 +79,7 @@ struct CleanupScoreCard: View {
                     Text("A full disk scan starts your local space history.")
                         .font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
-                Text("Rewards count confirmed reclaimed space, including partial successes. Estimates stay on this Mac.")
+                Text("Rewards count space confirmed freed, including partial successes. Estimates stay on this Mac.")
                     .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }

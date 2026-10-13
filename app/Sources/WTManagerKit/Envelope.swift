@@ -143,10 +143,14 @@ public struct Envelope: Decodable {
     /// Folders currently watched. Included so setup remains editable later.
     public var roots: [String] = []
     public var configPath: String = ""
+    /// Set only by a partial pass: the worktrees whose sizes are new. Every
+    /// other size in it is unmeasured, not zero.
+    public var measuredPaths: [String]? = nil
     public enum CodingKeys: String, CodingKey {
         case counts, notices, face, worktrees, headline, insights
         case unconfigured, candidates, roots
         case configPath = "config_path"
+        case measuredPaths = "measured_paths"
         case reclaimKb = "reclaim_kb"
         case totalKb = "total_kb"
         case measuredDisk = "measured_disk"
@@ -166,6 +170,7 @@ public struct Envelope: Decodable {
         candidates = try c.decodeIfPresent([RootCandidate].self, forKey: .candidates) ?? []
         roots = try c.decodeIfPresent([String].self, forKey: .roots) ?? []
         configPath = try c.decodeIfPresent(String.self, forKey: .configPath) ?? ""
+        measuredPaths = try c.decodeIfPresent([String].self, forKey: .measuredPaths)
     }
 }
 

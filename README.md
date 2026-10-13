@@ -136,7 +136,19 @@ You can also let the floating companion take slow, short screen strolls from **A
 | **Bork** | A snow-white puppy with floppy ears, a red bandana, and one proud tooth |
 | **Chomp** | A tiny rex with vacant eyes, angry brows, and arms that miss its mouth |
 
-The character is decoration; its framed status badge is the instrument. On the desktop and in the window, every character uses the same badge size, colour field, high-contrast borders, and distinct glyph for each of eight moods. The larger signal stays readable on light and dark backgrounds, and changing character does not change its meaning. Characters share a baseline, while Byte now has a compact body and a lighter slate coat. Coco's coconuts no longer cover its expression.
+### The disk balloon
+
+The floating character holds a balloon showing **how much wt-manager could free**: the whole of every finished worktree that is free to go, plus the rebuildable caches (`node_modules`, `.build` and the like) inside everything else. Main checkouts and blocked removals count only their caches, because cleaning up cannot remove them.
+
+- **Colour** is green below 5 GB, yellow to 20 GB, and orange above. When the disk is more than 90% full, it steps up one colour. A colour only falls back once the figure is half a gigabyte below the boundary, so it does not flicker.
+- **Size** grows in three steps with the amount; urgency changes the colour, not the size.
+- **Growth** shows as a brief "+0.6 GB" tag each time the figure crosses a half-gigabyte step. A new worktree is measured as soon as it appears instead of waiting for the hourly measure. After a cleanup the balloon shrinks and shows what was freed.
+- **Motion:** the character holds the string in its hand (Bork ties it to his bandana, Mallow to its side). A breeze swings the balloon from out at the side to almost overhead, and the character glances up when it passes. Setting off swings it back, and stopping makes it overshoot. In orange, it tugs restlessly. With nothing left to free, the character lets go and it floats away. Reduce Motion holds it still at its resting lean.
+- **Clicking** the balloon opens the Disk section, whose badge and headline show the same number, split into finished worktrees and rebuildable output beside the actions that free each. Only the character and its balloon take clicks; the rest of the floating window lets them through.
+
+Before anything has been measured the balloon is grey with "…", and grey with "?" if nothing could be measured.
+
+The character is decoration. In the window, its framed status badge is the instrument; on the desktop, the balloon replaces it, and the menu bar keeps the mood. Every badge uses the same size, colour field, high-contrast borders, and distinct glyph for each of eight moods. The larger signal stays readable on light and dark backgrounds, and changing character does not change its meaning. Characters share a baseline, while Byte now has a compact body and a lighter slate coat. Coco's coconuts no longer cover its expression.
 
 ![Framed mood signals used on larger mascots](docs/images/signals.png)
 
@@ -148,7 +160,7 @@ Choose a character with **one click on its portrait beneath the window headline*
 
 ![Cooper, Pip and the small menu icons](docs/images/cooper-pip.gif)
 
-**The menu-bar mascot stays clean, without the arrow/status badge; the attention count still appears beside it.** Full status badges remain on larger mascots, and the menu-bar tooltip explains current status.
+**The menu-bar mascot stays clean, without the arrow/status badge; the attention count still appears beside it.** Full status badges remain on the window's mascot, and the menu-bar tooltip explains current status. The floating character carries the disk balloon instead.
 
 **Click the desktop or menu-bar mascot to open wt-manager immediately.** Right-click either mascot for less frequent actions, including Quit. The compact floating desktop mascot is shown by default. Drag it anywhere without opening the window; its position survives restarting the app. Right-click the large header mascot for coat, update and Quit actions. Hide/show the desktop companion using **Appearance → Show floating mascot** or its right-click menu. **Reset mascot position** brings it back if needed. It stays available when you close the main window and follows your Mac's Spaces. Saved positions are recovered onto a connected display when the display layout changes.
 

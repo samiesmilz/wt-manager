@@ -35,11 +35,18 @@ public struct Mascot: Decodable {
         public let walkingSprites: [String: [String]]?
         public let walkingFrames: Int?
         public let palettes: [String: [String: String]]
+        /// Where each character holds the disk balloon's string, per frame,
+        /// in the grid of the art that pose is drawn from.
+        public let hands: [String: Hands]?
         private enum CodingKeys: String, CodingKey {
-            case width, height, sprites, palettes
+            case width, height, sprites, palettes, hands
             case walkingSprites = "walking_sprites"
             case walkingFrames = "walking_frames"
         }
+    }
+    public struct Hands: Decodable {
+        public let front: [[Int]]
+        public let walk: [[Int]]
     }
     public let companion: Companion?
     public let menu: Companion?
@@ -73,6 +80,29 @@ public struct Mascot: Decodable {
 
     public func has(figure: String) -> Bool {
         figures.contains { $0.id == figure }
+    }
+
+    /// Where the character holds the balloon's string, in the points of an
+    /// image `image(...)` drew for the same pose, origin bottom-left.
+    ///
+    /// Per frame, because hands swing: a fixed point is where the hand was,
+    /// and the string would start in mid-air while the arm moves away from it.
+    public func hand(figure: String, frame: Int, walking: Bool, facesLeft: Bool,
+                     imageSize: NSSize) -> NSPoint? {
+        guard let hands = companion?.hands?[figure] else { return nil }
+        let list = walking ? hands.walk : hands.front
+        guard !list.isEmpty else { return nil }
+        let p = list[((frame % list.count) + list.count) % list.count]
+        guard p.count == 2 else { return nil }
+        // The grid of the art this pose is drawn from: detailed companion art,
+        // or Wity and Nipper's original portraits.
+        let art = walking ? companion?.walkingSprites?["\(figure)/open/0"]
+                          : companion?.sprites["\(figure)/open/0"]
+        let gridW = art?.first?.count ?? width, gridH = art?.count ?? height
+        let scale = imageSize.height / CGFloat(gridH)
+        var x = (CGFloat(p[0]) + 0.5) * scale
+        if facesLeft { x = CGFloat(gridW) * scale - x }
+        return NSPoint(x: x, y: (CGFloat(gridH - 1 - p[1]) + 0.5) * scale)
     }
 }
 

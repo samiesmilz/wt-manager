@@ -508,19 +508,16 @@ struct DiskDetail: View {
                             .font(.system(size: 11.5)).foregroundStyle(.secondary)
                     }
                 } else {
-                    Card(title: "by repo",
-                         trailing: store.disk.map { "\(Store.human($0.reclaim)) of \(Store.human($0.total)) rebuildable" },
-                         tint: Palette.reclaim, symbol: "chart.bar.fill") {
-                        VStack(alignment: .leading, spacing: 9) {
-                            ForEach(Array(store.weights.enumerated()), id: \.element.id) { i, item in
-                                if i > 0 { Hairline() }
-                                RepoBar(item: item, max: store.weights.first?.total ?? 1,
-                                        hue: Palette.categorical(i))
-                            }
-                        }
-                    }
-                    Card(title: "reclaim", tint: Palette.reclaim, symbol: "sparkles") {
+                    // The balloon's number, and where it comes from. Clicking the
+                    // balloon lands here, so the two must say the same thing.
+                    Card(title: "reclaim",
+                         trailing: store.freeable.map { "\(Store.human($0.totalKb)) you could free" },
+                         tint: Palette.reclaim, symbol: "sparkles") {
                         VStack(alignment: .leading, spacing: 8) {
+                            if let f = store.freeable {
+                                Text("\(Store.human(f.finishedKb)) in \(f.finishedCount) finished worktree\(f.finishedCount == 1 ? "" : "s") · \(Store.human(f.cachesKb)) of rebuildable output")
+                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.inkReclaim)
+                            }
                             if !store.removalCandidates.isEmpty {
                                 ActionButton(action: Store.Action(kind: .reap, paths: store.removalCandidates.map(\.path)),
                                              detail: "Only candidates that have no known removal blocker. Files are checked again in the preview.") { store.preview($0) }
@@ -541,6 +538,17 @@ struct DiskDetail: View {
                             }
                             Text("Each one shows you exactly what it would remove before anything happens.")
                                 .font(.system(size: 10.5)).foregroundStyle(Palette.muted).padding(.top, 2)
+                        }
+                    }
+                    Card(title: "by repo",
+                         trailing: store.disk.map { "\(Store.human($0.total)) in worktrees" },
+                         tint: Palette.reclaim, symbol: "chart.bar.fill") {
+                        VStack(alignment: .leading, spacing: 9) {
+                            ForEach(Array(store.weights.enumerated()), id: \.element.id) { i, item in
+                                if i > 0 { Hairline() }
+                                RepoBar(item: item, max: store.weights.first?.total ?? 1,
+                                        hue: Palette.categorical(i))
+                            }
                         }
                     }
                 }
@@ -729,10 +737,15 @@ struct CompletionBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 12, weight: .semibold))
                 Text(issues ? "Some work could not finish. Review the result for details."
-                     : (plan.result?.freedKb ?? 0) > 0 ? "\(Store.human(plan.result?.freedKb ?? 0)) reclaimed" : "Operation confirmed · review the details")
+                     : (plan.result?.freedKb ?? 0) > 0 ? "\(Store.human(plan.result?.freedKb ?? 0)) freed" : "Operation confirmed · review the details")
                     .font(.system(size: 11)).foregroundStyle(Palette.muted)
                 if (plan.result?.freedKb ?? 0) > 0 && !(plan.result?.completedPaths.isEmpty ?? true) {
-                    Text("✦ \(store.history.rank) · \(Store.human(store.history.reclaimedKb)) reclaimed so far")
+                    // The running total, worded apart from this cleanup's own
+                    // figure above it: two "reclaimed" numbers side by side
+                    // read as one contradicting the other.
+                    Text("✦ \(store.history.rank) · \(Store.human(store.history.reclaimedKb)) freed in all"
+                         + (store.history.nextMilestoneKb.map { next in
+                             " · \(Store.human(next - store.history.reclaimedKb)) to \(store.history.nextRank ?? "")" } ?? ""))
                         .font(.system(size: 10.5, weight: .medium)).foregroundStyle(Palette.inkReclaim)
                 }
             }

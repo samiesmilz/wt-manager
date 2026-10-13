@@ -671,6 +671,11 @@ MainActor.assumeIsolated {
         snapshot(into: args[i + 1], envelopePath: nil, motionOnly: true)
         return
     }
+    if let i = args.firstIndex(of: "--snapshot-balloon"), i + 1 < args.count {
+        _ = NSApplication.shared
+        if let m = AppDelegate.loadMascotForSnapshot() { FloatingMascot.snapshotBalloons(mascot: m, into: args[i + 1]) }
+        exit(0)
+    }
     if let i = args.firstIndex(of: "--snapshot-cast"), i + 1 < args.count {
         snapshot(into: args[i + 1], envelopePath: nil, castOnly: true)
         exit(0)
