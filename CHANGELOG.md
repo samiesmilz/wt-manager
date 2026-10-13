@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0
 
 - The floating character now holds a disk balloon showing how much wt-manager could free: finished worktrees that are free to go, plus rebuildable caches everywhere else. Green below 5 GB, yellow to 20 GB, orange above, one colour higher when the disk is over 90% full; it grows in three sizes and announces each half-gigabyte step.
 - The balloon is held by each character's hand (or tied on), sways in a breeze from the side to almost overhead, trails and overshoots on strolls, tugs restlessly in orange, and floats away when there is nothing left to free. Reduce Motion holds it still.
