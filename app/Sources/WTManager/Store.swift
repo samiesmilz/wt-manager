@@ -537,14 +537,7 @@ final class Store: ObservableObject {
     /// means. `MB` cannot be read as anything else, and costs one character.
     /// Kept in step with `human()` in the engine, which formats the same
     /// numbers for the table.
-    static func human(_ kb: Int) -> String {
-        guard kb > 0 else { return "—" }
-        for (suffix, factor) in [("TB", 1 << 30), ("GB", 1 << 20), ("MB", 1 << 10)] where kb >= factor {
-            let v = Double(kb) / Double(factor)
-            return v < 10 ? String(format: "%.1f%@", v, suffix) : "\(Int(v))\(suffix)"
-        }
-        return "\(kb)KB"
-    }
+    static func human(_ kb: Int) -> String { DiskSize.human(kb) }
 }
 
 // MARK: - insight
@@ -637,11 +630,11 @@ extension Store {
         let pending = removalCandidates.filter { !$0.removalReady }
         if !ready.isEmpty {
             let kb = ready.reduce(0) { $0 + max($1.sizeKb, 0) }
-            out.append(Move(title: "Review removal of \(ready.count) eligible worktrees",
+            out.append(Move(title: "Review removal of " + Store.count(ready.count, "eligible worktree"),
                             detail: "up to \(Store.human(kb)); local files were checked and protected files will be archived",
                             action: Action(kind: .reap, paths: ready.map(\.path)), tint: Palette.reclaim))
         } else if !pending.isEmpty {
-            out.append(Move(title: "Check \(pending.count) finished worktrees",
+            out.append(Move(title: "Check " + Store.count(pending.count, "finished worktree"),
                             detail: "local files have not been checked yet; this opens a preview",
                             action: Action(kind: .reap, paths: pending.map(\.path)), tint: Palette.reclaim))
         } else if let kept = env.worktrees.first(where: { ["merged", "empty"].contains($0.status) && $0.removalBlocked }) {

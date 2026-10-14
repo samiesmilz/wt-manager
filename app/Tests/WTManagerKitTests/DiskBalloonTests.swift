@@ -82,14 +82,23 @@ final class DiskBalloonTests: XCTestCase {
                        "orange is the top; a full disk cannot go past it")
     }
 
-    func testLabels() {
+    func testLabelsAreWrittenTheWayTheDiskPageWritesThem() {
         let g = DiskBalloon.gb
-        XCTAssertEqual(DiskBalloon.label(kb: Int(0.84 * g)).number, "0.8")
-        XCTAssertEqual(DiskBalloon.label(kb: Int(8.5 * g)).number, "8.5")
-        XCTAssertEqual(DiskBalloon.label(kb: Int(5.0 * g)).number, "5")
-        XCTAssertEqual(DiskBalloon.label(kb: Int(26.4 * g)).number, "26")
-        let tb = DiskBalloon.label(kb: Int(1234 * g))
-        XCTAssertEqual(tb.number, "1.2"); XCTAssertEqual(tb.unit, "TB")
+        // The case that was reported: one measurement, "56GB" on the Disk
+        // page and "57" on the balloon.
+        let kb = Int(56.6 * g)
+        let l = DiskBalloon.label(kb: kb)
+        XCTAssertEqual(l.number + l.unit, DiskSize.human(kb))
+        XCTAssertEqual(DiskSize.human(kb), "57GB", "rounds, as the engine's human() does")
+        XCTAssertEqual(DiskSize.human(Int(8.5 * g)), "8.5GB")
+        XCTAssertEqual(DiskSize.human(Int(5.0 * g)), "5.0GB")
+        XCTAssertEqual(DiskSize.human(Int(0.84 * g)), "860MB")
+        XCTAssertEqual(DiskSize.human(Int(1234 * g)), "1.2TB")
+        XCTAssertEqual(DiskSize.human(0), "—")
+        for v in [0.3, 0.84, 1, 4.95, 9.96, 26.4, 56.6, 999, 1234] {
+            let k = Int(v * g), b = DiskBalloon.label(kb: k)
+            XCTAssertEqual(b.number + b.unit, DiskSize.human(k), "\(v) GB")
+        }
     }
 
     func testGrowthIsAnnouncedInHalfGigabyteSteps() {

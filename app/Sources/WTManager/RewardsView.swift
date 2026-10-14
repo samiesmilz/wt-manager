@@ -40,7 +40,7 @@ struct CleanupScoreCard: View {
     var body: some View {
         Card(title: "your space", tint: Palette.reclaim, symbol: "sparkles") {
             VStack(alignment: .leading, spacing: 13) {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(store.history.rank).font(.system(size: 16, weight: .bold, design: .rounded))
                         Text("\(store.history.reclaimedKb == 0 ? "0 B" : Store.human(store.history.reclaimedKb)) freed in all · \(store.history.cleanups) cleanup\(store.history.cleanups == 1 ? "" : "s")")
@@ -50,15 +50,17 @@ struct CleanupScoreCard: View {
                     Image(systemName: store.history.level == 0 ? "leaf.fill" : "star.circle.fill")
                         .font(.system(size: 26)).foregroundStyle(Palette.inkReclaim)
                 }
-                ProgressView(value: store.history.levelFraction)
-                    .tint(Palette.reclaim)
-                    .accessibilityLabel("Progress toward next reclaim milestone")
-                if let next = store.history.nextMilestoneKb {
-                    Text("\(Store.human(next - store.history.reclaimedKb)) to \(store.history.nextRank ?? "the next badge")")
-                        .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
-                } else {
-                    Text("Space Legend unlocked. Every safe cleanup still counts.")
-                        .font(.system(size: 10.5)).foregroundStyle(Palette.inkReclaim)
+                VStack(alignment: .leading, spacing: 7) {
+                    MilestoneBar(fraction: store.history.levelFraction)
+                        .accessibilityLabel("Progress toward next reclaim milestone")
+                        .accessibilityValue("\(Int(store.history.levelFraction * 100)) percent")
+                    if let next = store.history.nextMilestoneKb {
+                        Text("\(Store.human(next - store.history.reclaimedKb)) to \(store.history.nextRank ?? "the next badge")")
+                            .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    } else {
+                        Text("Space Legend unlocked. Every safe cleanup still counts.")
+                            .font(.system(size: 10.5)).foregroundStyle(Palette.inkReclaim)
+                    }
                 }
                 Hairline()
                 if let sample = store.history.latest {
@@ -84,6 +86,25 @@ struct CleanupScoreCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+/// Drawn, because the system bar ignored its tint and came out grey: a
+/// green card whose one progress mark was the only thing not green, and at
+/// the start of a rank no more than a dot at the left end.
+private struct MilestoneBar: View {
+    let fraction: Double
+    var body: some View {
+        Canvas { context, size in
+            let r = size.height / 2
+            context.fill(Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: r),
+                         with: .color(Palette.reclaim.opacity(0.16)))
+            let f = min(max(fraction, 0), 1)
+            guard f > 0 else { return }
+            let fill = CGRect(x: 0, y: 0, width: max(size.height, size.width * f), height: size.height)
+            context.fill(Path(roundedRect: fill, cornerRadius: r), with: .color(Palette.reclaim))
+        }
+        .frame(height: 6)
     }
 }
 

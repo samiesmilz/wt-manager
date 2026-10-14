@@ -1,5 +1,26 @@
 import Foundation
 
+/// One way to write a size, everywhere: the same rule as the engine's
+/// `human()`, so the terminal, the window and the balloon can never show one
+/// figure two ways. The window used to truncate (56.6 GB as "56GB") while the
+/// balloon rounded it to "57", and two numbers that are the same measurement
+/// read as a disagreement.
+public enum DiskSize {
+    public static func parts(_ kb: Int) -> (number: String, unit: String) {
+        for (unit, factor) in [("TB", 1 << 30), ("GB", 1 << 20), ("MB", 1 << 10)] where kb >= factor {
+            let v = Double(kb) / Double(factor)
+            return (String(format: v < 10 ? "%.1f" : "%.0f", v), unit)
+        }
+        return (String(max(kb, 0)), "KB")
+    }
+    /// "56GB", or a dash for nothing measured.
+    public static func human(_ kb: Int) -> String {
+        guard kb > 0 else { return "—" }
+        let p = parts(kb)
+        return p.number + p.unit
+    }
+}
+
 /// The disk balloon: what wt-manager could free, as a number the floating
 /// character holds on a string.
 ///
@@ -85,14 +106,9 @@ public enum DiskBalloon {
         }
     }
 
-    /// "0.8" / "8.5" / "26" with "GB"; a terabyte or more switches to "TB".
-    public static func label(kb: Int) -> (number: String, unit: String) {
-        let g = Double(max(kb, 0)) / gb
-        if g >= 1000 { return (trim(String(format: "%.1f", g / 1024)), "TB") }
-        if g >= 10 { return (String(Int(g.rounded())), "GB") }
-        return (trim(String(format: "%.1f", g)), "GB")
-    }
-    private static func trim(_ s: String) -> String { s.hasSuffix(".0") ? String(s.dropLast(2)) : s }
+    /// The number and unit on the balloon, written exactly as the Disk page
+    /// writes the same figure.
+    public static func label(kb: Int) -> (number: String, unit: String) { DiskSize.parts(max(kb, 0)) }
 
     /// Below this there is nothing worth carrying: the character lets go.
     public static let emptyKb = Int(0.05 * gb)

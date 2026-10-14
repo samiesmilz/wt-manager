@@ -174,7 +174,6 @@ struct Overview: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(moves.enumerated()), id: \.element.id) { i, move in
                         HStack(alignment: .center, spacing: 11) {
-                            RoundedRectangle(cornerRadius: 2).fill(move.tint).frame(width: 3, height: 30)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(move.title).font(.system(size: 13, weight: .semibold))
                                     .fixedSize(horizontal: false, vertical: true)
@@ -196,8 +195,15 @@ struct Overview: View {
                                     .help(w.path)
                             }
                         }
-                        .padding(11)
+                        .padding(11).padding(.leading, 14)
                         .background(RoundedRectangle(cornerRadius: 9).fill(move.tint.opacity(0.065)))
+                        // The colour each move owns, as the height of its text
+                        // rather than a fixed 30pt pip that a two-line detail
+                        // left halfway down.
+                        .overlay(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2).fill(move.tint)
+                                .frame(width: 3).padding(.vertical, 12).padding(.leading, 11)
+                        }
                     }
                 }
             }
@@ -299,9 +305,12 @@ struct Overview: View {
         } else if !commits {
             parts.append("in " + Store.count(r.withChanges, "worktree"))
         }
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+        // The figure spans both lines: its baseline sits on the second
+        // line's, so it reads as one block. On the first line's, as it was,
+        // the figure stood above the text and the second line hung below it.
+        return HStack(alignment: .lastTextBaseline, spacing: 11) {
             Text("\(figure)")
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .font(.system(size: 34, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(Palette.inkRisk)
             VStack(alignment: .leading, spacing: 2) {
@@ -367,11 +376,11 @@ private struct RiskRow: View {
 /// drift apart — which is the only way a right-aligned numeric column ever
 /// goes wrong.
 private enum Ledger {
-    static let needs: CGFloat = 50
-    static let forgot: CGFloat = 52
-    static let only: CGFloat = 62
-    static let age: CGFloat = 46
-    static let reclaim: CGFloat = 58
+    static let needs: CGFloat = 52
+    static let forgot: CGFloat = 58
+    static let only: CGFloat = 72
+    static let age: CGFloat = 58
+    static let reclaim: CGFloat = 66
 
 }
 
@@ -464,12 +473,12 @@ private struct RepoLedgerRow: View {
                     // thirty-two are the same amount of forgotten, and a cliff
                     // between them would claim otherwise.
                     Text(row.oldestDays > 0 ? "\(row.oldestDays)d" : "–")
-                        .font(.system(size: 11, design: .rounded))
+                        .font(.system(size: 12, weight: .medium, design: .rounded)).monospacedDigit()
                         .foregroundStyle(row.oldestDays > 0
                                          ? Palette.ink(Palette.age(row.oldestDays)) : Palette.faint)
                         .frame(width: Ledger.age, alignment: .trailing)
                     Text(row.reclaim > 0 ? Store.human(row.reclaim) : "–")
-                        .font(.system(size: 11, design: .rounded))
+                        .font(.system(size: 12, weight: .medium, design: .rounded)).monospacedDigit()
                         .foregroundStyle(row.reclaim > 0 ? Palette.inkReclaim : Palette.faint)
                         .frame(width: Ledger.reclaim, alignment: .trailing)
                 }
@@ -486,6 +495,7 @@ private struct RepoLedgerRow: View {
     private func cell(_ n: Int, width: CGFloat, tint: Color) -> some View {
         Text(n > 0 ? "\(n)" : "–")
             .font(.system(size: 12, weight: n > 0 ? .semibold : .regular, design: .rounded))
+            .monospacedDigit()
             .foregroundStyle(n > 0 ? Palette.ink(tint) : Palette.faint)
             .frame(width: width, alignment: .trailing)
     }
@@ -764,58 +774,143 @@ struct CompletionBanner: View {
 struct LinkedPRCard: View {
     @ObservedObject var store: Store
     @State private var selectedState = "OPEN"
+    @Environment(\.openURL) private var openURL
+
+    /// Each state in the colour the app already gives its worktrees: open is
+    /// work in flight, merged is finished, closed is spent.
+    private static let states: [(id: String, label: String, help: String)] = [
+        ("OPEN", "Open", "Open pull requests"),
+        ("MERGED", "Merged", "Merged pull requests"),
+        ("CLOSED", "Closed", "Closed without merging"),
+    ]
+    private static func tint(_ state: String) -> Color {
+        switch state {
+        case "OPEN": return Palette.status("active")
+        case "MERGED": return Palette.status("merged")
+        default: return Palette.status("empty")
+        }
+    }
+
     var body: some View {
         let worktrees = store.envelope?.worktrees ?? []
         let stats = LinkedPRStats(worktrees: worktrees)
         let rows = LinkedPRSummary.groups(worktrees).filter { $0.pr.state == selectedState }
-        Card(title: "PRs linked to local worktrees", tint: .accentColor, symbol: "arrow.triangle.pull") {
-            HStack(spacing: 16) {
-                metric("Open", stats.open, .blue, state: "OPEN")
-                metric("Merged", stats.merged, .green, state: "MERGED")
-                metric("Closed, not merged", stats.closed, .secondary, state: "CLOSED")
-                Spacer(minLength: 0)
-            }
+        Card(title: "Pull requests",
+             trailing: stats.unconfirmed > 0 ? "\(stats.unconfirmed) worktrees without one" : nil,
+             tint: .accentColor, symbol: "arrow.triangle.pull") {
+            filter(stats)
             if rows.isEmpty {
-                Text("No confirmed \(selectedState.lowercased()) PRs linked to these checkouts.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            ForEach(rows) { row in
-                HStack(alignment: .top, spacing: 8) {
-                    if let url = row.webURL {
-                        Link(destination: url) {
-                            Label("#\(row.pr.number) \(title(row))", systemImage: "arrow.up.forward.square")
-                                .font(.system(size: 11.5, weight: .medium))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }.help("Open \(url.absoluteString)")
-                    } else {
-                        Text("#\(row.pr.number) \(title(row)) · link unavailable")
-                            .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                let label = Self.states.first { $0.id == selectedState }?.label.lowercased() ?? ""
+                Text(verbatim: "No \(label) pull requests linked to your worktrees.")
+                    .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
+                        if i > 0 { Hairline() }
+                        prRow(row)
                     }
-                    Spacer(minLength: 0)
-                    Text(row.worktrees.first?.repo ?? "")
-                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
                 }
             }
-            Text("Known PRs, counted once each. Click a count to see its PRs; click a PR to open GitHub. \(stats.unconfirmed) checkouts have no confirmed linked PR.")
-                .font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    /// Three equal tabs, one look: the old row boxed only the selected count,
+    /// so the other two read as labels rather than choices.
+    private func filter(_ stats: LinkedPRStats) -> some View {
+        HStack(spacing: 3) {
+            ForEach(Self.states, id: \.id) { state in
+                let count = state.id == "OPEN" ? stats.open : state.id == "MERGED" ? stats.merged : stats.closed
+                let on = selectedState == state.id, tint = Self.tint(state.id)
+                Button { selectedState = state.id } label: {
+                    HStack(spacing: 6) {
+                        Text(verbatim: "\(count)")
+                            .font(.system(size: 15, weight: .bold, design: .rounded)).monospacedDigit()
+                            .foregroundStyle(on ? Palette.ink(tint) : Color.primary.opacity(0.72))
+                        Text(state.label)
+                            .font(.system(size: 11.5, weight: on ? .semibold : .medium))
+                            .foregroundStyle(on ? Palette.ink(tint) : Palette.muted)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(on ? Palette.wash(tint) : Color.clear))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(on ? tint.opacity(0.35) : Color.clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(state.help)
+                .accessibilityLabel("\(count) \(state.help.lowercased())")
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.045)))
+    }
+
+    /// One pull request: what it is, where it lives, and only the states that
+    /// ask something of you. The whole row opens it on GitHub.
+    private func prRow(_ row: LinkedPRSummary) -> some View {
+        let pr = row.pr, tint = Self.tint(pr.state)
+        let symbol = pr.state == "MERGED" ? "arrow.triangle.merge"
+            : pr.state == "CLOSED" ? "xmark" : pr.draft ? "circle.dashed" : "arrow.triangle.pull"
+        let repo = row.worktrees.first?.repo ?? ""
+        let branch = row.worktrees.first?.branch
+        return Button { if let url = row.webURL { openURL(url) } } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Palette.ink(tint))
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(Palette.wash(tint)))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(verbatim: title(row))
+                        .font(.system(size: 12.5, weight: .medium))
+                        .lineLimit(1).truncationMode(.tail)
+                    HStack(spacing: 5) {
+                        Text(verbatim: "#\(pr.number)").font(.system(size: 10.5, design: .monospaced))
+                        Text(verbatim: "·")
+                        Text(verbatim: repo)
+                        if let branch, !branch.isEmpty {
+                            Text(verbatim: "·")
+                            Text(verbatim: branch).lineLimit(1).truncationMode(.middle)
+                        }
+                    }
+                    .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                }
+                Spacer(minLength: 8)
+                ForEach(chips(pr), id: \.0) { chip in
+                    Text(verbatim: chip.0)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Palette.ink(chip.1))
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Capsule().fill(Palette.wash(chip.1)))
+                }
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(row.webURL == nil ? Color.clear : Palette.muted)
+            }
+            .padding(.vertical, 8).padding(.horizontal, 6)
+        }
+        .buttonStyle(RowButtonStyle(radius: 8))
+        .disabled(row.webURL == nil)
+        .help(row.webURL.map { "\(title(row))\nOpen \($0.absoluteString)" } ?? "\(title(row)) · link unavailable")
+        .accessibilityLabel("Pull request \(pr.number), \(title(row)), \(repo)")
+    }
+
+    /// Only what asks something of you, most urgent first, at most two.
+    private func chips(_ pr: PRInfo) -> [(String, Color)] {
+        guard pr.state == "OPEN" else { return [] }
+        var out: [(String, Color)] = []
+        if pr.checks == "failing" { out.append(("Checks failing", Palette.status("blocked"))) }
+        if pr.review == "CHANGES_REQUESTED" { out.append(("Changes requested", Palette.status("stale"))) }
+        if pr.draft { out.append(("Draft", Palette.status("draft"))) }
+        if pr.review == "APPROVED" { out.append(("Approved", Palette.status("active"))) }
+        if pr.checks == "pending" { out.append(("Checks running", Palette.status("waiting"))) }
+        return Array(out.prefix(2))
+    }
+
     private func title(_ row: LinkedPRSummary) -> String {
         if let title = row.pr.title, !title.isEmpty { return title }
         return row.worktrees.first?.branch ?? "Pull request"
-    }
-    private func metric(_ title: String, _ value: Int, _ tint: Color, state: String) -> some View {
-        Button { selectedState = state } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(value)").font(.system(size: 22, weight: .bold, design: .monospaced)).foregroundStyle(tint)
-                Text(title).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            .padding(7).background(selectedState == state ? tint.opacity(0.10) : Color.clear,
-                                   in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(selectedState == state ? tint.opacity(0.5) : Color.clear))
-        }.buttonStyle(.plain)
-        .accessibilityLabel("Show \(value) \(title.lowercased()) pull requests")
-        .accessibilityAddTraits(selectedState == state ? .isSelected : [])
     }
 }
 
@@ -828,7 +923,7 @@ struct MergeSpeechBanner: View {
         HStack(alignment: .top, spacing: 10) {
             if !compact { WityView(store: store, height: 32).accessibilityHidden(true) }
             VStack(alignment: .leading, spacing: 4) {
-                Text("PR #\(nudge.number) merged!").font(.system(size: 12, weight: .bold, design: .monospaced))
+                Text(verbatim: "PR #\(nudge.number) merged!").font(.system(size: 12, weight: .bold, design: .monospaced))
                 Text(message).font(.system(size: 11)).lineLimit(compact ? 3 : nil).help(message).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button("Review checkout") { store.preview(Store.Action(kind: .reap, paths: nudge.paths)); onReview?() }

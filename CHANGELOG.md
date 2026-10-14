@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1
+
+- The pull-request card is redrawn: three equal Open/Merged/Closed tabs, one clickable row per PR with its state, number, repo and branch, and chips only for what asks something of you (checks failing, changes requested, draft, approved). PR numbers no longer show a thousands separator ("#2,242").
+- One way to write a size everywhere, matching the engine: the window truncated 56.6 GB to "56GB" while the balloon rounded it to "57", so one measurement read as two. Sizes under a gigabyte now show in MB on the balloon too.
+- Overview alignment pass: the At Risk figure now spans both lines of its caption instead of standing above the first; each "Do this next" colour bar runs the height of its text; the rewards progress bar is drawn in the card's green (the system bar came out grey) and the star lines up with the rank; the By project columns have room for their headings and one numeric style. "Review removal of 1 eligible worktrees" says "worktree".
+
 ## 0.10.0
 
 - The floating character now holds a disk balloon showing how much wt-manager could free: finished worktrees that are free to go, plus rebuildable caches everywhere else. Green below 5 GB, yellow to 20 GB, orange above, one colour higher when the disk is over 90% full; it grows in three sizes and announces each half-gigabyte step.

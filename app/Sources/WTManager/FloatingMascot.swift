@@ -683,13 +683,13 @@ extension FloatingMascot {
                           size: DiskBalloon.Size, angle: Double, walking: Bool, tag: String?)
         let cases: [Case] = [
             ("rex", "…", "", .grey, .small, 6, false, nil),
-            ("rex", "0.8", "GB", .green, .small, 6, false, nil),
+            ("rex", "860", "MB", .green, .small, 6, false, nil),
             ("rex", "8.5", "GB", .yellow, .medium, -4, false, "+0.6 GB"),
             ("rex", "26", "GB", .orange, .large, 8, false, nil),
             ("rex", "?", "", .grey, .small, -24, false, nil),
             ("rex", "2.1", "GB", .green, .small, -14, true, nil),
             ("robot", "8.5", "GB", .yellow, .medium, 6, false, nil),
-            ("pup", "0.8", "GB", .green, .small, 8, false, nil),
+            ("pup", "860", "MB", .green, .small, 8, false, nil),
             ("orb", "26", "GB", .orange, .large, 4, false, nil),
             ("cat", "3.2", "GB", .green, .small, 6, false, nil),
             ("crab", "12", "GB", .yellow, .medium, 2, false, nil),

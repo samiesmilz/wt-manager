@@ -247,7 +247,7 @@ struct WorktreeRow: View {
                 .foregroundStyle(pr.state == "MERGED" ? Palette.status("merged") : .secondary)
                 .font(.system(size: 13))
             VStack(alignment: .leading, spacing: 1) {
-                Text("#\(pr.number) \(pr.state.lowercased())"
+                Text(verbatim: "#\(pr.number) \(pr.state.lowercased())"
                      + (pr.draft ? " · draft" : ""))
                     .font(.system(size: 11.5, weight: .medium))
                 Text(proofLine(pr)).font(.system(size: 10.5)).foregroundStyle(Palette.muted)
