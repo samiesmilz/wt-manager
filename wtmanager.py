@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.10.1"
+VERSION = "0.10.2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -706,15 +706,16 @@ def _resolve_base(gitdir: str, repo: str, branch: Optional[str], cfg: dict,
     #    branch — the modal vote — which is the base of other branches, not
     #    of this one. A stacked PR is measured against the branch below it,
     #    which is exactly the work the PR contains.
+    forge = base_remote(gitdir)
     if pr_base:
-        ref = "origin/" + pr_base
+        ref = f"{forge}/{pr_base}"
         if ref_exists(gitdir, ref):
             return ref, "pr"
 
     # 1. explicit override
     override = (cfg.get("base") or {}).get(repo)
     if override:
-        ref = override if "/" in override else "origin/" + override
+        ref = override if "/" in override else f"{forge}/{override}"
         if ref_exists(gitdir, ref):
             return ref, "config"
         if ref_exists(gitdir, override):
@@ -740,16 +741,16 @@ def _resolve_base(gitdir: str, repo: str, branch: Optional[str], cfg: dict,
     if pr_bases:
         top, votes = pr_bases.most_common(1)[0]
         if votes >= int(cfg.get("min_base_votes", 5)):
-            ref = "origin/" + top
+            ref = f"{forge}/{top}"
             if ref_exists(gitdir, ref):
                 return ref, f"prs({votes})"
 
     # 4. the remote's default branch
     default, _ = repo_facts(gitdir)
     if default:
-        return "origin/" + default, "origin/HEAD"
+        return f"{forge}/{default}", "origin/HEAD"
 
-    for guess in ("origin/main", "origin/master"):
+    for guess in (f"{forge}/main", f"{forge}/master"):
         if ref_exists(gitdir, guess):
             return guess, "guess"
 
@@ -765,21 +766,51 @@ def _resolve_base(gitdir: str, repo: str, branch: Optional[str], cfg: dict,
     return "", "unresolved"
 
 
-_repo_facts: Dict[str, Tuple[str, str]] = {}
+_repo_facts: Dict[str, Tuple[str, str, str]] = {}
 
 
 def repo_facts(gitdir: str) -> Tuple[str, str]:
-    """(default branch, origin url) for a repo, asked once.
+    """(default branch, remote url) for a repo, asked once.
 
     Both were being asked per *worktree*, and a repo here has up to nineteen.
     The answer cannot differ between them — they share one common dir — so the
     extra calls were pure repetition: two thirds of every refresh's subprocesses.
     """
+    return _facts(gitdir)[:2]
+
+
+def base_remote(gitdir: str) -> str:
+    """The remote a repo's work merges into: `origin`, unless another remote
+    is plainly the live one.
+
+    Measured: a repo had moved to a `github` remote and kept the `origin` it
+    started on, unfetched for months. Every base rule found the frozen
+    `origin/main`, so each merged worktree read as 100-200 commits ahead,
+    stale, and could not be removed. What told the two apart is that only
+    the live remote knew its default branch: a clone sets `<remote>/HEAD`,
+    and a remote nobody fetches from never gets one.
+    """
+    return _facts(gitdir)[2]
+
+
+def _facts(gitdir: str) -> Tuple[str, str, str]:
     if gitdir not in _repo_facts:
-        rc, out, _ = git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"], gitdir=gitdir)
-        default = out.replace("refs/remotes/origin/", "", 1) if rc == 0 and out else ""
-        _, origin, _ = git(["remote", "get-url", "origin"], gitdir=gitdir)
-        _repo_facts[gitdir] = (default, origin)
+        rc, out, _ = git(["remote"], gitdir=gitdir)
+        remotes = out.split() if rc == 0 else []
+
+        def head(r: str) -> str:
+            rc, out, _ = git(["symbolic-ref", "-q", f"refs/remotes/{r}/HEAD"], gitdir=gitdir)
+            return out.replace(f"refs/remotes/{r}/", "", 1) if rc == 0 and out else ""
+
+        remote = "origin" if "origin" in remotes or not remotes else remotes[0]
+        default = head(remote)
+        if not default:
+            for r in remotes:
+                if r != remote and head(r):
+                    remote, default = r, head(r)
+                    break
+        _, url, _ = git(["remote", "get-url", remote], gitdir=gitdir)
+        _repo_facts[gitdir] = (default, url, remote)
     return _repo_facts[gitdir]
 
 
@@ -1492,6 +1523,11 @@ def derive_status(w: Worktree, stale_days: int) -> str:
 _SIZE_CACHE: Dict[str, List] = {}
 _SIZE_CACHE_TTL = 900          # 15 min: long enough to be free, short enough to be true
 _size_cache_loaded = False
+# Measuring runs on a thread pool, and every worker calls load_size_cache().
+# The flag alone let a second worker past while the first was still pruning,
+# and its writes broke that loop ("dictionary changed size during iteration"),
+# failing the whole measure.
+_size_cache_lock = threading.Lock()
 
 
 def _size_cache_file() -> Path:
@@ -1502,17 +1538,20 @@ def load_size_cache() -> None:
     global _size_cache_loaded
     if _size_cache_loaded:
         return
-    _size_cache_loaded = True
-    try:
-        _SIZE_CACHE.update(json.loads(_size_cache_file().read_text()))
-    except Exception:
-        return
-    # Paths that no longer exist, and entries past their TTL: pruned on load,
-    # not only on write, so a run that measures nothing still tidies.
-    now = time.time()
-    for k in [k for k, v in _SIZE_CACHE.items()
-              if now - v[1] >= _SIZE_CACHE_TTL or not os.path.exists(k)]:
-        _SIZE_CACHE.pop(k, None)
+    with _size_cache_lock:
+        if _size_cache_loaded:
+            return
+        try:
+            loaded = json.loads(_size_cache_file().read_text())
+        except Exception:
+            loaded = {}
+        # Paths that no longer exist, and entries past their TTL: pruned on
+        # load, not only on write, so a run that measures nothing still tidies.
+        # Pruned before it is shared, so no other worker can see it half done.
+        now = time.time()
+        _SIZE_CACHE.update({k: v for k, v in loaded.items()
+                            if now - v[1] < _SIZE_CACHE_TTL and os.path.exists(k)})
+        _size_cache_loaded = True
 
 
 def save_size_cache() -> None:
@@ -1937,7 +1976,7 @@ def base_value(gitdir: str, base: Optional[str]) -> str:
     return ref_value(gitdir, ref) or ref_value(gitdir, "refs/heads/" + base) or "-"
 
 
-STATE_VERSION = 6       # bumped whenever what a fingerprint covers changes
+STATE_VERSION = 7       # bumped whenever what a fingerprint covers, or how a base is chosen, changes
 
 
 CACHED_FIELDS = ("ahead", "behind", "last_commit", "unpushed", "unpushed_mine",
@@ -2684,12 +2723,112 @@ def keep_precious(w: Worktree, entries: Sequence[str], on_progress=None) -> Tupl
     return dest, ""
 
 
+def changed_files(w: Worktree) -> Optional[List[str]]:
+    """Every uncommitted path a forced removal would lose, sorted: tracked
+    edits (staged or not) and untracked files, one by one. None when git
+    cannot say, which is never treated as "nothing"."""
+    # Not through git(): it strips the output, and a porcelain line can start
+    # with a space (" M path"), so the first path came out one letter short.
+    try:
+        r = subprocess.run(["git", "-C", w.path, "status", "--porcelain=v1", "-z",
+                            "--untracked-files=all"], capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        return None
+    files, parts = set(), r.stdout.decode("utf-8", "surrogateescape").split("\0")
+    i = 0
+    while i < len(parts):
+        entry = parts[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        xy, path = entry[:2], entry[3:]
+        if xy[0] in "RC":
+            i += 1           # the rename's source follows; the change is the new path
+        if xy == " D" or xy == "D ":
+            continue         # git still has it: nothing to lose
+        files.add(path)
+    return sorted(files)
+
+
+def save_changes(w: Worktree, files: Sequence[str]) -> Tuple[Optional[Path], str]:
+    """Save what `git worktree remove --force` would destroy: a binary patch of
+    every tracked change against HEAD, a verified copy of each untracked file,
+    and how to put them back. Returns (where, error); nothing is removed unless
+    this succeeded."""
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", w.name).strip("-") or "worktree"
+    dest = kept_root() / w.repo / f"{slug}-changes-{time.strftime('%Y%m%d-%H%M%S')}"
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = dest.with_name(f"{dest.name.rsplit('~', 1)[0]}~{n}")
+    rc, head, _ = git(["rev-parse", "HEAD"], cwd=w.path)
+    if rc != 0 or not head:
+        return None, "cannot read HEAD"
+    # Raw bytes: a text round trip would corrupt a binary patch.
+    try:
+        patch = subprocess.run(["git", "-C", w.path, "diff", "HEAD", "--binary"],
+                               capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, f"git diff failed: {e}"
+    if patch.returncode != 0:
+        return None, "git diff failed: " + patch.stderr.decode(errors="replace")[:80]
+    try:
+        listed = subprocess.run(["git", "-C", w.path, "ls-files", "--others",
+                                 "--exclude-standard", "-z"], capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None, "cannot list untracked files"
+    if listed.returncode != 0:
+        return None, "cannot list untracked files"
+    untracked = [p for p in listed.stdout.decode("utf-8", "surrogateescape").split("\0") if p]
+    try:
+        dest.mkdir(parents=True)
+        for d in (kept_root(), dest):
+            os.chmod(d, 0o700)
+        if patch.stdout:
+            (dest / "changes.patch").write_bytes(patch.stdout)
+        for rel in untracked:
+            src, dst = os.path.join(w.path, rel), dest / "untracked" / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if os.path.islink(src):
+                os.symlink(os.readlink(src), dst)
+            else:
+                shutil.copy2(src, dst)
+            if not verify_copy(src, str(dst)):
+                raise OSError(f"{rel} did not copy exactly")
+        (dest / "RESTORE.txt").write_text(
+            f"worktree: {w.path}\nbranch: {w.name}\ncommit: {head}\n"
+            f"pr: #{w.pr.number if w.pr else '?'}\n"
+            f"saved: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"files: {len(files)}\n\n"
+            "To put these changes back, from the repository:\n"
+            f"  git worktree add <new-path> {head}\n"
+            f"  cd <new-path> && git apply --binary '{dest}/changes.patch'\n"
+            f"  cp -R '{dest}/untracked/.' .\n")
+    except OSError as e:
+        return None, str(e)
+    return dest, ""
+
+
 def finished(w: Worktree) -> bool:
     return w.status in (MERGED, EMPTY) or (w.pr is not None and w.pr.state == "MERGED")
 
 
+def merged_leftovers(w: Worktree) -> bool:
+    """A merged PR whose every commit is inside what merged, held back only by
+    edits nobody committed.
+
+    The PR is the evidence the work is over. Commits made after the merge are
+    not leftovers but new work, so any unlanded commit rules this out; those
+    stay behind `--force`, which the app never passes.
+    """
+    return (w.pr is not None and w.pr.state == "MERGED" and w.would_lose > 0
+            and (w.unpushed == 0 or w.landed))
+
+
 def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False,
-                 inspect: bool = False) -> Optional[Tuple[str, str]]:
+                 inspect: bool = False, discard_changes: bool = False) -> Optional[Tuple[str, str]]:
     """One eligibility policy for the app, preview, and execution."""
     if w.primary:
         return "the repo's main checkout — git cannot remove it", ""
@@ -2701,10 +2840,11 @@ def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False
         return f"{w.status} — only finished work is removed", ""
     if w.base_source == "unresolved" or w.base == "(none)":
         return "no base resolved — cannot confirm it landed", ""
-    if w.would_lose > 0 and not force:
-        return f"{w.would_lose} uncommitted", "--force"
     if w.unpushed > 0 and not w.landed and not force:
         return f"{w.unpushed} unpushed", "--force"
+    if w.would_lose > 0 and not force and not (discard_changes and merged_leftovers(w)):
+        return (f"{w.would_lose} uncommitted",
+                "--discard-changes" if merged_leftovers(w) else "--force")
     if w.has_submodules and not force:
         return "contains submodules — review and remove explicitly in Terminal", "--force"
     if inspect:
@@ -2730,6 +2870,14 @@ def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False
 
 def removal_info(w: Worktree) -> dict:
     blocker = reap_blocker(w)
+    if blocker and blocker[1] == "--discard-changes":
+        # Past the edits, the next thing in the way, if any, is the reason.
+        blocker = reap_blocker(w, discard_changes=True)
+    if blocker is None and merged_leftovers(w):
+        n = w.would_lose
+        return {"state": "discard",
+                "reason": f"PR #{w.pr.number} merged; {n} uncommitted change{'s' if n != 1 else ''} "
+                          f"would be saved, then the worktree removed"}
     if blocker:
         return {"state": "blocked", "reason": blocker[0]}
     if not w.ignored_scanned:
@@ -2750,10 +2898,12 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     cands, skipped = [], []
     discard = bool(getattr(args, "discard_precious", False))
     discard_unknown = bool(getattr(args, "discard_unknown", False))
+    discard_changes = bool(getattr(args, "discard_changes", False))
     begin_step()
     for i, w in enumerate(wts):
         progress(i, len(wts), f"checking safety of {w.repo}/{w.name}")
-        blocker = reap_blocker(w, force=args.force, discard_unknown=discard_unknown, inspect=True)
+        blocker = reap_blocker(w, force=args.force, discard_unknown=discard_unknown, inspect=True,
+                               discard_changes=discard_changes)
         if blocker:
             if named or finished(w):
                 skipped.append((w, blocker[0], blocker[1]))
@@ -2767,6 +2917,21 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     plan["skipped"] = [{"path": w.path, "repo": w.repo, "name": w.name, "why": why,
                         "override": flag} for w, why, flag in skipped]
     plan["paths"] = [w.path for w in cands]
+    # The uncommitted edits each removal would discard, saved first. Named in
+    # the plan's hash, so an edit made after the preview is a different plan.
+    changes = {w.path: changed_files(w) for w in cands
+               if discard_changes and not args.force and w.would_lose > 0}
+    if any(v is None for v in changes.values()):
+        bad = [p for p, v in changes.items() if v is None]
+        cands = [w for w in cands if w.path not in bad]
+        plan["paths"] = [w.path for w in cands]
+        for p in bad:
+            print(f"{C.yellow}skip{C.off} {p} {C.dim}(could not list its uncommitted changes){C.off}")
+            plan["skipped"].append({"path": p, "repo": "", "name": os.path.basename(p),
+                                    "why": "could not list its uncommitted changes", "override": ""})
+            changes.pop(p)
+    plan["changes"] = changes
+    plan["changes_kept_in"] = str(kept_root()) if changes else ""
     # An override approves the ignored files too. If one appears after the
     # preview, the same worktree path must no longer authorise its removal.
     # Keeping and discarding are different plans over the same set, so the
@@ -2775,6 +2940,7 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     plan["plan"] = plan_hash("reap", [
         f"{w.path}\t{','.join(sorted(w.precious_hits))}\t{','.join(sorted(w.unknown_paths))}"
         f"\t{'discard' if discard else 'keep'}\t{'discard' if discard_unknown else 'keep'}"
+        f"\t{','.join(changes.get(w.path, []))}"
         for w in cands])
     plan["precious"] = {w.path: list(w.precious_hits) for w in cands if w.precious_hits}
     plan["unknown"] = {w.path: list(w.unknown_paths) for w in cands if w.unknown_paths}
@@ -2806,6 +2972,11 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
         elif precious:
             shown = ", ".join(precious[:3]) + ("…" if len(precious) > 3 else "")
             print(f"           {C.cyan}keeping{C.off} {C.dim}{shown} — set aside first{C.off}")
+        if changes.get(w.path):
+            files = changes[w.path]
+            shown = ", ".join(files[:4]) + ("…" if len(files) > 4 else "")
+            print(f"           {C.cyan}saving{C.off} {len(files)} uncommitted change"
+                  f"{'s' if len(files) != 1 else ''} before discarding: {C.dim}{shown}{C.off}")
         if unknown:
             shown = ", ".join(unknown[:4]) + ("…" if len(unknown) > 4 else "")
             verb = f"{C.yellow}discarding{C.off}" if discard_unknown else f"{C.cyan}keeping{C.off}"
@@ -2828,6 +2999,17 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
         keep = (([] if discard else w.precious_hits)
                 + ([] if discard_unknown else w.unknown_paths))
         archived_kb = 0
+        if changes.get(w.path):
+            progress(i, len(cands), f"saving changes in {w.repo}/{w.name}")
+            saved, err = save_changes(w, changes[w.path])
+            if saved is None:
+                failed += 1
+                print(f"{C.red}failed{C.off}  {w.repo}/{w.name} "
+                      f"{C.dim}could not save its changes, so it was left: {err[:90]}{C.off}")
+                continue
+            archived_kb += max(du_kb(str(saved), cache=False), 0)
+            print(f"{C.cyan}saved{C.off}   {w.repo}/{w.name} {C.dim}changes in {saved}{C.off}")
+            progress(i, len(cands), f"removing {w.repo}/{w.name}")
         if keep:
             kept, err = keep_precious(w, keep, on_progress=lambda n, total: progress(
                 i, len(cands), f"preserving {w.repo}/{w.name}: {n} of {total} paths"))
@@ -2837,7 +3019,7 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
                 print(f"{C.red}failed{C.off}  {w.repo}/{w.name} "
                       f"{C.dim}could not set its files aside, so it was left: {err[:90]}{C.off}")
                 continue
-            archived_kb = max(du_kb(str(kept), cache=False), 0)
+            archived_kb += max(du_kb(str(kept), cache=False), 0)
             progress(i, len(cands), f"removing {w.repo}/{w.name}")
             print(f"{C.cyan}kept{C.off}    {w.repo}/{w.name} {C.dim}{len(keep)} "
                   f"path{'s' if len(keep) != 1 else ''} in {kept}{C.off}")
@@ -2845,7 +3027,8 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
         # Git refuses a worktree with deleted tracked files without --force,
         # though every one of them is still in git. Only when nothing else is
         # uncommitted, and ignored files were already set aside above.
-        forced = args.force or (w.deleted > 0 and w.would_lose == 0)
+        forced = (args.force or (w.deleted > 0 and w.would_lose == 0)
+                  or bool(changes.get(w.path)))
         cmd = ["worktree", "remove", w.path] + (["--force"] if forced else [])
         rc, _, err = git(cmd, gitdir=cd or None, cwd=None if cd else w.path)
         if rc == 0:
@@ -3422,6 +3605,9 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--discard-precious", action="store_true",
                     help="delete ignored .env files, keys and other local-only config "
                          "with the worktree, instead of setting them aside first")
+    rp.add_argument("--discard-changes", action="store_true",
+                    help="for a merged PR whose commits all landed: save its uncommitted "
+                         "changes as a patch, then remove it anyway")
     rp.add_argument("--discard-unknown", action="store_true",
                     help="delete ignored files that cannot be classified as regenerable "
                          "with the worktree, instead of setting them aside first")

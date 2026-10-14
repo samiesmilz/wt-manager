@@ -619,6 +619,9 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
         partial?.result = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"removed web/feat-campaign-cards\nfailed mobile/fix-badge-bob: backup permission denied; checkout kept\n1 removed, 1 failed","paths":[],"plan":"partial","done":true,"removed":1,"failed":1,"rc":1,"freed_kb":1200000,"completed_paths":["/Users/me/worktrees/web/feat-campaign-cards"]}"#)
         var refused = Store.samplePlan()
         refused?.preview = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"Kept in place: local changes","paths":[],"plan":"blocked","skipped":[{"path":"/Users/me/worktrees/web/feat-campaign-cards","repo":"web","name":"feat/campaign-cards","why":"Contains local changes that exist only in this checkout. Commit or preserve that work before removing it.","override":"--force"}]}"#)
+        var discard = Store.Plan(action: Store.Action(kind: .reap, paths: ["/Users/me/worktrees/mobile/fix-check-in"], discardChanges: true))
+        discard.stage = .reviewing
+        discard.preview = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"saving 2 uncommitted changes before discarding","paths":["/Users/me/worktrees/mobile/fix-check-in"],"plan":"discard","count":1,"kb":44040192,"changes":{"/Users/me/worktrees/mobile/fix-check-in":["docs/decisions/deep-link-spec.md","docs/specs/navigation-header-spec.md"]},"changes_kept_in":"/Users/me/.local/share/wt-manager/kept","unknown":{"/Users/me/worktrees/mobile/fix-check-in":[".claude/review.local.md","generated/"]},"keeps_unknown":true,"kept_in":""}"#)
         var clean = Store.Plan(action: Store.Action(kind: .clean, paths: ["/Users/me/worktrees/web/feat-campaign-cards"]))
         clean.stage = .done
         clean.result = Store.decodePlanForSnapshot(#"{"kind":"clean","text":"Cleaned build output. The checkout and protected files were kept.","paths":[],"plan":"clean","done":true,"freed_kb":1200000,"completed_paths":["/Users/me/worktrees/web/feat-campaign-cards"]}"#)
@@ -631,7 +634,7 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
             ("sheet-scanning", Store.samplePlan(.previewing)),
             ("sheet-done", Store.samplePlan(.done)),
             ("sheet-partial", partial), ("sheet-failed", failed), ("sheet-changed", changed),
-            ("sheet-refused", refused), ("sheet-clean-done", clean),
+            ("sheet-refused", refused), ("sheet-clean-done", clean), ("sheet-discard", discard),
         ]
         for (file, plan) in stages {
             guard let plan else { continue }

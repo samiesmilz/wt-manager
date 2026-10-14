@@ -960,6 +960,31 @@ class Base(unittest.TestCase):
         self.assertEqual(probe("beta").base, "origin/beta")
         self.assertEqual(probe("main").base, "origin/main")
 
+    def test_a_live_second_remote_wins_over_a_forgotten_origin(self):
+        # Measured: a repo moved to a `github` remote and kept the `origin` it
+        # started on, unfetched for months. Every merged worktree read as far
+        # ahead of the frozen origin/main, stale, and impossible to remove.
+        old = git("rev-parse", "main", cwd=self.fx.main)
+        path = self.fx.worktree("x", "feat/x")
+        self.fx.commit(path)
+        git("branch", "--unset-upstream", "feat/x", cwd=path)
+        git("remote", "add", "github", self.fx.origin, cwd=self.fx.main)
+        git("push", "-q", "github", "feat/x:main", cwd=path)
+        git("fetch", "-q", "github", cwd=self.fx.main)
+        git("symbolic-ref", "refs/remotes/github/HEAD", "refs/remotes/github/main", cwd=self.fx.main)
+        git("symbolic-ref", "--delete", "refs/remotes/origin/HEAD", cwd=self.fx.main)
+        git("update-ref", "refs/remotes/origin/main", old, cwd=self.fx.main)
+        w = self.fx.probe(path, "feat/x")
+        self.assertEqual((w.base, w.ahead), ("github/main", 0))
+
+    def test_origin_still_wins_when_it_knows_its_default_branch(self):
+        git("remote", "add", "upstream", self.fx.origin, cwd=self.fx.main)
+        git("fetch", "-q", "upstream", cwd=self.fx.main)
+        git("symbolic-ref", "refs/remotes/upstream/HEAD", "refs/remotes/upstream/main", cwd=self.fx.main)
+        path = self.fx.worktree("y", "feat/y")
+        git("branch", "--unset-upstream", "feat/y", cwd=path)
+        self.assertEqual(self.fx.probe(path, "feat/y").base, "origin/main")
+
     def test_a_repo_with_no_remote_uses_its_own_main(self):
         # Its main checkout read "active, your move", unresolved.
         root = tempfile.mkdtemp(prefix="wt-manager-local-")
@@ -1451,7 +1476,8 @@ class Reap(unittest.TestCase):
         w.pr = T.PR(number=7, state="MERGED", draft=False, checks="none", review="none")
         rc, out = self.run_reap(w)
         self.assertIn("1 uncommitted", out)
-        self.assertIn("--force overrides", out)
+        # A merged PR's stray file is saved rather than forced past.
+        self.assertIn("--discard-changes overrides", out)
 
     def test_unclassified_ignored_file_needs_its_own_override(self):
         with open(os.path.join(self.wt, ".gitignore"), "a") as fh:
@@ -1491,6 +1517,102 @@ class Reap(unittest.TestCase):
             rc, out = self.run_reap(self.probe())
         self.assertIn("too much to set aside", out)
         self.assertIn("nothing to reap", out)
+
+
+class DiscardChanges(unittest.TestCase):
+    """A merged PR held back only by edits nobody committed: saved, then removed.
+    Anything that could be new work stays where it is."""
+
+    class Args(Reap.Args):
+        discard_changes = False
+
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+        self.wt = self.fx.worktree("p", "feat/p")
+        self.fx.commit(self.wt, "app.txt", "the PR's work")
+        git("push", "-q", "-u", "origin", "feat/p", cwd=self.wt)
+        self.head = git("rev-parse", "HEAD", cwd=self.wt)
+        # Squash-merged on the forge, the branch deleted there: its commit is
+        # on no remote this machine knows, as on a real merged PR.
+        git("push", "-q", "origin", "--delete", "feat/p", cwd=self.wt)
+        git("fetch", "-q", "--prune", "origin", cwd=self.wt)
+        self.merged = {"feat/p": {"number": 7, "url": "", "merged_at": "", "author": "",
+                                  "title": "", "head_oid": self.head, "merge_oid": ""}}
+
+    def edit(self):
+        with open(os.path.join(self.wt, "app.txt"), "a") as fh:
+            fh.write("an edit after the merge\n")
+        with open(os.path.join(self.wt, "notes.md"), "wb") as fh:
+            fh.write(b"untracked \x00 bytes\n")
+
+    def probe(self):
+        return self.fx.probe(self.wt, "feat/p", merged=self.merged)
+
+    def reap(self, w, **flags):
+        args = self.Args()
+        args.path = [w.path]
+        for k, v in flags.items():
+            setattr(args, k, v)
+        plan = {}
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = T._reap([w], args, plan)
+        return rc, plan
+
+    def test_edits_on_a_merged_pr_are_offered_as_save_and_remove(self):
+        self.edit()
+        w = self.probe()
+        self.assertEqual((w.pr.state, w.landed, w.unpushed), ("MERGED", True, 1))
+        self.assertEqual(T.removal_info(w)["state"], "discard")
+        _, plan = self.reap(w)
+        self.assertEqual(plan["paths"], [])
+        self.assertEqual(plan["skipped"][0]["override"], "--discard-changes")
+
+    def test_saved_changes_put_back_exactly(self):
+        self.edit()
+        with open(os.path.join(self.wt, "app.txt")) as fh:
+            edited = fh.read()
+        rc, plan = self.reap(self.probe(), discard_changes=True, yes=True)
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertEqual(plan["changes"], {self.wt: ["app.txt", "notes.md"]})
+        saved = next(T.Path(d) for d, _, files in os.walk(T.kept_root()) if "RESTORE.txt" in files)
+        self.assertIn(self.head, (saved / "RESTORE.txt").read_text())
+        # The way RESTORE.txt says: a worktree at the commit, the patch, the copies.
+        again = os.path.join(self.fx.root, "again")
+        git("worktree", "add", "-q", "--detach", again, self.head, cwd=self.fx.main)
+        git("apply", "--binary", str(saved / "changes.patch"), cwd=again)
+        with open(os.path.join(again, "app.txt")) as fh:
+            self.assertEqual(fh.read(), edited)
+        self.assertEqual((saved / "untracked" / "notes.md").read_bytes(), b"untracked \x00 bytes\n")
+
+    def test_a_commit_after_the_merge_is_new_work_and_stays(self):
+        self.fx.commit(self.wt, "later.txt", "after the merge")
+        self.edit()
+        w = self.probe()
+        self.assertFalse(w.landed)
+        self.assertEqual(T.removal_info(w)["state"], "blocked")
+        rc, plan = self.reap(w, discard_changes=True, yes=True)
+        self.assertEqual(plan["paths"], [])
+        self.assertNotEqual(plan["skipped"][0]["override"], "--discard-changes")
+        self.assertTrue(os.path.isdir(self.wt))
+
+    def test_without_a_merged_pr_edits_are_never_offered(self):
+        self.edit()
+        w = self.fx.probe(self.wt, "feat/p")
+        self.assertNotEqual(T.removal_info(w)["state"], "discard")
+        rc, plan = self.reap(w, discard_changes=True, yes=True)
+        self.assertTrue(os.path.isdir(self.wt))
+
+    def test_an_edit_after_the_preview_is_a_different_plan(self):
+        self.edit()
+        _, preview = self.reap(self.probe(), discard_changes=True)
+        with open(os.path.join(self.wt, "late.md"), "w") as fh:
+            fh.write("written after the preview\n")
+        rc, _ = self.reap(self.probe(), discard_changes=True, yes=True, plan=preview["plan"])
+        self.assertEqual(rc, 3)
+        self.assertTrue(os.path.isdir(self.wt))
 
 
 class Processes(unittest.TestCase):

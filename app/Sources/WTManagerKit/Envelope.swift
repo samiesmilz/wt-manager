@@ -97,6 +97,9 @@ public struct Worktree: Decodable {
     public var name: String { branch ?? "Detached · " + URL(fileURLWithPath: path).lastPathComponent }
     public var removalReady: Bool { removal?.state == "ready" }
     public var removalBlocked: Bool { removal?.state == "blocked" }
+    /// A merged PR held back only by uncommitted edits, which removal would
+    /// save first. Not `removable`: the plain remove refuses it.
+    public var removalDiscards: Bool { removal?.state == "discard" }
     public var removalFingerprint: String {
         "\(status)/\(base)/\(baseSource)/\(primary)/\(isBase)/\(dirty)/\(deleted ?? 0)/\(unpushed)/\(pr?.state ?? "")"
     }

@@ -161,7 +161,12 @@ struct WorktreeRow: View {
                         store.preview(Store.Action(kind: .clean, paths: [worktree.path]))
                     }
                 }
-                if worktree.status == "merged" || worktree.status == "empty" {
+                if worktree.removalDiscards {
+                    small("Save changes & remove", "tray.and.arrow.down", tint: Palette.status("blocked")) {
+                        store.preview(Store.Action(kind: .reap, paths: [worktree.path], discardChanges: true))
+                    }
+                    .help(worktree.removal?.reason ?? "")
+                } else if worktree.status == "merged" || worktree.status == "empty" {
                     // A button that can never succeed is worse than no
                     // button: pressing it opened a sheet that thought about
                     // it and said "nothing to do here", which reads as the

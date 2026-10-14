@@ -41,6 +41,15 @@ final class DiskBalloonTests: XCTestCase {
         XCTAssertEqual(f.totalKb, DiskBalloon.freeableKb(rows))
     }
 
+    func testASaveFirstRemovalIsNotOfferedAsAPlainOne() throws {
+        // The plain remove refuses it; counting it whole would promise space
+        // that one click on the Disk page cannot free.
+        let held = try row(status: "merged", size: 900, reclaim: 40, removal: "discard")
+        XCTAssertTrue(held.removalDiscards)
+        XCTAssertFalse(held.removable)
+        XCTAssertEqual(DiskBalloon.freeableKb([held]), 40)
+    }
+
     func testTheRunningTotalNamesTheNextRank() {
         var h = CleanupHistory()
         _ = h.reward(id: UUID(), done: true, completed: 7, freedKb: 52 * 1_048_576)

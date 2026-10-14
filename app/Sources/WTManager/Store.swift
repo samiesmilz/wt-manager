@@ -626,6 +626,17 @@ extension Store {
             out.append(Move(title: "\(first.repo) · \(first.name)",
                             detail: reason(first), action: nil, tint: Palette.status("blocked"), handoff: first))
         }
+        let leftovers = (envelope?.worktrees ?? []).filter(\.removalDiscards)
+        if !leftovers.isEmpty {
+            let kb = leftovers.reduce(0) { $0 + max($1.sizeKb, 0) }
+            let edits = leftovers.reduce(0) { $0 + $1.wouldLose }
+            out.append(Move(title: (leftovers.count == 1 ? "Remove a merged worktree" : "Remove \(leftovers.count) merged worktrees")
+                                + (kb > 0 ? ", \(Store.human(kb))" : ""),
+                            detail: "their pull requests merged; " + Store.count(edits, "uncommitted change")
+                                + " held them back and will be saved first",
+                            action: Action(kind: .reap, paths: leftovers.map(\.path), discardChanges: true),
+                            tint: Palette.reclaim))
+        }
         let ready = removalCandidates.filter(\.removalReady)
         let pending = removalCandidates.filter { !$0.removalReady }
         if !ready.isEmpty {
@@ -802,11 +813,19 @@ extension Store {
         /// anywhere in the UI.
         var paths: [String] = []
         var staleOnly = false
-        var id: String { "\(kind.rawValue)/\(paths.joined(separator: ","))/\(staleOnly)" }
+        /// For merged PRs held back only by uncommitted edits: save the
+        /// edits, then remove. A different plan from a plain removal, and the
+        /// engine refuses it for anything else.
+        var discardChanges = false
+        var id: String { "\(kind.rawValue)/\(paths.joined(separator: ","))/\(staleOnly)/\(discardChanges)" }
 
         var single: Bool { paths.count == 1 }
 
         var title: String {
+            if discardChanges {
+                return single ? "Save changes and remove this worktree"
+                              : "Save changes and remove merged worktrees"
+            }
             switch (kind, single, staleOnly) {
             case (.reap, true, _):      return "Review removal of this worktree"
             case (.reap, false, _):     return "Review worktree removal"
@@ -817,6 +836,9 @@ extension Store {
         }
 
         var blurb: String {
+            if discardChanges {
+                return "For pull requests that merged with every commit inside them. Uncommitted edits are saved as a patch and untracked files copied and verified, then the worktree is removed."
+            }
             switch kind {
             case .reap:
                 return "Removes only eligible worktrees. Protected files and small unclassified files are copied and verified first. Work at risk is kept in place."
@@ -830,6 +852,7 @@ extension Store {
         var previewArgs: [String] {
             var a = ["--json", kind.rawValue]
             if kind == .clean && staleOnly && paths.isEmpty { a += ["--stale"] }
+            if kind == .reap && discardChanges { a += ["--discard-changes"] }
             for p in paths { a += ["--path", p] }
             return a
         }
@@ -842,6 +865,7 @@ extension Store {
         func commitArgs(for preview: PlanResult) -> [String] {
             var a = [kind.rawValue]
             if kind == .clean && staleOnly && paths.isEmpty { a += ["--stale"] }
+            if kind == .reap && discardChanges { a += ["--discard-changes"] }
             for p in preview.paths { a += ["--path", p] }
             return a + ["--plan", preview.plan, "--yes"]
         }
@@ -872,6 +896,9 @@ extension Store {
         var keepsUnknown: Bool = false
         var unknown: [String: [String]] = [:]
         var entries: [String: [String]] = [:]
+        /// Uncommitted edits each removal saves, then discards.
+        var changes: [String: [String]] = [:]
+        var changesKeptIn: String = ""
         var done: Bool = false
         var removed: Int = 0
         var completedPaths: [String] = []
@@ -879,8 +906,9 @@ extension Store {
         var failed: Int = 0
         var rc: Int = 0
         enum CodingKeys: String, CodingKey {
-            case kind, text, paths, plan, count, kb, skipped, precious, unknown, entries
+            case kind, text, paths, plan, count, kb, skipped, precious, unknown, entries, changes
             case done, removed, failed, rc
+            case changesKeptIn = "changes_kept_in"
             case freedKb = "freed_kb"
             case completedPaths = "completed_paths"
             case keptIn = "kept_in"
@@ -900,6 +928,8 @@ extension Store {
             keepsUnknown = try c.decodeIfPresent(Bool.self, forKey: .keepsUnknown) ?? false
             unknown = try c.decodeIfPresent([String: [String]].self, forKey: .unknown) ?? [:]
             entries = try c.decodeIfPresent([String: [String]].self, forKey: .entries) ?? [:]
+            changes = try c.decodeIfPresent([String: [String]].self, forKey: .changes) ?? [:]
+            changesKeptIn = try c.decodeIfPresent(String.self, forKey: .changesKeptIn) ?? ""
             done = try c.decodeIfPresent(Bool.self, forKey: .done) ?? false
             removed = try c.decodeIfPresent(Int.self, forKey: .removed) ?? 0
             completedPaths = try c.decodeIfPresent([String].self, forKey: .completedPaths) ?? []

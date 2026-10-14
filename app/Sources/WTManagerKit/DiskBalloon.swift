@@ -132,6 +132,7 @@ extension Worktree {
     /// it leads to.
     public var removable: Bool {
         (status == "merged" || status == "empty") && !primary && !isBase && !removalBlocked
+            && !removalDiscards
     }
 }
 

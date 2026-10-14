@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.2
+
+- New: **Save changes and remove** for a worktree whose pull request merged with every commit inside it, held back only by uncommitted edits. The edits are saved first as a binary patch, untracked files are copied and verified, and a RESTORE.txt says how to put them back; then the worktree is removed. It shows on the worktree's row and in "Do this next", and the preview lists every file it saves. The plan's hash names those files, so an edit made after the preview is refused rather than discarded unseen. Commits made after a merge are new work and stay protected. CLI: `reap --discard-changes`.
+- Fix: a repo that moved to a new remote (here `github`) but kept an old, unfetched `origin` was measured against the frozen `origin/main`. Its merged worktrees read as 100-200 commits ahead, stale, and could not be removed. The base now comes from `origin` only while origin knows its default branch; otherwise from the remote that does. Cached rows are re-measured once (state version 7).
+- Fix: a full measure could fail with "dictionary changed size during iteration" when two measuring threads loaded the size cache at once.
+
 ## 0.10.1
 
 - The pull-request card is redrawn: three equal Open/Merged/Closed tabs, one clickable row per PR with its state, number, repo and branch, and chips only for what asks something of you (checks failing, changes requested, draft, approved). PR numbers no longer show a thousands separator ("#2,242").

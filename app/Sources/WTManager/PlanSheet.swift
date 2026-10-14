@@ -29,6 +29,7 @@ struct PlanSheet: View {
         case .reviewing:
             let rows = (preview?.paths.count ?? 0) + (preview?.skipped.count ?? 0)
                 + (preview?.precious.count ?? 0) + (preview?.unknown.count ?? 0)
+                + (preview?.changes.values.reduce(0) { $0 + $1.count } ?? 0)
             return min(ceiling, max(440, 300 + CGFloat(rows) * 65))
         case .done: return min(ceiling, max(450, 340 + CGFloat(doneRows.count) * 45))
         case .failed, .changed: return min(ceiling, 500)
@@ -345,11 +346,20 @@ struct PlanSheet: View {
                     if !p.skipped.isEmpty {
                         section("Kept out", ink: Palette.ink(status: "stale")) { skippedList(p.skipped) }
                     }
+                    if !p.changes.isEmpty {
+                        section("Uncommitted changes, saved first", ink: Palette.inkReclaim,
+                                folder: p.changesKeptIn) {
+                            ForEach(p.changes.keys.sorted(), id: \.self) { path in
+                                fileList(path, names: p.changes[path] ?? [])
+                            }
+                        }
+                    }
                     if !p.precious.isEmpty {
                         let lost = kind == .reap && p.keptIn.isEmpty
                         section(lost ? "Goes with them"
-                                     : kind == .reap ? "Set aside in \(p.keptIn) first" : "Never touched",
-                                ink: lost ? Palette.ink(status: "blocked") : Palette.inkReclaim) {
+                                     : kind == .reap ? "Set aside first" : "Never touched",
+                                ink: lost ? Palette.ink(status: "blocked") : Palette.inkReclaim,
+                                folder: lost || kind != .reap ? "" : p.keptIn) {
                             ForEach(p.precious.keys.sorted(), id: \.self) { path in
                                 fileList(path, names: p.precious[path] ?? [])
                             }
@@ -407,10 +417,20 @@ struct PlanSheet: View {
     /// `ink` is already a text colour. Pulling a system dynamic colour like
     /// `.secondary` through `Palette.ink` resolves it once, in whichever
     /// appearance is current, and the heading vanished in the other.
-    private func section<C: View>(_ title: String, ink: Color, @ViewBuilder _ content: () -> C) -> some View {
+    /// `folder` sits under the heading in its own case: uppercased inside
+    /// the heading, "/USERS/ME/.LOCAL/SHARE" was a path nobody could read.
+    private func section<C: View>(_ title: String, ink: Color, folder: String = "",
+                                  @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
-                .foregroundStyle(ink)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
+                    .foregroundStyle(ink)
+                if !folder.isEmpty {
+                    Text((folder as NSString).abbreviatingWithTildeInPath)
+                        .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted)
+                        .textSelection(.enabled)
+                }
+            }
             content()
         }
     }
@@ -630,6 +650,9 @@ struct PlanSheet: View {
         guard let p = preview else { return kind.verb }
         let n = p.paths.count
         if kind == .reap {
+            if plan.action.discardChanges {
+                return n == 1 ? "Save changes and remove" : "Save changes and remove \(n)"
+            }
             return n == 1 ? "Remove it" : "Remove \(n) worktrees"
         }
         return p.kb > 0 ? "Delete \(Store.human(p.kb))" : "Delete it"
