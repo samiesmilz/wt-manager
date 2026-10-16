@@ -20,7 +20,16 @@ struct WorktreeList: View {
         // Seeded in the initialiser rather than from `onAppear`: the offscreen
         // renderer makes a bounded number of passes and a state change that
         // arrives on appearance may never be laid out.
-        _open = State(initialValue: initiallyOpen)
+        _open = State(initialValue: initiallyOpen ?? store.focusPath)
+    }
+
+    private func reveal(_ path: String?, _ proxy: ScrollViewProxy) {
+        guard let path else { return }
+        open = path
+        DispatchQueue.main.async {
+            proxy.scrollTo(path, anchor: .top)
+            store.focusPath = nil
+        }
     }
 
     private var group: Store.Group? { store.groups.first { $0.id == section } }
@@ -49,18 +58,25 @@ struct WorktreeList: View {
             FilterBar(store: store)
             Divider().opacity(0.35)
             if let group, !group.items.isEmpty {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(group.items, id: \.path) { w in
-                            WorktreeRow(store: store, worktree: w,
-                                        expanded: open == w.path) {
-                                withAnimation(.easeOut(duration: 0.14)) {
-                                    open = open == w.path ? nil : w.path
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(group.items, id: \.path) { w in
+                                WorktreeRow(store: store, worktree: w,
+                                            expanded: open == w.path) {
+                                    withAnimation(.easeOut(duration: 0.14)) {
+                                        open = open == w.path ? nil : w.path
+                                    }
                                 }
+                                .id(w.path)
+                                Hairline(inset: 20)
                             }
-                            Hairline(inset: 20)
                         }
                     }
+                    // Another page asked for this row: open it and bring it
+                    // into view, then let go of the request.
+                    .onAppear { reveal(store.focusPath, proxy) }
+                    .onChange(of: store.focusPath) { reveal($0, proxy) }
                 }
             } else {
                 VStack(spacing: 6) {
@@ -116,11 +132,27 @@ struct WorktreeRow: View {
             }
             .buttonStyle(RowButtonStyle(radius: 0))
 
-            if expanded { detail }
+            if expanded {
+                WorktreeDetail(store: store, worktree: worktree)
+                    .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 14)
+                    .padding(.leading, 16)
+            }
         }
     }
 
-    private var detail: some View {
+}
+
+/// What a worktree is and what it holds, opened under its row: in the Repos
+/// list, and under a folder on the Folders page. One view, so the two cannot
+/// tell different stories about the same checkout.
+struct WorktreeDetail: View {
+    @ObservedObject var store: Store
+    let worktree: Worktree
+    /// Whether to offer removal here. The Folders page deletes from the row
+    /// itself, so it passes false.
+    var removes = true
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             LazyVGrid(columns: [GridItem(.fixed(104), alignment: .leading),
                                 GridItem(.flexible(), alignment: .leading)],
@@ -161,7 +193,9 @@ struct WorktreeRow: View {
                         store.preview(Store.Action(kind: .clean, paths: [worktree.path]))
                     }
                 }
-                if worktree.removalDiscards {
+                if !removes {
+                    // Folders deletes from its own row; no second way here.
+                } else if worktree.removalDiscards {
                     small("Save changes & remove", "tray.and.arrow.down", tint: Palette.status("blocked")) {
                         store.preview(Store.Action(kind: .reap, paths: [worktree.path], discardChanges: true))
                     }
@@ -185,14 +219,12 @@ struct WorktreeRow: View {
                     }
                 }
             }
-            if let why = refusal, ["merged", "empty"].contains(worktree.status) {
+            if removes, let why = refusal, ["merged", "empty"].contains(worktree.status) {
                 Label(why, systemImage: "lock")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 14)
-        .padding(.leading, 16)
     }
 
     /// What the unpushed commits actually are.

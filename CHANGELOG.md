@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0
+
+- **One page per job.** The sidebar is now Overview, Folders, Repos and Disk. Folders becomes the page for every worktree you made: it gains the list's search and project filter, and clicking a folder opens the same details the list showed (the commits that exist only here, base, ahead and behind, the pull request, with Reveal and Terminal). All worktrees, Needs you, In flight and With others are retired. **Repos** lists every checkout that is not a folder, including main checkouts with a feature branch out, so the two pages hold all of them, once.
+- Fix: the arrow on a folder opened an empty page. The list filters a project by its `.git` path, and the arrow and the at-risk rows set its display name, so nothing matched. One `show` now lands on the worktree, opens it and scrolls it into view, on Folders or Repos.
+- Overview:
+  - The cards now run Do this next, At risk, Pull requests, By project, and Your space last.
+  - The "N commits only on this machine" and "branches have gone quiet" items leave Do this next. The At Risk card lists the commits and opens each one.
+  - A failing PR reads "A check is failing on …".
+  - By project's FORGOT column is now SAFE, folders safe to delete.
+- The character picker opens when you click your character, rather than filling the top of every page. "Next character" moves to the character's menu.
+- A sidebar click or ⌘1–4 starts a page without old filters; a link from another page keeps the filter it set.
+
 ## 0.11.2
 
 - After a delete, the page follows through: deleted folders fade out and the rest close up, a ticked folder that went is unticked, and the banner says "Deleted N folders", with **Show saved work** when edits, commits or set-aside files were kept. A partly failed delete now takes off the folders that did go at once, and re-measures only the ones that failed. Before, everything stayed on screen until a full measure minutes later.

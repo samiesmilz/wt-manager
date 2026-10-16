@@ -64,9 +64,9 @@ The app and CLI share the engine inside the installed bundle, so they use the sa
 4. **Review cleanup.** Read the exact paths and preservation details. Nothing is deleted during the preview.
 5. **Confirm deliberately.** Only confirmed completions earn reclaimed-space credit. Results remain available after the modal closes.
 
-The sidebar separates **Needs you**, **In flight**, **With others**, and **Main checkouts**, with **All worktrees** above them. Filter by repository or branch, expand a checkout for details, or hand work off to Terminal, Finder, or its pull request.
+The sidebar has one place per job: **Overview** (what to do next, and what is at risk), **Folders** (every worktree you made), **Repos** (the repositories themselves) and **Disk**. Folders and Repos together hold every checkout, once. Search either by repo, branch or folder name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder.
 
-What can go is the **Folders** section's question. It replaced the old Forgotten and Finished sections, which sorted by branch history and left "is it safe to delete?" to you.
+Folders answers what can go. It replaced the old status lists (All worktrees, Needs you, In flight, With others, Forgotten, Finished), which sorted the same worktrees by branch history and left "is it safe to delete?" to you.
 
 ## Cleanup with a review first
 

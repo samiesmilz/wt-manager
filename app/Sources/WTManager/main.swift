@@ -66,7 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             case "1", "2", "3", "4", "5", "6", "7", "8", "9":
                 let i = Int(event.charactersIgnoringModifiers ?? "1")! - 1
                 let order = self.store.sectionOrder
-                if i < order.count { self.store.section = order[i] }
+                if i < order.count {
+                    self.store.query = ""; self.store.repoFilter = nil
+                    self.store.section = order[i]
+                }
                 return nil
             default: return event
             }
@@ -572,7 +575,7 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
             continue
         }
         for (suffix, size) in sizes {
-            for section in ["overview", "all", "disk", "folders", "need", "flight", "others", "repos"] {
+            for section in ["overview", "folders", "repos", "disk"] {
                 store.section = section
                 draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                      size: size, appearance: appearance, to: "\(name)-\(section)\(suffix).png")
@@ -596,8 +599,7 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         if let risky = store.envelope?.worktrees
             .filter({ $0.atRisk > 0 && !$0.soloLog.isEmpty && $0.status != "trunk" })
             .max(by: { $0.atRisk < $1.atRisk }) {
-            let section = Store.spec.first { $0.3.contains(risky.status) }?.0 ?? "flight"
-            store.section = section
+            store.section = risky.folder != nil ? "folders" : "repos"
             // Filtered to it, so the open row is the first one rather than
             // the ninth — a snapshot of a scroll view shows the top of it.
             store.query = risky.branch ?? risky.repo
@@ -743,6 +745,34 @@ func checkDelete(into dir: String, path: String) -> Int32 {
     return ok ? 0 : 1
 }
 
+/// `--snapshot-show DIR ENVELOPE PATH`: the window after another page asks to
+/// show one worktree, the way the Folders arrow and the at-risk rows do.
+@MainActor
+func snapshotShow(into dir: String, envelopePath: String, path: String) {
+    _ = NSApplication.shared
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let store = Store(mascot: AppDelegate.loadMascotForSnapshot())
+    guard let data = FileManager.default.contents(atPath: envelopePath),
+          let env = try? JSONDecoder().decode(Envelope.self, from: data),
+          let w = env.worktrees.first(where: { $0.path == path }) else { print("no such worktree"); return }
+    store.load(env)
+    store.show(w)
+    let size = CGSize(width: 1100, height: 760)
+    let host = NSHostingView(rootView: RootView(store: store).environment(\.colorScheme, .light))
+    host.sizingOptions = []
+    host.frame = NSRect(origin: .zero, size: size)
+    let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.appearance = NSAppearance(named: .aqua)
+    window.contentView = host
+    for _ in 0..<6 { host.layoutSubtreeIfNeeded(); RunLoop.current.run(until: Date().addingTimeInterval(0.08)) }
+    if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+        host.cacheDisplay(in: host.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?
+            .write(to: URL(fileURLWithPath: dir).appendingPathComponent("show.png"))
+    }
+    print("section=\(store.section) filter=\(store.repoFilter ?? "-") focus=\(store.focusPath ?? "-")")
+}
+
 // Top-level code already runs on the main thread; Swift 6 just needs telling.
 MainActor.assumeIsolated {
     let args = CommandLine.arguments
@@ -765,6 +795,10 @@ MainActor.assumeIsolated {
     if let i = args.firstIndex(of: "--snapshot-balloon"), i + 1 < args.count {
         _ = NSApplication.shared
         if let m = AppDelegate.loadMascotForSnapshot() { FloatingMascot.snapshotBalloons(mascot: m, into: args[i + 1]) }
+        exit(0)
+    }
+    if let i = args.firstIndex(of: "--snapshot-show"), i + 3 < args.count {
+        snapshotShow(into: args[i + 1], envelopePath: args[i + 2], path: args[i + 3])
         exit(0)
     }
     if let i = args.firstIndex(of: "--check-delete"), i + 2 < args.count {

@@ -838,7 +838,7 @@ def insights(counts: Dict[str, int], reclaim_kb: int, unpushed: int,
     need = n("blocked") + n("review")
     if need:
         out.append({"id": "need", "label": f"{need} need{'s' if need == 1 else ''} you",
-                    "tint": "blocked", "target": "need", "value": need,
+                    "tint": "blocked", "target": "overview", "value": need,
                     "solo": False})
     if unpushed:
         out.append({"id": "unpushed",
@@ -851,11 +851,11 @@ def insights(counts: Dict[str, int], reclaim_kb: int, unpushed: int,
                     "solo": False})
     if n("waiting"):
         out.append({"id": "waiting", "label": f"{n('waiting')} with others",
-                    "tint": "waiting", "target": "others", "value": n("waiting"),
+                    "tint": "waiting", "target": "folders", "value": n("waiting"),
                     "solo": False})
     if n("draft"):
         out.append({"id": "draft", "label": f"{n('draft')} draft{'s' if n('draft') != 1 else ''}",
-                    "tint": "draft", "target": "flight", "value": n("draft"),
+                    "tint": "draft", "target": "folders", "value": n("draft"),
                     "solo": False})
     # One tag for what used to be two sections, Forgotten and Finished: the
     # question both were asked to answer was what can go, and Folders answers

@@ -51,7 +51,6 @@ struct RootView: View {
             // Status chips describe the current group. A selection from the
             // previous group would silently empty the next one.
             store.statusFilter = []
-            if next != "all" { store.repoFilter = nil }
         }
     }
 
@@ -66,7 +65,7 @@ struct RootView: View {
             switch store.section {
             case "overview": Overview(store: store)
             case "disk":     DiskDetail(store: store)
-            case "folders":  FoldersView(store: store)
+            case "folders":  FoldersView(store: store, open: openRow ?? store.focusPath)
             default:         WorktreeList(store: store, section: store.section,
                                           initiallyOpen: openRow)
             }
@@ -100,26 +99,24 @@ struct Sidebar: View {
             PixelWordmark()
                 .padding(.horizontal, 17).padding(.bottom, 18)
 
+            // One place per job: what to do, the worktrees you made, the
+            // repos themselves, and the disk. Five status lists used to sort
+            // the same worktrees a second way under a "Worktrees" heading.
             entry("overview", "Overview", "square.grid.2x2", nil)
-            entry("disk", "Disk", "internaldrive", store.freeable.map { Store.human($0.totalKb) },
-                  tint: store.freeable == nil ? nil : Palette.reclaim)
             // Every folder, as every other entry counts what its page lists.
-            // Counting only the safe ones put "0" beside a page of fourteen.
             // Green says some of them can go.
             entry("folders", "Folders", "folder",
-                  store.envelope == nil ? nil : "\(store.folderRows.count)",
+                  store.envelope == nil || store.unconfigured ? "–" : "\(store.folderRows.count)",
                   tint: store.folderRows.contains { $0.folder?.verdict == "safe" } ? Palette.reclaim : nil)
-
-            heading("Worktrees")
-
             ForEach(store.allGroups) { g in
-                // A dash before the first envelope, and while nobody has said
-                // where to look: "0 forgotten" is a claim, and on a machine
-                // that has not been scanned it is one nothing has established.
+                // A dash before the first envelope: "0 repos" is a claim
+                // nothing has established on a machine not yet scanned.
                 entry(g.id, g.title, icon(g.id),
                       store.envelope == nil || store.unconfigured ? "–" : "\(g.items.count)",
                       tint: g.items.isEmpty ? nil : Palette.section(g.id))
             }
+            entry("disk", "Disk", "internaldrive", store.freeable.map { Store.human($0.totalKb) },
+                  tint: store.freeable == nil ? nil : Palette.reclaim)
 
             Spacer(minLength: 12)
             VStack(spacing: 7) {
@@ -137,22 +134,8 @@ struct Sidebar: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    /// Sentence case, not shouted. A group label in a rail is a signpost, and
-    /// SMALL CAPS WITH TRACKING competes with the rows it is labelling — which
-    /// is the wrong way round, since nobody clicks the label.
-    private func heading(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Palette.muted)
-            .padding(.horizontal, 17).padding(.top, 18).padding(.bottom, 4)
-    }
-
     private func icon(_ id: String) -> String {
         switch id {
-        case "all":    return "square.stack"
-        case "need":   return "exclamationmark.circle"
-        case "flight": return "arrow.triangle.branch"
-        case "others": return "person.2"
         case "repos":  return "shippingbox"
         default:       return "checkmark.circle"
         }
@@ -169,7 +152,14 @@ struct Sidebar: View {
     private func entry(_ id: String, _ title: String, _ symbol: String,
                        _ badge: String?, tint: Color? = nil) -> some View {
         let on = store.section == id
-        return Button { store.section = id } label: {
+        // From the sidebar a page starts clean. A link from elsewhere (a
+        // folder's arrow, a project row) sets its filter and then the
+        // section, and keeps it.
+        return Button {
+            store.query = ""
+            store.repoFilter = nil
+            store.section = id
+        } label: {
             HStack(spacing: 9) {
                 Image(systemName: symbol)
                     .font(.system(size: 13)).frame(width: 18)
@@ -229,19 +219,27 @@ struct PixelWordmark: View {
 
 struct Header: View {
     @ObservedObject var store: Store
+    /// The character picker, open only while choosing. All eleven portraits
+    /// on every page took a quarter of the window for a setting changed once
+    /// in a while.
+    @State private var choosing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Keep status and direct character selection available above the scrolling content.
     /// Unique facts remain a compact final row.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 13) {
-                Button { store.nextCharacter() } label: {
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { choosing.toggle() }
+                } label: {
                     WityView(store: store, height: 44).frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Next mascot")
-                .help("Click for the next mascot; choose a portrait below for a specific character")
+                .accessibilityLabel(choosing ? "Close the character picker" : "Choose a character")
+                .help(choosing ? "Close the character picker" : "Choose a character")
                 .contextMenu {
+                    Button("Next character") { store.nextCharacter() }
                     Button("Change coat") { store.nextSkin() }.disabled(store.usingOwnImage)
                     Button("Check for updates…") { store.updates.check(manual: true) }
                     Divider()
@@ -269,7 +267,10 @@ struct Header: View {
                 Spacer(minLength: 8)
                 controls
             }
-            MascotSwitcher(store: store)
+            if choosing {
+                MascotSwitcher(store: store)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             if !tags.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(tags) { tag in InsightTag(tag: tag) { store.section = tag.target } }
@@ -440,8 +441,9 @@ struct StatusBar: View {
                 Text("\(env.worktrees.count) worktrees")
                 Text("· \(Set(env.worktrees.map(\.repo)).count) repos")
                 if store.filtering {
-                    let shown = store.groups.first(where: { $0.id == store.section })?.items.count
-                        ?? Set(store.groups.flatMap { $0.items.map(\.path) }).count
+                    let shown = store.section == "folders"
+                        ? store.folderRows.filter(store.passes).count
+                        : store.groups.first(where: { $0.id == store.section })?.items.count ?? 0
                     Text("· \(shown) shown")
                 }
             }

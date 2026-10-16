@@ -139,11 +139,14 @@ struct Overview: View {
                         }
                     }
                 } else {
-                    LinkedPRCard(store: store)
+                    // What to do first, then what is at stake, then the
+                    // state of things. Rewards last: encouragement, not
+                    // something to act on.
                     movesCard
-                    CleanupScoreCard(store: store)
-                    repoCard
                     riskCard
+                    LinkedPRCard(store: store)
+                    repoCard
+                    CleanupScoreCard(store: store)
                 }
                 if let notices = store.envelope?.notices, !notices.isEmpty {
                     Card(title: "not everything could be read",
@@ -223,12 +226,12 @@ struct Overview: View {
                  trailing: "\(rows.count) with something in them",
                  tint: Palette.status("active"), symbol: "square.stack.3d.up.fill") {
                 RepoLedger(rows: Array(rows.prefix(Self.shown)), hidden: rows.count - Self.shown) { repo in
-                    // Land on the flat list, filtered to this project: the
-                    // question "what is going on in ec-website" is answered by
-                    // the rows, not by another summary.
+                    // Land on its folders: the question "what is going on in
+                    // ec-website" is answered by the rows, not by another
+                    // summary. The page shows the project filter it applied.
                     store.query = ""
                     store.repoFilter = repo
-                    store.section = "all"
+                    store.section = "folders"
                 }
             }
         }
@@ -253,9 +256,7 @@ struct Overview: View {
                             RiskRow(worktree: w) {
                                 // Land on its row: the list, narrowed to this
                                 // branch, where the commits it holds are listed.
-                                store.repoFilter = w.repo
-                                store.query = w.branch ?? ""
-                                store.section = "all"
+                                store.show(w)
                             }
                         }
                     }
@@ -432,7 +433,7 @@ private struct RepoLedger: View {
         HStack(spacing: 0) {
             Text("PROJECT").frame(maxWidth: .infinity, alignment: .leading)
             Text("NEEDS").frame(width: Ledger.needs, alignment: .trailing)
-            Text("FORGOT").frame(width: Ledger.forgot, alignment: .trailing)
+            Text("SAFE").frame(width: Ledger.forgot, alignment: .trailing)
             Text("ONLY HERE").frame(width: Ledger.only, alignment: .trailing)
             if !dense {
                 Text("OLDEST").frame(width: Ledger.age, alignment: .trailing)
@@ -466,7 +467,7 @@ private struct RepoLedgerRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 cell(row.needs, width: Ledger.needs, tint: Palette.status("blocked"))
-                cell(row.stale, width: Ledger.forgot, tint: Palette.status("stale"))
+                cell(row.safe, width: Ledger.forgot, tint: Palette.reclaim)
                 cell(row.unpushed, width: Ledger.only, tint: Palette.risk)
                 if !dense {
                     // A gradient, not a threshold: thirty-one days and

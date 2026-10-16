@@ -18,6 +18,8 @@ struct FoldersView: View {
     @State var selected: Set<String> = []
     /// The tally pressed, if any: the page shows only folders with that verdict.
     @State var only: Verdict? = nil
+    /// The folder opened to its details, as a row of the old list opened.
+    @State var open: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Verdict: String, CaseIterable {
@@ -104,21 +106,30 @@ struct FoldersView: View {
         }
         full.sort { ($0.safe.count, $0.kb) > ($1.safe.count, $1.kb) }
         if !lone.isEmpty { full.append(Group(id: Self.elsewhereID, rows: sorted(lone), elsewhere: true)) }
-        guard let only else { return full }
         return full.compactMap { g in
-            let kept = g.rows.filter { $0.verdict == only }
+            let kept = g.rows.filter { (only == nil || $0.verdict == only) && searched($0) }
             return kept.isEmpty ? nil : Group(id: g.id, rows: kept, elsewhere: g.elsewhere)
         }
     }
 
+    /// The search field and the project filter, by the one rule in Store.
+    private func searched(_ row: Row) -> Bool { store.passes(row.worktree) }
+
     var body: some View {
         let rows = allRows
         VStack(spacing: 0) {
-            header(rows)
+            header(rows.filter(searched))
+            FilterBar(store: store)
             Divider().opacity(0.35)
             if scrolls {
-                ScrollView { content(rows) }
-                    .safeAreaInset(edge: .bottom) { if !selected.isEmpty { selectionBar(rows) } }
+                ScrollViewReader { proxy in
+                    ScrollView { content(rows) }
+                        .safeAreaInset(edge: .bottom) { if !selected.isEmpty { selectionBar(rows) } }
+                        // Another page asked for this folder: open it and
+                        // bring it into view, then let go of the request.
+                        .onAppear { reveal(store.focusPath, proxy) }
+                        .onChange(of: store.focusPath) { reveal($0, proxy) }
+                }
             } else {
                 if !selected.isEmpty { selectionBar(rows) }
                 content(rows)
@@ -272,10 +283,14 @@ struct FoldersView: View {
                                    discardWork: rows.contains { !$0.verdict.lossless }))
     }
 
-    private func show(_ row: Row) {
-        store.repoFilter = row.worktree.repo
-        store.query = row.worktree.branch ?? ""
-        store.section = "all"
+    private func reveal(_ path: String?, _ proxy: ScrollViewProxy) {
+        guard let path else { return }
+        only = nil
+        open = path
+        DispatchQueue.main.async {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo(path, anchor: .top) }
+            store.focusPath = nil
+        }
     }
 
     /// `warning`: unsaved work is in the set, so it is drawn in the app's
@@ -356,13 +371,18 @@ struct FoldersView: View {
             VStack(spacing: 0) {
                 ForEach(Array(g.rows.enumerated()), id: \.element.id) { i, row in
                     if i > 0 { Hairline() }
-                    FolderRow(row: row, elsewhere: g.elsewhere,
+                    FolderRow(store: store, row: row, elsewhere: g.elsewhere,
                               selected: Binding(
                                 get: { selected.contains(row.id) },
                                 set: { on in if on { selected.insert(row.id) } else { selected.remove(row.id) } }),
-                              delete: { delete([row]) },
-                              show: { show(row) },
-                              reveal: { store.reveal(row.worktree) })
+                              expanded: open == row.id,
+                              toggle: {
+                                  withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
+                                      open = open == row.id ? nil : row.id
+                                  }
+                              },
+                              delete: { delete([row]) })
+                        .id(row.id)
                 }
             }
         }
@@ -372,22 +392,40 @@ struct FoldersView: View {
     }
 }
 
-/// One folder. The whole row ticks it; its one button deletes a folder that
-/// loses nothing, or shows what an unsaved one holds. Deleting unsaved work
-/// is never a lone click: it is ticked and deleted from the bar, or chosen
-/// from the row's menu, and both go through the preview.
+/// One folder. Clicking it opens its details, as a row of the list did; the
+/// checkbox ticks it for one delete. Its one button deletes a folder that
+/// loses nothing. Deleting unsaved work is never a lone click: it is ticked
+/// and deleted from the bar, or chosen from the row's menu, and both go
+/// through the preview.
 private struct FolderRow: View {
+    @ObservedObject var store: Store
     let row: FoldersView.Row
     let elsewhere: Bool
     @Binding var selected: Bool
+    let expanded: Bool
+    let toggle: () -> Void
     let delete: () -> Void
-    let show: () -> Void
-    let reveal: () -> Void
     @State private var hovering = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            line
+            if expanded {
+                WorktreeDetail(store: store, worktree: row.worktree, removes: false)
+                    .padding(.leading, 52).padding(.top, 2).padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private var line: some View {
         let w = row.worktree, v = row.verdict
-        HStack(spacing: 10) {
+        return HStack(spacing: 10) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 8, weight: .bold))
+                .rotationEffect(.degrees(expanded ? 90 : 0))
+                .foregroundStyle(Palette.faint).frame(width: 8)
+                .accessibilityHidden(true)
             // A slot either way, so the names line up.
             Toggle("", isOn: $selected).toggleStyle(.checkbox).labelsHidden()
                 .disabled(!row.deletable)
@@ -433,25 +471,23 @@ private struct FolderRow: View {
             SwiftUI.Group {
                 if v.lossless {
                     Button(action: delete) { Image(systemName: "trash") }
+                        .buttonStyle(.plain)
                         .help("Delete this folder (preview first)")
                         .accessibilityLabel("Delete \(row.name)")
                 } else {
-                    Button(action: show) { Image(systemName: "arrow.right.circle") }
-                        .help("Show what is in it")
-                        .accessibilityLabel("Show what \(row.name) holds")
+                    Color.clear
                 }
             }
-            .buttonStyle(.plain)
             .font(.system(size: 12))
             .foregroundStyle(hovering ? Palette.ink(v.tint) : Palette.muted)
-            .frame(width: 22)
+            .frame(width: 22, height: 16)
         }
         .padding(.vertical, 7).padding(.horizontal, 6)
         .background(RoundedRectangle(cornerRadius: 7)
             .fill(selected ? Palette.wash(v.tint) : hovering ? Color.primary.opacity(0.04) : .clear))
         .padding(.horizontal, -6)
         .contentShape(Rectangle())
-        .onTapGesture { if row.deletable { selected.toggle() } }
+        .onTapGesture(perform: toggle)
         .onHover { hovering = $0 }
         .contextMenu {
             if v.lossless {
@@ -459,10 +495,12 @@ private struct FolderRow: View {
             } else if row.anyway {
                 Button("Delete anyway…", action: delete)
             }
-            Button("Show in worktree list", action: show)
-            Button("Reveal in Finder", action: reveal)
+            Button(expanded ? "Hide details" : "Show details", action: toggle)
+            Button("Reveal in Finder") { store.reveal(w) }
+            Button("Open in Terminal") { store.openInTerminal(w) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(row.name), \(v.label), \(row.reason)")
+        .accessibilityHint(expanded ? "Hides its details" : "Shows its details")
     }
 }

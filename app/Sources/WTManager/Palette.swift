@@ -37,10 +37,6 @@ enum Palette {
     /// A section takes the colour of whatever it holds.
     static func section(_ id: String) -> Color {
         switch id {
-        case "all":    return Color.accentColor
-        case "need":   return status("blocked")
-        case "flight": return status("active")
-        case "others": return status("waiting")
         case "repos":  return status("trunk")
         case "disk":   return reclaim
         case "folders": return reclaim

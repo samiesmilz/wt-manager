@@ -263,7 +263,7 @@ class Mood(unittest.TestCase):
         for t in tags:
             if t["solo"]:
                 continue
-            self.assertIn(t["target"], {"need", "flight", "others", "folders", "disk"},
+            self.assertIn(t["target"], {"overview", "folders", "disk"},
                           "%s claims a home the sidebar does not have" % t["id"])
 
     def test_the_agent_envelope_carries_the_headline(self):
