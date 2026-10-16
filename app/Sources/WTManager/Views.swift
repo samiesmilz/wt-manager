@@ -140,13 +140,12 @@ struct Overview: View {
                     }
                 } else {
                     // What to do first, then what is at stake, then the
-                    // state of things. Rewards last: encouragement, not
-                    // something to act on.
+                    // state of things. Rewards live on Disk, with the space
+                    // they count.
                     movesCard
                     riskCard
                     LinkedPRCard(store: store)
                     repoCard
-                    CleanupScoreCard(store: store)
                 }
                 if let notices = store.envelope?.notices, !notices.isEmpty {
                     Card(title: "not everything could be read",
@@ -510,7 +509,9 @@ struct DiskDetail: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                CleanupScoreCard(store: store)
+                // What can be freed first, then where the space is, then the
+                // history. It opened on the rewards card, which filled the
+                // first screen of a narrow window with nothing to act on.
                 if store.disk == nil {
                     Card(title: "disk", tint: Palette.reclaim, symbol: "internaldrive.fill") {
                         Text(store.phase == "measuring disk"
@@ -526,19 +527,28 @@ struct DiskDetail: View {
                          tint: Palette.reclaim, symbol: "sparkles") {
                         VStack(alignment: .leading, spacing: 8) {
                             if let f = store.freeable {
-                                Text("\(Store.human(f.finishedKb)) in \(f.finishedCount) folder\(f.finishedCount == 1 ? "" : "s") safe to delete · \(Store.human(f.cachesKb)) of rebuildable output")
+                                // Only the parts there are. "— in 0 folders"
+                                // was a dash where a size belonged.
+                                Text(([f.cachesKb > 0 ? "\(Store.human(f.cachesKb)) of rebuildable output" : nil,
+                                       f.finishedCount > 0 ? "\(Store.human(f.finishedKb)) in " + Store.count(f.finishedCount, "folder") + " safe to delete" : nil]
+                                      .compactMap { $0 }).joined(separator: " · "))
                                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.inkReclaim)
                             }
                             if !store.removalCandidates.isEmpty {
                                 ActionButton(action: Store.removeAction(store.removalCandidates),
                                              detail: "Folders whose work is all on GitHub. Files are checked again in the preview.") { store.preview($0) }
                             } else {
-                                Text("No folders are safe to delete. Open Folders to see what each one holds.")
-                                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                                HStack(spacing: 4) {
+                                    Text("No folders are safe to delete right now.")
+                                        .foregroundStyle(Palette.muted)
+                                    Button("Open Folders") { store.query = ""; store.repoFilter = nil; store.section = "folders" }
+                                        .buttonStyle(.link)
+                                }
+                                .font(.system(size: 12))
                             }
                             if !store.reclaimCandidates(staleOnly: true).isEmpty {
                                 ActionButton(action: Store.Action(kind: .clean, paths: store.reclaimCandidates(staleOnly: true).map(\.path), staleOnly: true),
-                                             detail: "Build output in forgotten and finished worktrees.") { store.preview($0) }
+                                             detail: "Build output in folders with no recent commit, and in finished ones.") { store.preview($0) }
                             }
                             if !store.reclaimCandidates().isEmpty {
                                 ActionButton(action: Store.Action(kind: .clean, paths: store.reclaimCandidates().map(\.path)),
@@ -551,54 +561,110 @@ struct DiskDetail: View {
                                 .font(.system(size: 10.5)).foregroundStyle(Palette.muted).padding(.top, 2)
                         }
                     }
+                    let weights = store.weights
                     Card(title: "by repo",
-                         trailing: store.disk.map { "\(Store.human($0.total)) in worktrees" },
+                         trailing: store.disk.map { "\(Store.human($0.total)) across " + Store.count(weights.count, "repo") },
                          tint: Palette.reclaim, symbol: "chart.bar.fill") {
                         VStack(alignment: .leading, spacing: 9) {
-                            ForEach(Array(store.weights.enumerated()), id: \.element.id) { i, item in
+                            // What the two numbers and the two shades are.
+                            HStack(spacing: 6) {
+                                Text("green is rebuildable")
+                                    .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                                Spacer(minLength: 6)
+                                Text("REBUILDABLE").frame(minWidth: 70, alignment: .trailing)
+                                Text("TOTAL").frame(width: 50, alignment: .trailing)
+                            }
+                            .font(.system(size: 9, weight: .semibold)).tracking(0.5)
+                            .foregroundStyle(Palette.muted)
+                            let shown = showAllRepos ? weights : Array(weights.prefix(Self.reposShown))
+                            ForEach(Array(shown.enumerated()), id: \.element.id) { i, item in
                                 if i > 0 { Hairline() }
-                                RepoBar(item: item, max: store.weights.first?.total ?? 1,
-                                        hue: Palette.categorical(i))
+                                RepoBar(item: item, max: weights.first?.total ?? 1) {
+                                    // Its folders, filtered to this project; a
+                                    // repo with none opens on Repos instead of
+                                    // on an empty page.
+                                    store.query = ""
+                                    store.repoFilter = item.id
+                                    store.section = store.folderRows.contains { ($0.repoId ?? $0.repo) == item.id }
+                                        ? "folders" : "repos"
+                                }
+                            }
+                            if weights.count > Self.reposShown {
+                                Button(showAllRepos ? "Show fewer" : "Show \(weights.count - Self.reposShown) more") {
+                                    withAnimation(.easeOut(duration: 0.15)) { showAllRepos.toggle() }
+                                }
+                                .buttonStyle(.link).font(.system(size: 11))
                             }
                         }
                     }
                 }
+                CleanupScoreCard(store: store)
             }
             .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 20)
         }
     }
+
+    @State private var showAllRepos = false
+    private static let reposShown = 8
 }
 
+/// One repo's disk: grey for what it holds, green for the part a build or
+/// install would put back. One meaning per colour, as everywhere else in the
+/// app; a hue per row said only "a different row".
 struct RepoBar: View {
     let item: Store.RepoWeight
     let max: Int
-    var hue: Color = .accentColor
+    var open: (() -> Void)? = nil
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 2).fill(hue).frame(width: 7, height: 7)
-                Text(item.id).font(.system(size: 11.5, weight: .medium)).lineLimit(1)
-                Spacer(minLength: 6)
-                Text(Store.human(item.reclaim)).font(.system(size: 10.5, design: .rounded))
-                    .foregroundStyle(Palette.inkReclaim)
-                Text(Store.human(item.total)).font(.system(size: 10.5, design: .rounded))
-                    .foregroundStyle(Palette.muted).frame(width: 50, alignment: .trailing)
-            }
-            GeometryReader { geo in
-                let w = geo.size.width * CGFloat(item.total) / CGFloat(Swift.max(max, 1))
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.07))
-                    // Pale is what a build would put back; solid is what it holds
-                    // that nothing else can.
-                    RoundedRectangle(cornerRadius: 3).fill(hue.opacity(0.32))
-                        .frame(width: w)
-                    RoundedRectangle(cornerRadius: 3).fill(hue)
-                        .frame(width: w * CGFloat(item.keep) / CGFloat(Swift.max(item.total, 1)))
+        Button { open?() } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(item.name).font(.system(size: 11.5, weight: .medium)).lineLimit(1)
+                        .help(item.id)
+                    Spacer(minLength: 6)
+                    SwiftUI.Group {
+                        if item.measured {
+                            Text(Store.human(item.reclaim)).foregroundStyle(Palette.inkReclaim)
+                        } else {
+                            Text("not measured").foregroundStyle(Palette.faint)
+                                .help("Its build output was not measured on the last pass")
+                        }
+                    }
+                    .font(.system(size: 10.5, design: .rounded))
+                    .frame(minWidth: 70, alignment: .trailing)
+                    Text(Store.human(item.total)).font(.system(size: 10.5, design: .rounded))
+                        .foregroundStyle(Palette.muted).frame(width: 50, alignment: .trailing)
                 }
+                GeometryReader { geo in
+                    let w = geo.size.width * CGFloat(item.total) / CGFloat(Swift.max(max, 1))
+                    let kept = w * CGFloat(item.keep) / CGFloat(Swift.max(item.total, 1))
+                    // Side by side, not stacked: grey laid over green came out
+                    // dark green in light mode and green in dark.
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.06))
+                        HStack(spacing: 0) {
+                            Rectangle().fill(Color.primary.opacity(0.30)).frame(width: kept)
+                            Rectangle().fill(Palette.reclaim).frame(width: Swift.max(w - kept, 0))
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+                }
+                .frame(height: 8)
             }
-            .frame(height: 9)
+            .padding(.vertical, 3).padding(.horizontal, 6)
+            .background(RoundedRectangle(cornerRadius: 6)
+                .fill(hovering && open != nil ? Color.primary.opacity(0.04) : .clear))
+            .padding(.horizontal, -6)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .disabled(open == nil)
+        .onHover { hovering = $0 }
+        .help(open == nil ? "" : "Show \(item.name)'s folders")
+        .accessibilityLabel("\(item.name): \(Store.human(item.total)), "
+                            + (item.measured ? "\(Store.human(item.reclaim)) rebuildable" : "rebuildable not measured"))
     }
 }
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.1
+
+- Disk opens on what can be freed. Reclaim comes first, then By repo, and the Your space history last. Your space leaves Overview, so it appears once, beside the space it counts. It used to fill a narrow window's whole first screen with nothing to act on.
+- Reclaim's headline names only the parts there are: "38GB of rebuildable output", plus the folders safe to delete when there are any. It read "— in 0 folders safe to delete". "Open Folders" is now a link.
+- By repo:
+  - The two numbers have column headings (REBUILDABLE, TOTAL).
+  - Each bar is grey for what stays and green for what a build would put back, the same green that means "could free" everywhere else. It used to be one decorative hue per row.
+  - The title reads "218GB across 33 repos", not "in worktrees".
+  - The top eight show, with "Show N more".
+  - Clicking a repo opens its folders, or Repos when it has none.
+  - An unmeasured repo says "not measured" instead of a bare dash.
+  - Two repos with the same name stay two rows.
+- Folders says "No folders match" with a link to clear the filter when a search or project filter hides everything.
+- "Reclaim build output from forgotten work" now reads "…from idle folders".
+
 ## 0.12.0
 
 - **One page per job.** The sidebar is now Overview, Folders, Repos and Disk. Folders becomes the page for every worktree you made: it gains the list's search and project filter, and clicking a folder opens the same details the list showed (the commits that exist only here, base, ahead and behind, the pull request, with Reveal and Terminal). All worktrees, Needs you, In flight and With others are retired. **Repos** lists every checkout that is not a folder, including main checkouts with a feature branch out, so the two pages hold all of them, once.

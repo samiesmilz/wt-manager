@@ -611,9 +611,14 @@ extension Store {
     }
 
     struct RepoWeight: Identifiable {
+        /// The repo's identity, its `.git` path: two repos can share a name.
         let id: String
+        let name: String
         let total: Int
         let reclaim: Int
+        /// Whether any of its rebuildable output was measured. Zero measured
+        /// and nothing measured are different answers.
+        let measured: Bool
         var keep: Int { max(total - reclaim, 0) }
     }
 
@@ -621,14 +626,17 @@ extension Store {
     /// the actionable unit is "this project is eating the disk", and fifteen
     /// worktrees of one monorepo is one decision, not fifteen.
     var weights: [RepoWeight] {
-        var totals: [String: (Int, Int)] = [:]
+        var totals: [String: (name: String, total: Int, reclaim: Int, measured: Bool)] = [:]
         for w in envelope?.worktrees ?? [] where w.sizeKb > 0 {
-            var e = totals[w.repo] ?? (0, 0)
-            e.0 += w.sizeKb
-            e.1 += max(w.reclaimKb, 0)
-            totals[w.repo] = e
+            let id = w.repoId ?? w.repo
+            var e = totals[id] ?? (w.repo, 0, 0, false)
+            e.total += w.sizeKb
+            e.reclaim += max(w.reclaimKb, 0)
+            e.measured = e.measured || w.reclaimKb >= 0
+            totals[id] = e
         }
-        return totals.map { RepoWeight(id: $0.key, total: $0.value.0, reclaim: $0.value.1) }
+        return totals.map { RepoWeight(id: $0.key, name: $0.value.name, total: $0.value.total,
+                                       reclaim: $0.value.reclaim, measured: $0.value.measured) }
             .sorted { $0.total > $1.total }
     }
 
@@ -879,7 +887,7 @@ extension Store {
             case (.reap, true, _):      return "Review removal of this worktree"
             case (.reap, false, _):     return "Review worktree removal"
             case (.clean, true, _):     return "Reclaim this worktree's build output"
-            case (.clean, false, true): return "Reclaim build output from forgotten work"
+            case (.clean, false, true): return "Reclaim build output from idle folders"
             case (.clean, false, false):return "Reclaim build output everywhere"
             }
         }

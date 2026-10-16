@@ -587,6 +587,11 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
              size: CGSize(width: lim.ideal.width, height: 2000), appearance: appearance,
              to: "\(name)-overview-tall.png")
+        // Disk scrolls too, and its actions sit below the first screen.
+        store.section = "disk"
+        draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+             size: CGSize(width: lim.ideal.width, height: 2000), appearance: appearance,
+             to: "\(name)-disk-tall.png")
         draw(CleanupScoreCard(store: store).padding(20).background(Color(nsColor: .windowBackgroundColor)),
              size: CGSize(width: 500, height: 400), appearance: appearance, to: "\(name)-rewards.png")
         draw(PixelCelebration(previewElapsed: 0.9).background(Color(nsColor: .windowBackgroundColor)),

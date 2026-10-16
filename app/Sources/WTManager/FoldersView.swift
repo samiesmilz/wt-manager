@@ -229,6 +229,13 @@ struct FoldersView: View {
             } else if groups.isEmpty, let only {
                 Text("No folders are \(only.short).")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
+            } else if groups.isEmpty {
+                HStack(spacing: 6) {
+                    Text("No folders match.").foregroundStyle(Palette.muted)
+                    Button("Clear the filter") { store.query = ""; store.repoFilter = nil }
+                        .buttonStyle(.link)
+                }
+                .font(.system(size: 12))
             } else {
                 if only == nil, !rows.contains(where: { $0.verdict == .safe }) {
                     // After a cleanup this is the usual state, and a page with
