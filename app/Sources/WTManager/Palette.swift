@@ -45,6 +45,7 @@ enum Palette {
         case "done":   return status("merged")
         case "repos":  return status("trunk")
         case "disk":   return reclaim
+        case "folders": return reclaim
         default:       return Color.accentColor
         }
     }

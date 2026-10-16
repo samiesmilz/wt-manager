@@ -26,6 +26,8 @@ final class Store: ObservableObject {
     /// Disk tab and every row's size vanished for fifty-five minutes of each
     /// hour and reappeared after the next measurement.
     private var lastSizes: [String: (size: Int, reclaim: Int)] = [:]
+    /// The last folder verdict that saw each folder's local files.
+    private var lastFolders: [String: FolderInfo] = [:]
     /// New worktrees already sent for a one-off measure, so one that cannot
     /// be measured is not asked about again on every refresh.
     private var measureAttempted: Set<String> = []
@@ -88,14 +90,17 @@ final class Store: ObservableObject {
     /// that reads as broken. The first populated group is where you were going
     /// to look anyway.
     func focusTheFilter() {
-        if section == "overview" || section == "disk" {
+        if section == "overview" || section == "disk" || section == "folders" {
             section = groups.first?.id ?? Self.spec[0].0
         }
         focusFilter += 1
     }
 
     /// The sections in sidebar order, for ⌘1…⌘9.
-    var sectionOrder: [String] { ["overview", "disk"] + Self.spec.map { $0.0 } }
+    var sectionOrder: [String] { ["overview", "disk", "folders"] + Self.spec.map { $0.0 } }
+
+    /// Every worktree folder the engine judged, main checkouts excluded.
+    var folderRows: [Worktree] { (envelope?.worktrees ?? []).filter { $0.folder != nil } }
 
     let mascot: Mascot?
     private let engine = Engine()
@@ -208,6 +213,8 @@ final class Store: ObservableObject {
                     var sizes: [String: (size: Int, reclaim: Int)] = [:]
                     for w in env.worktrees { sizes[w.path] = (w.sizeKb, w.reclaimKb) }
                     self.lastSizes = sizes
+                    self.lastFolders = Dictionary(env.worktrees.compactMap { w in
+                        w.folder?.checked == true ? (w.path, w.folder!) : nil }, uniquingKeysWith: { a, _ in a })
                 } else {
                     // A partial pass measured a few new worktrees; keep theirs
                     // and carry every other size, which it left unmeasured.
@@ -219,6 +226,11 @@ final class Store: ObservableObject {
                         } else if let s = self.lastSizes[w.path] {
                             env.worktrees[i].sizeKb = s.size
                             env.worktrees[i].reclaimKb = s.reclaim
+                        }
+                        if w.folder?.checked == true {
+                            self.lastFolders[w.path] = w.folder
+                        } else {
+                            env.worktrees[i].folder = FolderInfo.carried(w.folder, over: self.lastFolders[w.path])
                         }
                     }
                 }
@@ -626,6 +638,20 @@ extension Store {
             out.append(Move(title: "\(first.repo) · \(first.name)",
                             detail: reason(first), action: nil, tint: Palette.status("blocked"), handoff: first))
         }
+        if env.worktrees.contains(where: { $0.folder != nil }) {
+            // One offer, in the Folders page's words, for the same set it
+            // calls safe. A merged PR's stray edits are among them, saved first.
+            let safe = removalCandidates
+            if !safe.isEmpty {
+                let kb = safe.reduce(0) { $0 + max($1.sizeKb, 0) }
+                let edits = safe.filter(\.removalDiscards).reduce(0) { $0 + $1.wouldLose }
+                out.append(Move(title: "Clear " + Store.count(safe.count, "safe folder")
+                                    + (kb > 0 ? ", \(Store.human(kb))" : ""),
+                                detail: "nothing in them exists only on this Mac"
+                                    + (edits > 0 ? "; " + Store.count(edits, "stray edit") + " from merged PRs saved first" : ""),
+                                action: Store.removeAction(safe), tint: Palette.reclaim))
+            }
+        } else {
         let leftovers = (envelope?.worktrees ?? []).filter(\.removalDiscards)
         if !leftovers.isEmpty {
             let kb = leftovers.reduce(0) { $0 + max($1.sizeKb, 0) }
@@ -652,6 +678,7 @@ extension Store {
             out.append(Move(title: "Finished work is being kept",
                             detail: kept.removal?.reason ?? "Review local files first",
                             action: nil, tint: Palette.status("stale"), handoff: kept))
+        }
         }
         // The number and the button have to come from one query.
         //
@@ -710,6 +737,15 @@ extension Store {
                             action: nil, tint: Palette.status("stale")))
         }
         return Array(out.filter(live).prefix(3))
+    }
+
+    /// Removing a set of worktrees, with the flags the set needs: folder
+    /// rules when the engine judged them as folders, and save-first when a
+    /// merged PR's stray edits are among them.
+    static func removeAction(_ ws: [Worktree]) -> Action {
+        Action(kind: .reap, paths: ws.map(\.path),
+               discardChanges: ws.contains(where: \.removalDiscards),
+               folders: ws.contains { $0.folder != nil })
     }
 
     var removalCandidates: [Worktree] {
@@ -817,11 +853,24 @@ extension Store {
         /// edits, then remove. A different plan from a plain removal, and the
         /// engine refuses it for anything else.
         var discardChanges = false
-        var id: String { "\(kind.rawValue)/\(paths.joined(separator: ","))/\(staleOnly)/\(discardChanges)" }
+        /// Worktrees as folders: also removes unfinished ones whose commits
+        /// are all on a remote, since the branch outlives the folder.
+        var folders = false
+        /// You are done with the work in these folders: delete them even with
+        /// unsaved work, which the engine saves or names first.
+        var discardWork = false
+        var id: String { "\(kind.rawValue)/\(paths.joined(separator: ","))/\(staleOnly)/\(discardChanges)/\(folders)/\(discardWork)" }
 
         var single: Bool { paths.count == 1 }
 
         var title: String {
+            if discardWork {
+                return single ? "Delete this folder, unsaved work included"
+                              : "Delete \(paths.count) folders, unsaved work included"
+            }
+            if folders {
+                return single ? "Delete this folder" : "Delete \(paths.count) folders"
+            }
             if discardChanges {
                 return single ? "Save changes and remove this worktree"
                               : "Save changes and remove merged worktrees"
@@ -836,6 +885,12 @@ extension Store {
         }
 
         var blurb: String {
+            if discardWork {
+                return "You are done with this work, so it goes, but not without a copy. Edits are saved as a patch, commits stay on their branch or are saved as a bundle when they are on none, and only unrecognised files too large to set aside are deleted outright."
+            }
+            if folders {
+                return "Each folder is deleted through git, which keeps its branch. Nothing that exists only on this Mac goes: .env files and keys are set aside, and a merged PR's stray edits are saved first."
+            }
             if discardChanges {
                 return "For pull requests that merged with every commit inside them. Uncommitted edits are saved as a patch and untracked files copied and verified, then the worktree is removed."
             }
@@ -853,6 +908,8 @@ extension Store {
             var a = ["--json", kind.rawValue]
             if kind == .clean && staleOnly && paths.isEmpty { a += ["--stale"] }
             if kind == .reap && discardChanges { a += ["--discard-changes"] }
+            if kind == .reap && folders { a += ["--folders"] }
+            if kind == .reap && discardWork { a += ["--discard-work"] }
             for p in paths { a += ["--path", p] }
             return a
         }
@@ -866,6 +923,8 @@ extension Store {
             var a = [kind.rawValue]
             if kind == .clean && staleOnly && paths.isEmpty { a += ["--stale"] }
             if kind == .reap && discardChanges { a += ["--discard-changes"] }
+            if kind == .reap && folders { a += ["--folders"] }
+            if kind == .reap && discardWork { a += ["--discard-work"] }
             for p in preview.paths { a += ["--path", p] }
             return a + ["--plan", preview.plan, "--yes"]
         }
@@ -899,6 +958,10 @@ extension Store {
         /// Uncommitted edits each removal saves, then discards.
         var changes: [String: [String]] = [:]
         var changesKeptIn: String = ""
+        /// Commits on no remote, and where each set ends up.
+        var commits: [String: String] = [:]
+        /// Unrecognised files too large to set aside, deleted with the folder.
+        var droppedUnknown: [String: [String]] = [:]
         var done: Bool = false
         var removed: Int = 0
         var completedPaths: [String] = []
@@ -906,9 +969,10 @@ extension Store {
         var failed: Int = 0
         var rc: Int = 0
         enum CodingKeys: String, CodingKey {
-            case kind, text, paths, plan, count, kb, skipped, precious, unknown, entries, changes
+            case kind, text, paths, plan, count, kb, skipped, precious, unknown, entries, changes, commits
             case done, removed, failed, rc
             case changesKeptIn = "changes_kept_in"
+            case droppedUnknown = "dropped_unknown"
             case freedKb = "freed_kb"
             case completedPaths = "completed_paths"
             case keptIn = "kept_in"
@@ -930,6 +994,8 @@ extension Store {
             entries = try c.decodeIfPresent([String: [String]].self, forKey: .entries) ?? [:]
             changes = try c.decodeIfPresent([String: [String]].self, forKey: .changes) ?? [:]
             changesKeptIn = try c.decodeIfPresent(String.self, forKey: .changesKeptIn) ?? ""
+            commits = try c.decodeIfPresent([String: String].self, forKey: .commits) ?? [:]
+            droppedUnknown = try c.decodeIfPresent([String: [String]].self, forKey: .droppedUnknown) ?? [:]
             done = try c.decodeIfPresent(Bool.self, forKey: .done) ?? false
             removed = try c.decodeIfPresent(Int.self, forKey: .removed) ?? 0
             completedPaths = try c.decodeIfPresent([String].self, forKey: .completedPaths) ?? []

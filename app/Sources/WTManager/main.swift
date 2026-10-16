@@ -452,7 +452,7 @@ func start() {
 /// The envelope is the engine's own `agent` output, so what is rendered is what
 /// the engine would have said - a fixture is one saved run of it.
 @MainActor
-func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, feedbackOnly: Bool = false, motionOnly: Bool = false, signalsOnly: Bool = false, mergeOnly: Bool = false) {
+func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false, castOnly: Bool = false, feedbackOnly: Bool = false, motionOnly: Bool = false, signalsOnly: Bool = false, mergeOnly: Bool = false) {
     _ = NSApplication.shared
     let store = Store(mascot: AppDelegate.loadMascotForSnapshot())
     store.history = CleanupHistory()
@@ -499,6 +499,25 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
             try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(file))
         }
         window.close()
+    }
+
+    if foldersOnly {
+        let rows = store.envelope?.worktrees ?? []
+        let linked = rows.filter { !$0.primary && !$0.isBase }
+        let parents = Set(linked.map { ($0.path as NSString).deletingLastPathComponent }).count
+        let height = CGFloat(220 + parents * 92 + linked.count * 47)
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            draw(FoldersView(store: store, scrolls: false).background(Color(nsColor: .windowBackgroundColor)),
+                 size: CGSize(width: 820, height: height), appearance: appearance, to: "\(name)-folders.png")
+            // Two safe folders and one with unsaved work ticked, for the bar.
+            let pick = Set(store.folderRows.filter { $0.folder?.verdict == "safe" }.prefix(2).map(\.path)
+                           + store.folderRows.filter { $0.folder?.verdict == "unsaved" }.prefix(1).map(\.path))
+            draw(FoldersView(store: store, scrolls: false, selected: pick).background(Color(nsColor: .windowBackgroundColor)),
+                 size: CGSize(width: 820, height: height + 60), appearance: appearance, to: "\(name)-folders-selected.png")
+            draw(FoldersView(store: store, scrolls: false, only: .unsaved).background(Color(nsColor: .windowBackgroundColor)),
+                 size: CGSize(width: 820, height: height), appearance: appearance, to: "\(name)-folders-unsaved.png")
+        }
+        return
     }
 
     // The default and the minimum. A layout that only looks right at its
@@ -553,7 +572,7 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
             continue
         }
         for (suffix, size) in sizes {
-            for section in ["overview", "all", "disk", "need", "forgot", "flight", "others", "done", "repos"] {
+            for section in ["overview", "all", "disk", "folders", "need", "forgot", "flight", "others", "done", "repos"] {
                 store.section = section
                 draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                      size: size, appearance: appearance, to: "\(name)-\(section)\(suffix).png")
@@ -622,6 +641,9 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
         var discard = Store.Plan(action: Store.Action(kind: .reap, paths: ["/Users/me/worktrees/mobile/fix-check-in"], discardChanges: true))
         discard.stage = .reviewing
         discard.preview = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"saving 2 uncommitted changes before discarding","paths":["/Users/me/worktrees/mobile/fix-check-in"],"plan":"discard","count":1,"kb":44040192,"changes":{"/Users/me/worktrees/mobile/fix-check-in":["docs/decisions/deep-link-spec.md","docs/specs/navigation-header-spec.md"]},"changes_kept_in":"/Users/me/.local/share/wt-manager/kept","unknown":{"/Users/me/worktrees/mobile/fix-check-in":[".claude/review.local.md","generated/"]},"keeps_unknown":true,"kept_in":""}"#)
+        var anyway = Store.Plan(action: Store.Action(kind: .reap, paths: ["/Users/me/worktrees/web/feat-old-idea", "/Users/me/worktrees/web/spike"], folders: true, discardWork: true))
+        anyway.stage = .reviewing
+        anyway.preview = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"","paths":["/Users/me/worktrees/web/feat-old-idea","/Users/me/worktrees/web/spike"],"plan":"anyway","count":2,"kb":1040000,"changes":{"/Users/me/worktrees/web/feat-old-idea":["src/app/page.tsx","notes.md"]},"commits":{"/Users/me/worktrees/web/feat-old-idea":"2 commits stay on branch feat/old-idea","/Users/me/worktrees/web/spike":"3 commits saved as a bundle"},"changes_kept_in":"/Users/me/.local/share/wt-manager/kept","dropped_unknown":{"/Users/me/worktrees/web/spike":["work/","recordings/"]}}"#)
         var clean = Store.Plan(action: Store.Action(kind: .clean, paths: ["/Users/me/worktrees/web/feat-campaign-cards"]))
         clean.stage = .done
         clean.result = Store.decodePlanForSnapshot(#"{"kind":"clean","text":"Cleaned build output. The checkout and protected files were kept.","paths":[],"plan":"clean","done":true,"freed_kb":1200000,"completed_paths":["/Users/me/worktrees/web/feat-campaign-cards"]}"#)
@@ -634,7 +656,7 @@ func snapshot(into dir: String, envelopePath: String?, castOnly: Bool = false, f
             ("sheet-scanning", Store.samplePlan(.previewing)),
             ("sheet-done", Store.samplePlan(.done)),
             ("sheet-partial", partial), ("sheet-failed", failed), ("sheet-changed", changed),
-            ("sheet-refused", refused), ("sheet-clean-done", clean), ("sheet-discard", discard),
+            ("sheet-refused", refused), ("sheet-clean-done", clean), ("sheet-discard", discard), ("sheet-anyway", anyway),
         ]
         for (file, plan) in stages {
             guard let plan else { continue }
@@ -677,6 +699,10 @@ MainActor.assumeIsolated {
     if let i = args.firstIndex(of: "--snapshot-balloon"), i + 1 < args.count {
         _ = NSApplication.shared
         if let m = AppDelegate.loadMascotForSnapshot() { FloatingMascot.snapshotBalloons(mascot: m, into: args[i + 1]) }
+        exit(0)
+    }
+    if let i = args.firstIndex(of: "--snapshot-folders"), i + 2 < args.count {
+        snapshot(into: args[i + 1], envelopePath: args[i + 2], foldersOnly: true)
         exit(0)
     }
     if let i = args.firstIndex(of: "--snapshot-cast"), i + 1 < args.count {

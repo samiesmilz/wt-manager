@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0
+
+- New **Folders** section: every worktree shown as a folder, grouped by where it lives on disk, with one verdict each: safe to delete, in progress, unsaved work, or kept. Folders that sit alone in their parent are gathered into one "Elsewhere" card. **Clear everything safe** and a per-folder clear do the start-of-sprint cleanup with a preview first. Each row has its own delete, or a link to what it holds.
+- **Delete anyway**: a folder with unsaved work, or with unrecognised files too large to set aside, can be deleted when you are done with it. It still gets a copy first: edits are saved as a patch, commits stay on their branch, and commits on no branch are saved as a verified git bundle with the command to restore them. Only the oversized unrecognised files are deleted outright, and the preview lists them under their own heading. Locked worktrees and ones with submodules stay off-limits. CLI: `reap --folders --discard-work`.
+- **Select several folders**: a checkbox on each row and "Select all" on each card. A bar shows how many are selected, their size and how many hold unsaved work, with one delete for the set. That button turns red when unsaved work is included.
+- One number for what can be freed: the balloon, the Disk page and Overview's "Do this next" now count exactly the folders the Folders page calls safe. Before, the Disk page said 0 worktrees could be freed while Folders listed 12 safe ones.
+- The count pills (safe, in progress, unsaved, kept) filter the page. Clicking anywhere on a row ticks it. "Select all" picks only folders that lose nothing; unsaved ones are ticked one at a time. Unsaved and kept rows have no lone delete button: tick them, or choose "Delete anyway…" from the row's menu. Rows also offer "Show in worktree list" and "Reveal in Finder", and every control has a VoiceOver label.
+- A quick refresh no longer flips a folder of unrecognised files from "kept" to "safe": only a full measure looks at those files, so the last verdict that did is kept until the next one.
+- Deleting a folder whose commits stay on its branch now leaves a RESTORE.txt naming the branch and the commits.
+- `reap --folders` and `--discard-work` refuse to run without `--path`. Unscoped, `--discard-work` would have reached every worktree on the machine.
+- "Safe" now means deleting the folder loses nothing, not that the work finished. A branch on GitHub, merged or not, survives its folder, because `git worktree remove` keeps the branch. Your own unpushed commits, uncommitted edits and detached commits still keep a folder. The engine computes the verdict with the same check `reap --folders` applies, so a folder called safe is one the button removes.
+
 ## 0.10.2
 
 - New: **Save changes and remove** for a worktree whose pull request merged with every commit inside it, held back only by uncommitted edits. The edits are saved first as a binary patch, untracked files are copied and verified, and a RESTORE.txt says how to put them back; then the worktree is removed. It shows on the worktree's row and in "Do this next", and the preview lists every file it saves. The plan's hash names those files, so an edit made after the preview is refused rather than discarded unseen. Commits made after a merge are new work and stay protected. CLI: `reap --discard-changes`.

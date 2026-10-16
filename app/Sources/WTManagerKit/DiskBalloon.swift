@@ -126,12 +126,17 @@ public enum DiskBalloon {
 }
 
 extension Worktree {
-    /// Finished, not a main checkout, and nothing known to block removing it.
-    /// The one definition: the Disk page's remove button and the balloon count
-    /// the same worktrees, or the number you click does not match the action
-    /// it leads to.
+    /// A folder the engine calls safe to delete: deleting it loses nothing.
+    /// The one definition: the balloon, the Disk page, Overview and the
+    /// Folders page count the same worktrees, or the number you click does
+    /// not match the action it leads to. They once disagreed: Disk said 0
+    /// worktrees could be freed while Folders listed 12 safe ones.
+    ///
+    /// An engine older than 0.11 sends no folder verdict, and the old rule,
+    /// finished and unblocked, stands in for it.
     public var removable: Bool {
-        (status == "merged" || status == "empty") && !primary && !isBase && !removalBlocked
+        if let folder { return folder.verdict == "safe" }
+        return (status == "merged" || status == "empty") && !primary && !isBase && !removalBlocked
             && !removalDiscards
     }
 }

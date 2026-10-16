@@ -30,6 +30,7 @@ struct PlanSheet: View {
             let rows = (preview?.paths.count ?? 0) + (preview?.skipped.count ?? 0)
                 + (preview?.precious.count ?? 0) + (preview?.unknown.count ?? 0)
                 + (preview?.changes.values.reduce(0) { $0 + $1.count } ?? 0)
+                + (preview?.commits.count ?? 0) + (preview?.droppedUnknown.count ?? 0)
             return min(ceiling, max(440, 300 + CGFloat(rows) * 65))
         case .done: return min(ceiling, max(450, 340 + CGFloat(doneRows.count) * 45))
         case .failed, .changed: return min(ceiling, 500)
@@ -346,6 +347,20 @@ struct PlanSheet: View {
                     if !p.skipped.isEmpty {
                         section("Kept out", ink: Palette.ink(status: "stale")) { skippedList(p.skipped) }
                     }
+                    if !p.commits.isEmpty {
+                        section("Commits on no remote", ink: Palette.inkRisk, folder: p.changesKeptIn) {
+                            ForEach(p.commits.keys.sorted(), id: \.self) { path in
+                                line(URL(fileURLWithPath: path).lastPathComponent, p.commits[path] ?? "")
+                            }
+                        }
+                    }
+                    if !p.droppedUnknown.isEmpty {
+                        section("Deleted, too large to set aside", ink: Palette.ink(status: "blocked")) {
+                            ForEach(p.droppedUnknown.keys.sorted(), id: \.self) { path in
+                                fileList(path, names: p.droppedUnknown[path] ?? [])
+                            }
+                        }
+                    }
                     if !p.changes.isEmpty {
                         section("Uncommitted changes, saved first", ink: Palette.inkReclaim,
                                 folder: p.changesKeptIn) {
@@ -650,6 +665,12 @@ struct PlanSheet: View {
         guard let p = preview else { return kind.verb }
         let n = p.paths.count
         if kind == .reap {
+            if plan.action.discardWork {
+                return n == 1 ? "Delete anyway" : "Delete \(n) folders anyway"
+            }
+            if plan.action.folders {
+                return n == 1 ? "Delete folder" : "Delete \(n) folders"
+            }
             if plan.action.discardChanges {
                 return n == 1 ? "Save changes and remove" : "Save changes and remove \(n)"
             }

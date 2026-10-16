@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.10.2"
+VERSION = "0.11.0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -2752,7 +2752,7 @@ def changed_files(w: Worktree) -> Optional[List[str]]:
     return sorted(files)
 
 
-def save_changes(w: Worktree, files: Sequence[str]) -> Tuple[Optional[Path], str]:
+def save_changes(w: Worktree, files: Sequence[str], bundle: bool = False) -> Tuple[Optional[Path], str]:
     """Save what `git worktree remove --force` would destroy: a binary patch of
     every tracked change against HEAD, a verified copy of each untracked file,
     and how to put them back. Returns (where, error); nothing is removed unless
@@ -2788,6 +2788,16 @@ def save_changes(w: Worktree, files: Sequence[str]) -> Tuple[Optional[Path], str
             os.chmod(d, 0o700)
         if patch.stdout:
             (dest / "changes.patch").write_bytes(patch.stdout)
+        if bundle:
+            # A detached HEAD's commits have nothing else pointing at them;
+            # once the folder goes, git would collect them. The bundle holds
+            # every commit no remote has, and is verified before anything
+            # is removed.
+            target = dest / "commits.bundle"
+            rc, _, err = git(["bundle", "create", str(target), "HEAD", "--not", "--remotes"],
+                             cwd=w.path, timeout=120)
+            if rc != 0 or git(["bundle", "verify", str(target)], cwd=w.path)[0] != 0:
+                raise OSError("could not bundle its commits: " + (err or "verify failed")[:80])
         for rel in untracked:
             src, dst = os.path.join(w.path, rel), dest / "untracked" / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -2801,11 +2811,25 @@ def save_changes(w: Worktree, files: Sequence[str]) -> Tuple[Optional[Path], str
             f"worktree: {w.path}\nbranch: {w.name}\ncommit: {head}\n"
             f"pr: #{w.pr.number if w.pr else '?'}\n"
             f"saved: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"files: {len(files)}\n\n"
-            "To put these changes back, from the repository:\n"
-            f"  git worktree add <new-path> {head}\n"
-            f"  cd <new-path> && git apply --binary '{dest}/changes.patch'\n"
-            f"  cp -R '{dest}/untracked/.' .\n")
+            f"files: {len(files)}\n"
+            # Only the steps for what was saved: a branch-only record has no
+            # patch, and pointing at one that is not there reads as a failure.
+            + ("\nTo put these changes back, from the repository:\n"
+               f"  git worktree add <new-path> {head}\n"
+               + (f"  cd <new-path> && git apply --binary '{dest}/changes.patch'\n" if patch.stdout else "")
+               + (f"  cp -R '{dest}/untracked/.' .\n" if untracked else "")
+               if patch.stdout or untracked else "")
+            + (f"\nIts commits on no branch are in commits.bundle. To get them back:\n"
+               f"  git fetch '{dest}/commits.bundle' HEAD:refs/heads/restored-{slug}\n"
+               if bundle else "")
+            # Once the folder is gone wt-manager no longer shows the branch,
+            # so the commits it still holds are named here.
+            + (f"\n{w.unpushed} commit{'s' if w.unpushed != 1 else ''} on no remote "
+               f"{'stay' if w.unpushed != 1 else 'stays'} on "
+               f"branch {w.branch}" + (":\n" + "".join(f"  - {c}\n" for c in w.solo_log)
+                                       if w.solo_log else ".\n")
+               + f"To work on them again:  git worktree add <new-path> {w.branch}\n"
+               if w.branch and w.unpushed > 0 and not w.landed else ""))
     except OSError as e:
         return None, str(e)
     return dest, ""
@@ -2827,22 +2851,47 @@ def merged_leftovers(w: Worktree) -> bool:
             and (w.unpushed == 0 or w.landed))
 
 
+def on_a_remote(w: Worktree) -> bool:
+    """Whether deleting this folder would lose no commit.
+
+    True when every commit is on a remote or inside what merged, or when the
+    only commits on no remote are someone else's and sit on a branch, which
+    `git worktree remove` leaves in the repo. Your own unpushed commits are
+    never covered: the folder is often the only reminder that they exist.
+    """
+    if w.unpushed == 0 or w.landed:
+        return True
+    return bool(w.branch) and w.unpushed_mine == 0
+
+
 def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False,
-                 inspect: bool = False, discard_changes: bool = False) -> Optional[Tuple[str, str]]:
-    """One eligibility policy for the app, preview, and execution."""
+                 inspect: bool = False, discard_changes: bool = False,
+                 folders: bool = False, discard_work: bool = False) -> Optional[Tuple[str, str]]:
+    """One eligibility policy for the app, preview, and execution.
+
+    `discard_work` is you saying you are done with the work in a folder. It
+    passes unpushed commits, uncommitted edits and unrecognised files too
+    large to set aside, all of which `_reap` saves or names first. It never
+    passes what git itself refuses or cannot do safely: a main checkout,
+    a lock, submodules, or an inventory that could not be read.
+    """
     if w.primary:
         return "the repo's main checkout — git cannot remove it", ""
     if w.is_base:
         return f"the checkout of {w.base} itself", ""
     if w.locked:
         return f"worktree is locked: {w.locked} — unlock it in Terminal first", ""
-    if not finished(w):
+    # As a folder, the question is not whether the work finished but whether
+    # deleting it loses anything. A branch on GitHub survives its folder.
+    as_folder = folders and (on_a_remote(w) or discard_work)
+    if not finished(w) and not as_folder:
         return f"{w.status} — only finished work is removed", ""
-    if w.base_source == "unresolved" or w.base == "(none)":
+    if (w.base_source == "unresolved" or w.base == "(none)") and not as_folder:
         return "no base resolved — cannot confirm it landed", ""
-    if w.unpushed > 0 and not w.landed and not force:
+    if w.unpushed > 0 and not w.landed and not force and not as_folder:
         return f"{w.unpushed} unpushed", "--force"
-    if w.would_lose > 0 and not force and not (discard_changes and merged_leftovers(w)):
+    if (w.would_lose > 0 and not force and not discard_work
+            and not (discard_changes and merged_leftovers(w))):
         return (f"{w.would_lose} uncommitted",
                 "--discard-changes" if merged_leftovers(w) else "--force")
     if w.has_submodules and not force:
@@ -2859,13 +2908,74 @@ def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False
             sizes = [du_kb(os.path.join(w.path, e.rstrip("/")), cache=False)
                      for e in w.unknown_paths]
             w.unknown_kb = sum(sizes) if all(k >= 0 for k in sizes) else -1
-        if w.unknown_kb < 0:
+        if w.unknown_kb < 0 and not discard_work:
             return "cannot measure unclassified files safely", ""
-        if w.unknown_kb > KEEP_UNKNOWN_KB:
+        if w.unknown_kb > KEEP_UNKNOWN_KB and not discard_work:
             shown = ", ".join(w.unknown_paths[:3]) + ("…" if len(w.unknown_paths) > 3 else "")
             return (f"holds {human(w.unknown_kb)} of unclassified ignored files, too much "
                     f"to set aside: {shown}", "--discard-unknown")
     return None
+
+
+def folder_info(w: Worktree) -> Optional[dict]:
+    """The verdict below, plus whether the folder's local files were looked
+    at. Only a full measure scans ignored files, so a quick refresh cannot see
+    a folder of unrecognised files; the app keeps the last checked verdict
+    over an unchecked one that could not have known."""
+    info = _folder_verdict(w)
+    if info is not None:
+        info["checked"] = w.ignored_scanned
+    return info
+
+
+def _folder_verdict(w: Worktree) -> Optional[dict]:
+    """Whether this worktree's folder can be deleted, in three words and a reason.
+
+    `unsaved`: deleting it would lose your commits or edits. `kept`: something
+    else stands in the way, such as a lock or files too large to set aside.
+    `busy`: nothing would be lost, but you are still using it. `safe`: nothing
+    would be lost and it looks done. The verdict is computed from the same
+    blocker as `reap --folders`, so a folder called safe is one it removes.
+    None for a main checkout, which is the repo itself and never a folder to
+    delete.
+    """
+    if w.primary or w.is_base:
+        return None
+    leftovers = merged_leftovers(w)
+    edits = 0 if leftovers else w.would_lose
+    commits = 0
+    if not on_a_remote(w):
+        commits = w.unpushed if not w.branch else max(w.unpushed_mine, 0)
+    # Whether "delete anyway" can act on it: everything but what git refuses.
+    anyway = reap_blocker(w, folders=True, discard_changes=True, discard_work=True) is None
+    if commits or edits:
+        bits = ([f"{commits} commit{'s' if commits != 1 else ''}"] if commits else []) + \
+               ([f"{edits} edit{'s' if edits != 1 else ''}"] if edits else [])
+        return {"verdict": "unsaved", "reason": " and ".join(bits) + " only here", "anyway": anyway}
+    blocker = reap_blocker(w, folders=True, discard_changes=True)
+    if blocker:
+        reason = blocker[0]
+        if blocker[1] == "--discard-unknown" and w.unknown_kb > 0:
+            reason = f"{human(w.unknown_kb)} of unrecognised files inside"
+        return {"verdict": "kept", "reason": reason, "anyway": anyway}
+    pr = w.pr
+    if pr and pr.state == "OPEN":
+        return {"verdict": "busy", "reason": f"PR #{pr.number} open"}
+    if leftovers:
+        n = w.would_lose
+        return {"verdict": "safe",
+                "reason": f"PR #{pr.number} merged · {n} edit{'s' if n != 1 else ''} saved first"}
+    if pr and pr.state == "MERGED":
+        return {"verdict": "safe", "reason": f"PR #{pr.number} merged"}
+    if quiet_days(w) <= 7:
+        d = quiet_days(w)
+        return {"verdict": "busy",
+                "reason": "worked on today" if d == 0 else f"worked on {d} day{'s' if d != 1 else ''} ago"}
+    if w.status in (MERGED, EMPTY) or w.ahead == 0:
+        return {"verdict": "safe", "reason": "nothing of its own" if w.status != MERGED else "merged"}
+    if w.unpushed > 0:
+        return {"verdict": "safe", "reason": "a colleague's commits stay on the branch"}
+    return {"verdict": "safe", "reason": "on GitHub, never merged"}
 
 
 def removal_info(w: Worktree) -> dict:
@@ -2899,11 +3009,21 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     discard = bool(getattr(args, "discard_precious", False))
     discard_unknown = bool(getattr(args, "discard_unknown", False))
     discard_changes = bool(getattr(args, "discard_changes", False))
+    discard_work = bool(getattr(args, "discard_work", False))
+    folders = bool(getattr(args, "folders", False)) or discard_work
+    if folders and not named:
+        # Measured: with no --path, --discard-work matched all 31 worktrees
+        # on one machine, open PRs included, and --folders 15. Both widen what
+        # a sweep reaches, so like `push` they act only on folders you name.
+        die("--folders and --discard-work need --path: they reach unfinished work, "
+            "so they are never a sweep.\n"
+            "       `wt-manager --json` lists every worktree and its path.")
     begin_step()
     for i, w in enumerate(wts):
         progress(i, len(wts), f"checking safety of {w.repo}/{w.name}")
         blocker = reap_blocker(w, force=args.force, discard_unknown=discard_unknown, inspect=True,
-                               discard_changes=discard_changes)
+                               discard_changes=discard_changes, folders=folders,
+                               discard_work=discard_work)
         if blocker:
             if named or finished(w):
                 skipped.append((w, blocker[0], blocker[1]))
@@ -2920,7 +3040,7 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     # The uncommitted edits each removal would discard, saved first. Named in
     # the plan's hash, so an edit made after the preview is a different plan.
     changes = {w.path: changed_files(w) for w in cands
-               if discard_changes and not args.force and w.would_lose > 0}
+               if (discard_changes or discard_work) and not args.force and w.would_lose > 0}
     if any(v is None for v in changes.values()):
         bad = [p for p, v in changes.items() if v is None]
         cands = [w for w in cands if w.path not in bad]
@@ -2931,7 +3051,21 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
                                     "why": "could not list its uncommitted changes", "override": ""})
             changes.pop(p)
     plan["changes"] = changes
-    plan["changes_kept_in"] = str(kept_root()) if changes else ""
+    # Commits on no remote, and where each set ends up: a branch keeps its
+    # own, and a detached HEAD's are bundled, since nothing else points at them.
+    bundled = {w.path for w in cands
+               if discard_work and not args.force and not w.branch and w.unpushed > 0 and not w.landed}
+    plan["commits"] = {
+        w.path: (f"{w.unpushed} commit{'s' if w.unpushed != 1 else ''} saved as a bundle"
+                 if w.path in bundled else
+                 f"{w.unpushed} commit{'s stay' if w.unpushed != 1 else ' stays'} on branch {w.branch}")
+        for w in cands if discard_work and w.unpushed > 0 and not w.landed}
+    # Unrecognised files too large to set aside go with a folder you are done
+    # with, and are named here because they do not come back.
+    dropped = {w.path for w in cands if discard_work and not discard_unknown and w.unknown_paths
+               and (w.unknown_kb < 0 or w.unknown_kb > KEEP_UNKNOWN_KB)}
+    plan["dropped_unknown"] = {w.path: list(w.unknown_paths) for w in cands if w.path in dropped}
+    plan["changes_kept_in"] = str(kept_root()) if changes or bundled else ""
     # An override approves the ignored files too. If one appears after the
     # preview, the same worktree path must no longer authorise its removal.
     # Keeping and discarding are different plans over the same set, so the
@@ -2940,10 +3074,12 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     plan["plan"] = plan_hash("reap", [
         f"{w.path}\t{','.join(sorted(w.precious_hits))}\t{','.join(sorted(w.unknown_paths))}"
         f"\t{'discard' if discard else 'keep'}\t{'discard' if discard_unknown else 'keep'}"
-        f"\t{','.join(changes.get(w.path, []))}"
+        f"\t{','.join(changes.get(w.path, []))}\t{'folder' if folders else 'finished'}"
+        f"\t{'anyway' if discard_work else ''}\t{plan['commits'].get(w.path, '')}"
         for w in cands])
     plan["precious"] = {w.path: list(w.precious_hits) for w in cands if w.precious_hits}
-    plan["unknown"] = {w.path: list(w.unknown_paths) for w in cands if w.unknown_paths}
+    plan["unknown"] = {w.path: list(w.unknown_paths) for w in cands
+                       if w.unknown_paths and w.path not in dropped}
     plan["keeps_unknown"] = bool(plan["unknown"]) and not discard_unknown
     # Where the precious files go; empty when they are discarded instead.
     plan["kept_in"] = str(kept_root()) if plan["precious"] and not discard else ""
@@ -2977,6 +3113,13 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
             shown = ", ".join(files[:4]) + ("…" if len(files) > 4 else "")
             print(f"           {C.cyan}saving{C.off} {len(files)} uncommitted change"
                   f"{'s' if len(files) != 1 else ''} before discarding: {C.dim}{shown}{C.off}")
+        if plan["commits"].get(w.path):
+            print(f"           {C.cyan}{plan['commits'][w.path]}{C.off}")
+        if unknown and w.path in dropped:
+            shown = ", ".join(unknown[:4]) + ("…" if len(unknown) > 4 else "")
+            print(f"           {C.red}deleting{C.off} {len(unknown)} unclassified ignored path"
+                  f"{'s' if len(unknown) != 1 else ''}, too large to set aside: {C.dim}{shown}{C.off}")
+            unknown = []
         if unknown:
             shown = ", ".join(unknown[:4]) + ("…" if len(unknown) > 4 else "")
             verb = f"{C.yellow}discarding{C.off}" if discard_unknown else f"{C.cyan}keeping{C.off}"
@@ -2997,11 +3140,11 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     for i, w in enumerate(cands):
         progress(i, len(cands), f"removing {w.repo}/{w.name}")
         keep = (([] if discard else w.precious_hits)
-                + ([] if discard_unknown else w.unknown_paths))
+                + ([] if discard_unknown or w.path in dropped else w.unknown_paths))
         archived_kb = 0
-        if changes.get(w.path):
+        if changes.get(w.path) or w.path in bundled or w.path in plan["commits"]:
             progress(i, len(cands), f"saving changes in {w.repo}/{w.name}")
-            saved, err = save_changes(w, changes[w.path])
+            saved, err = save_changes(w, changes.get(w.path, []), bundle=w.path in bundled)
             if saved is None:
                 failed += 1
                 print(f"{C.red}failed{C.off}  {w.repo}/{w.name} "
@@ -3028,7 +3171,7 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
         # though every one of them is still in git. Only when nothing else is
         # uncommitted, and ignored files were already set aside above.
         forced = (args.force or (w.deleted > 0 and w.would_lose == 0)
-                  or bool(changes.get(w.path)))
+                  or bool(changes.get(w.path)) or w.path in bundled)
         cmd = ["worktree", "remove", w.path] + (["--force"] if forced else [])
         rc, _, err = git(cmd, gitdir=cd or None, cwd=None if cd else w.path)
         if rc == 0:
@@ -3471,6 +3614,7 @@ def cmd_agent(wts: List[Worktree], args) -> int:
              "age_days": w.age_days,
              "last_commit": w.last_commit, "base": w.base,
              "base_source": w.base_source, "primary": w.primary, "removal": removal_info(w),
+             "folder": folder_info(w),
              # Both of the reasons `git worktree remove` will always refuse.
              # A client that does not know them offers a button that cannot
              # work and reports "nothing to do" when it is pressed.
@@ -3608,6 +3752,13 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--discard-changes", action="store_true",
                     help="for a merged PR whose commits all landed: save its uncommitted "
                          "changes as a patch, then remove it anyway")
+    rp.add_argument("--folders", action="store_true",
+                    help="treat worktrees as folders: also remove unfinished ones whose "
+                         "commits are all on a remote, since their branch survives")
+    rp.add_argument("--discard-work", action="store_true",
+                    help="you are done with these folders: remove them even with unsaved work. "
+                         "edits are saved as a patch, commits stay on their branch or are "
+                         "bundled, and unrecognised files too large to set aside are deleted")
     rp.add_argument("--discard-unknown", action="store_true",
                     help="delete ignored files that cannot be classified as regenerable "
                          "with the worktree, instead of setting them aside first")

@@ -33,6 +33,31 @@ public struct RemovalInfo: Decodable {
     public let reason: String
 }
 
+/// Whether a worktree's folder can be deleted, as the engine judges it with
+/// the same check `reap --folders` applies: `safe`, `busy`, `unsaved` or `kept`.
+public struct FolderInfo: Decodable, Equatable {
+    public let verdict: String
+    public let reason: String
+    /// For `unsaved` and `kept`: whether "delete anyway" can act on it, which
+    /// is everything except what git itself refuses (a lock, submodules).
+    public var anyway: Bool? = nil
+    /// Whether this verdict saw the folder's local files. Only a full measure
+    /// scans them, so a quick refresh cannot see a folder of unrecognised
+    /// files and would call it safe.
+    public var checked: Bool? = nil
+
+    /// The verdict to show after a refresh. An unchecked "safe" or "in
+    /// progress" cannot overrule a checked "kept": it never looked at what
+    /// kept it. Everything else the fresh verdict knows better, because
+    /// commits, edits and PRs are read on every refresh.
+    public static func carried(_ fresh: FolderInfo?, over previous: FolderInfo?) -> FolderInfo? {
+        guard let fresh, fresh.checked == false, let previous, previous.checked == true,
+              previous.verdict == "kept", fresh.verdict == "safe" || fresh.verdict == "busy"
+        else { return fresh }
+        return previous
+    }
+}
+
 public struct Worktree: Decodable {
     public let repo: String
     /// Stable repository identity. Two unrelated repos may share a folder name.
@@ -81,8 +106,10 @@ public struct Worktree: Decodable {
     /// left the only way of finding out being to open a terminal — the tool
     /// handing back the question it had just raised.
     public var soloLog: [String] = []
+    /// Absent for a main checkout, and from an engine older than 0.11.
+    public var folder: FolderInfo?
     public enum CodingKeys: String, CodingKey {
-        case repo, branch, status, meaning, path, ahead, behind, dirty, deleted, unpushed, pr, base, primary, removal
+        case repo, branch, status, meaning, path, ahead, behind, dirty, deleted, unpushed, pr, base, primary, removal, folder
         case prActivity = "pr_activity"
         case repoId = "repo_id"
         case soloLog = "solo_log"

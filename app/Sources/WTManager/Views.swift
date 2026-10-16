@@ -182,7 +182,7 @@ struct Overview: View {
                             }
                             Spacer(minLength: 8)
                             if let action = move.action {
-                                Button(action.kind == .reap ? "Review removal" : "Review cleanup") {
+                                Button(action.folders ? "Review folders" : action.kind == .reap ? "Review removal" : "Review cleanup") {
                                     store.preview(action)
                                 }
                                     .controlSize(.small)
@@ -525,14 +525,14 @@ struct DiskDetail: View {
                          tint: Palette.reclaim, symbol: "sparkles") {
                         VStack(alignment: .leading, spacing: 8) {
                             if let f = store.freeable {
-                                Text("\(Store.human(f.finishedKb)) in \(f.finishedCount) finished worktree\(f.finishedCount == 1 ? "" : "s") · \(Store.human(f.cachesKb)) of rebuildable output")
+                                Text("\(Store.human(f.finishedKb)) in \(f.finishedCount) folder\(f.finishedCount == 1 ? "" : "s") safe to delete · \(Store.human(f.cachesKb)) of rebuildable output")
                                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.inkReclaim)
                             }
                             if !store.removalCandidates.isEmpty {
-                                ActionButton(action: Store.Action(kind: .reap, paths: store.removalCandidates.map(\.path)),
-                                             detail: "Only candidates that have no known removal blocker. Files are checked again in the preview.") { store.preview($0) }
+                                ActionButton(action: Store.removeAction(store.removalCandidates),
+                                             detail: "Folders whose work is all on GitHub. Files are checked again in the preview.") { store.preview($0) }
                             } else {
-                                Text("No finished worktrees are eligible for removal. Open Finished to see what is being kept and why.")
+                                Text("No folders are safe to delete. Open Folders to see what each one holds.")
                                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
                             }
                             if !store.reclaimCandidates(staleOnly: true).isEmpty {

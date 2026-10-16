@@ -181,7 +181,7 @@ final class FloatingMascot {
             level = DiskBalloon.level(gb: Double(kb) / DiskBalloon.gb, freeFraction: freeFraction, previous: level)
             let l = DiskBalloon.label(kb: kb)
             let f = store.freeable
-            let parts = f.map { " (\(Store.human($0.finishedKb)) in finished worktrees, \(Store.human($0.cachesKb)) rebuildable)" } ?? ""
+            let parts = f.map { " (\(Store.human($0.finishedKb)) in folders safe to delete, \(Store.human($0.cachesKb)) rebuildable)" } ?? ""
             setToolTip("\(l.number) \(l.unit) you could free\(parts) · click the balloon to see where · click the character to open wt-manager; drag to move; right-click for more")
         } else {
             setToolTip("\(store.face?.meaning ?? "Reading your repos") · click to open wt-manager; drag to move; right-click for more actions")

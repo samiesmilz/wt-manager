@@ -76,6 +76,9 @@ wt-manager has two different actions:
 |---|---|---|
 | **Clean build output** | Recognized rebuildable folders such as dependency/build output | The checkout, environment files, keys, and unrecognized files |
 | **Remove eligible worktrees** | Finished, eligible extra checkouts via `git worktree remove` | Work at risk; verified copies of protected local files |
+| **Delete folders** (the Folders section) | Any extra checkout whose work is all on a remote, finished or not | The branch itself, work at risk, and protected local files |
+
+**Folders** shows every worktree as what it is on disk: a folder, grouped by where it lives, with one verdict each. A folder is *safe to delete* when deleting it loses nothing: its PR merged, or its branch is on GitHub. It is *in progress* when it has an open PR or was worked on this week, and has *unsaved work* when commits or edits exist only on this Mac. **Clear everything safe** is the start-of-sprint cleanup people do by hand in Finder, with the check in front of it. `git worktree remove` keeps the branch, so an unmerged branch on GitHub survives its folder. Tick several folders to delete them together. A folder with unsaved work can still go when you are done with it ("delete anyway"): its edits are saved as a patch, its commits stay on their branch or are bundled when they are on none, and the preview names anything that is deleted outright. From the terminal: `wt-manager reap --folders`, plus `--discard-work` to delete anyway.
 
 Removal checks local changes, unpushed work, base resolution, locks, submodules, and unknown-file size. Primary/base checkouts are kept. Protected ignored files, such as environment files, are copied to `~/.local/share/wt-manager/kept/` and verified byte for byte before removal. Recognized output containing protected descendants preserves those descendants without archiving the whole build folder. Truly unclassified data over the backup limit (100 MB) blocks removal.
 
@@ -138,13 +141,13 @@ You can also let the floating companion take slow, short screen strolls from **A
 
 ### The disk balloon
 
-The floating character holds a balloon showing **how much wt-manager could free**: the whole of every finished worktree that is free to go, plus the rebuildable caches (`node_modules`, `.build` and the like) inside everything else. Main checkouts and blocked removals count only their caches, because cleaning up cannot remove them.
+The floating character holds a balloon showing **how much wt-manager could free**: the whole of every folder that is safe to delete, plus the rebuildable caches (`node_modules`, `.build` and the like) inside everything else. Main checkouts and blocked removals count only their caches, because cleaning up cannot remove them.
 
 - **Colour** is green below 5 GB, yellow to 20 GB, and orange above. When the disk is more than 90% full, it steps up one colour. A colour only falls back once the figure is half a gigabyte below the boundary, so it does not flicker.
 - **Size** grows in three steps with the amount; urgency changes the colour, not the size.
 - **Growth** shows as a brief "+0.6 GB" tag each time the figure crosses a half-gigabyte step. A new worktree is measured as soon as it appears instead of waiting for the hourly measure. After a cleanup the balloon shrinks and shows what was freed.
 - **Motion:** the character holds the string in its hand (Bork ties it to his bandana, Mallow to its side). A breeze swings the balloon from out at the side to almost overhead, and the character glances up when it passes. Setting off swings it back, and stopping makes it overshoot. In orange, it tugs restlessly. With nothing left to free, the character lets go and it floats away. Reduce Motion holds it still at its resting lean.
-- **Clicking** the balloon opens the Disk section, whose badge and headline show the same number, split into finished worktrees and rebuildable output beside the actions that free each. Only the character and its balloon take clicks; the rest of the floating window lets them through.
+- **Clicking** the balloon opens the Disk section, whose badge and headline show the same number, split into folders safe to delete and rebuildable output beside the actions that free each. Only the character and its balloon take clicks; the rest of the floating window lets them through.
 
 Before anything has been measured the balloon is grey with "…", and grey with "?" if nothing could be measured.
 

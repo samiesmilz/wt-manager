@@ -1615,6 +1615,141 @@ class DiscardChanges(unittest.TestCase):
         self.assertTrue(os.path.isdir(self.wt))
 
 
+class Folders(unittest.TestCase):
+    """A worktree as a folder: deletable when deleting it loses nothing,
+    finished or not, because the branch outlives its folder."""
+
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+        self.wt = self.fx.worktree("f", "feat/f")
+        self.fx.commit(self.wt, "work.txt", "unmerged but pushed")
+        git("push", "-q", "-u", "origin", "feat/f", cwd=self.wt)
+        quiet = mock.patch.object(T, "quiet_days", return_value=30)
+        quiet.start()
+        self.addCleanup(quiet.stop)
+
+    @staticmethod
+    def verdict(w):
+        """The verdict without `checked`, which says whether a full measure ran."""
+        return {k: v for k, v in T.folder_info(w).items() if k != "checked"}
+
+    def reap(self, w, **flags):
+        args = DiscardChanges.Args()
+        args.path = [w.path]
+        for k, v in flags.items():
+            setattr(args, k, v)
+        plan = {}
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = T._reap([w], args, plan)
+        return rc, plan
+
+    def test_a_pushed_unmerged_branch_is_a_safe_folder_and_keeps_its_branch(self):
+        w = self.fx.probe(self.wt, "feat/f")
+        self.assertNotIn(w.status, (T.MERGED, T.EMPTY))
+        self.assertEqual(self.verdict(w), {"verdict": "safe", "reason": "on GitHub, never merged"})
+        _, plan = self.reap(w)
+        self.assertEqual(plan["paths"], [], "the finished-only remove still refuses it")
+        rc, plan = self.reap(w, folders=True, yes=True)
+        self.assertEqual((rc, plan["completed_paths"]), (0, [self.wt]))
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertTrue(git("rev-parse", "--verify", "feat/f", cwd=self.fx.main))
+
+    def test_your_unpushed_commit_makes_it_unsaved_and_it_stays(self):
+        self.fx.commit(self.wt, "more.txt", "not pushed")
+        w = self.fx.probe(self.wt, "feat/f")
+        self.assertEqual(self.verdict(w), {"verdict": "unsaved", "reason": "1 commit only here", "anyway": True})
+        self.reap(w, folders=True, yes=True)
+        self.assertTrue(os.path.isdir(self.wt))
+
+    def test_an_edit_makes_it_unsaved_and_it_stays(self):
+        with open(os.path.join(self.wt, "work.txt"), "a") as fh:
+            fh.write("uncommitted\n")
+        w = self.fx.probe(self.wt, "feat/f")
+        self.assertEqual(self.verdict(w), {"verdict": "unsaved", "reason": "1 edit only here", "anyway": True})
+        self.reap(w, folders=True, yes=True)
+        self.assertTrue(os.path.isdir(self.wt))
+
+    def test_a_detached_commit_has_no_branch_to_survive_on(self):
+        git("checkout", "-q", "--detach", cwd=self.wt)
+        self.fx.commit(self.wt, "loose.txt", "on no branch")
+        w = self.fx.probe(self.wt, None)
+        self.assertEqual(T.folder_info(w)["verdict"], "unsaved")
+
+    def test_an_open_pr_is_in_progress_yet_deletable_on_its_own(self):
+        pr = T.PR(number=9, state="OPEN", draft=False, checks="passing", review="none")
+        w = self.fx.probe(self.wt, "feat/f", prs={"feat/f": pr})
+        self.assertEqual(self.verdict(w), {"verdict": "busy", "reason": "PR #9 open"})
+        rc, plan = self.reap(w, folders=True)
+        self.assertEqual(plan["paths"], [self.wt])
+
+    def test_done_with_it_deletes_unsaved_work_but_keeps_a_copy(self):
+        self.fx.commit(self.wt, "more.txt", "not pushed")
+        commit = git("rev-parse", "HEAD", cwd=self.wt)
+        with open(os.path.join(self.wt, "work.txt"), "a") as fh:
+            fh.write("uncommitted\n")
+        w = self.fx.probe(self.wt, "feat/f")
+        rc, plan = self.reap(w, folders=True, discard_work=True, yes=True)
+        self.assertEqual((rc, plan["completed_paths"]), (0, [self.wt]))
+        self.assertEqual(plan["commits"], {self.wt: "1 commit stays on branch feat/f"})
+        self.assertEqual(plan["changes"], {self.wt: ["work.txt"]})
+        self.assertEqual(git("rev-parse", "feat/f", cwd=self.fx.main), commit,
+                         "the branch keeps the commit no remote has")
+        saved = next(T.Path(d) for d, _, files in os.walk(T.kept_root()) if "changes.patch" in files)
+        self.assertIn("uncommitted", (saved / "changes.patch").read_text())
+
+    def test_done_with_a_detached_checkout_bundles_its_commits(self):
+        git("checkout", "-q", "--detach", cwd=self.wt)
+        commit = self.fx.commit(self.wt, "loose.txt", "on no branch")
+        w = self.fx.probe(self.wt, None)
+        self.assertTrue(T.folder_info(w)["anyway"])
+        rc, plan = self.reap(w, folders=True, discard_work=True, yes=True)
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(self.wt))
+        bundle = next(T.Path(d) / "commits.bundle" for d, _, files in os.walk(T.kept_root())
+                      if "commits.bundle" in files)
+        # The way RESTORE.txt says, and the commit is back.
+        git("fetch", "-q", str(bundle), "HEAD:refs/heads/restored", cwd=self.fx.main)
+        self.assertEqual(git("rev-parse", "restored", cwd=self.fx.main), commit)
+
+    def test_done_with_it_never_passes_a_lock(self):
+        with open(os.path.join(self.wt, "work.txt"), "a") as fh:
+            fh.write("uncommitted\n")
+        git("worktree", "lock", "--reason", "keep", self.wt, cwd=self.fx.main)
+        w = self.fx.probe(self.wt, "feat/f")
+        w.locked = "keep"
+        self.assertFalse(T.folder_info(w)["anyway"])
+        self.reap(w, folders=True, discard_work=True, yes=True)
+        self.assertTrue(os.path.isdir(self.wt))
+
+    def test_folders_and_done_with_it_are_never_a_sweep(self):
+        w = self.fx.probe(self.wt, "feat/f")
+        for flag in ("folders", "discard_work"):
+            args = DiscardChanges.Args()
+            setattr(args, flag, True)
+            args.yes = True
+            with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                T._reap([w], args, {})
+            self.assertTrue(os.path.isdir(self.wt), flag)
+
+    def test_commits_left_on_a_branch_are_written_down(self):
+        self.fx.commit(self.wt, "more.txt", "the idea I dropped")
+        w = self.fx.probe(self.wt, "feat/f")
+        rc, _ = self.reap(w, folders=True, discard_work=True, yes=True)
+        self.assertEqual(rc, 0)
+        note = next(T.Path(d) / "RESTORE.txt" for d, _, files in os.walk(T.kept_root())
+                    if "RESTORE.txt" in files).read_text()
+        self.assertIn("stays on branch feat/f", note)
+        self.assertNotIn("changes.patch", note, "no edits, so no patch to point at")
+        self.assertIn("the idea I dropped", note)
+
+    def test_a_main_checkout_is_not_a_folder(self):
+        main = self.fx.probe(self.fx.main, "main")
+        self.assertIsNone(T.folder_info(main))
+
+
 class Processes(unittest.TestCase):
     """A sized scan walks each tree once for git and once for du."""
 

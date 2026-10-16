@@ -41,6 +41,40 @@ final class DiskBalloonTests: XCTestCase {
         XCTAssertEqual(f.totalKb, DiskBalloon.freeableKb(rows))
     }
 
+    func testAFolderVerdictIsReadAndOptional() throws {
+        let json = """
+        {"repo":"demo","branch":"b","status":"stale","meaning":"","path":"/w/f",
+        "ahead":3,"behind":0,"dirty":0,"deleted":0,"unpushed":0,"age_days":30,
+        "size_kb":10,"reclaim_kb":0,"last_commit":1,"base":"origin/main","base_source":"origin/HEAD",
+        "primary":false,"is_base":false,"solo_log":[],"pr":null,
+        "removal":{"state":"blocked","reason":"stale"},
+        "folder":{"verdict":"safe","reason":"on GitHub, never merged"}}
+        """
+        let w = try JSONDecoder().decode(Worktree.self, from: Data(json.utf8))
+        XCTAssertEqual(w.folder, FolderInfo(verdict: "safe", reason: "on GitHub, never merged"))
+        XCTAssertNil(try row(status: "merged", size: 1, reclaim: 0).folder, "an older engine sends none")
+    }
+
+    func testAQuickRefreshCannotUnkeepAFolderItNeverLookedIn() {
+        let kept = FolderInfo(verdict: "kept", reason: "611MB of unrecognised files inside", checked: true)
+        let guess = FolderInfo(verdict: "safe", reason: "on GitHub, never merged", checked: false)
+        XCTAssertEqual(FolderInfo.carried(guess, over: kept), kept)
+        let edited = FolderInfo(verdict: "unsaved", reason: "1 edit only here", checked: false)
+        XCTAssertEqual(FolderInfo.carried(edited, over: kept), edited, "news about edits still wins")
+        let measured = FolderInfo(verdict: "safe", reason: "on GitHub, never merged", checked: true)
+        XCTAssertEqual(FolderInfo.carried(measured, over: kept), measured, "a measure that looked wins")
+    }
+
+    func testTheFolderVerdictDecidesWhatIsRemovable() throws {
+        var w = try row(status: "stale", size: 500, reclaim: 20)
+        XCTAssertFalse(w.removable, "the old rule: unfinished")
+        w.folder = FolderInfo(verdict: "safe", reason: "on GitHub, never merged")
+        XCTAssertTrue(w.removable)
+        XCTAssertEqual(DiskBalloon.freeableKb([w]), 500, "counted whole, as Folders counts it")
+        w.folder = FolderInfo(verdict: "busy", reason: "PR #9 open")
+        XCTAssertFalse(w.removable)
+    }
+
     func testASaveFirstRemovalIsNotOfferedAsAPlainOne() throws {
         // The plain remove refuses it; counting it whole would promise space
         // that one click on the Disk page cannot free.

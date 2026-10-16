@@ -66,6 +66,7 @@ struct RootView: View {
             switch store.section {
             case "overview": Overview(store: store)
             case "disk":     DiskDetail(store: store)
+            case "folders":  FoldersView(store: store)
             default:         WorktreeList(store: store, section: store.section,
                                           initiallyOpen: openRow)
             }
@@ -102,6 +103,11 @@ struct Sidebar: View {
             entry("overview", "Overview", "square.grid.2x2", nil)
             entry("disk", "Disk", "internaldrive", store.freeable.map { Store.human($0.totalKb) },
                   tint: store.freeable == nil ? nil : Palette.reclaim)
+            // The count is of folders safe to delete: the number this page
+            // exists to bring down, as Disk's is the space it can free.
+            entry("folders", "Folders", "folder",
+                  store.envelope == nil ? nil : "\(store.folderRows.filter { $0.folder?.verdict == "safe" }.count)",
+                  tint: store.folderRows.contains { $0.folder?.verdict == "safe" } ? Palette.reclaim : nil)
 
             heading("Worktrees")
 
