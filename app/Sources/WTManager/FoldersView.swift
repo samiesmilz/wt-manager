@@ -18,6 +18,7 @@ struct FoldersView: View {
     @State var selected: Set<String> = []
     /// The tally pressed, if any: the page shows only folders with that verdict.
     @State var only: Verdict? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Verdict: String, CaseIterable {
         case safe, busy, unsaved, kept
@@ -139,7 +140,7 @@ struct FoldersView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Folders")
                         .font(.system(size: 19, weight: .semibold, design: .rounded))
-                    Text("every worktree is a folder; deleting one loses only what is not on GitHub")
+                    Text("deleting a folder loses only what isn't on GitHub")
                         .font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
@@ -152,9 +153,9 @@ struct FoldersView: View {
             }
             if !rows.isEmpty {
                 let tallies = HStack(spacing: 7) {
-                    ForEach(Verdict.allCases, id: \.self) { v in
-                        if v != .kept || rows.contains(where: { $0.verdict == .kept }) { tally(v, rows) }
-                    }
+                    // All four, always: a pill that comes and goes moves the
+                    // others under the pointer.
+                    ForEach(Verdict.allCases, id: \.self) { v in tally(v, rows) }
                 }
                 let sweep = clearButton("Clear everything safe · \(Store.count(safe.count, "folder")), "
                                         + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
@@ -176,24 +177,29 @@ struct FoldersView: View {
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
     }
 
-    /// A filter, since a count that looks like a pill gets clicked.
+    /// A filter, since a count that looks like a pill gets clicked. A zero is
+    /// drawn hollow and does nothing: filled, "0 safe" looked as live as
+    /// "12 unsaved" and led to an empty page.
     private func tally(_ v: Verdict, _ rows: [Row]) -> some View {
         let on = only == v
         let n = rows.filter { $0.verdict == v }.count
         return Button { only = on ? nil : v } label: {
             HStack(spacing: 5) {
-                Circle().fill(v.tint).frame(width: 7, height: 7)
+                Circle().fill(n == 0 ? Palette.faint : v.tint).frame(width: 7, height: 7)
                 Text(verbatim: "\(n)").font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(n == 0 ? Palette.muted : Color.primary)
                 Text(v.short).font(.system(size: 11.5))
                     .foregroundStyle(on ? Palette.ink(v.tint) : Palette.muted)
             }
             .fixedSize()
             .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(Capsule().fill(Palette.wash(v.tint)))
-            .overlay(Capsule().strokeBorder(on ? Palette.ink(v.tint) : .clear, lineWidth: 1.2))
+            .background(Capsule().fill(n == 0 ? Color.clear : Palette.wash(v.tint)))
+            .overlay(Capsule().strokeBorder(on ? Palette.ink(v.tint)
+                                            : n == 0 ? Color.primary.opacity(0.10) : .clear, lineWidth: 1.2))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(n == 0 && !on)
         .help(on ? "Show every folder" : "Show only folders that are \(v.short)")
         .accessibilityLabel("\(n) \(v.short)")
         .accessibilityHint(on ? "Shows every folder" : "Shows only these folders")
@@ -213,6 +219,15 @@ struct FoldersView: View {
                 Text("No folders are \(only.short).")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
             } else {
+                if only == nil, !rows.contains(where: { $0.verdict == .safe }) {
+                    // After a cleanup this is the usual state, and a page with
+                    // no sweep button and no word about why looks unfinished.
+                    let held = rows.contains { !$0.verdict.lossless }
+                    Text("Nothing is safe to delete right now."
+                         + (held ? " Push or commit the work below, or tick a folder to delete it anyway." : ""))
+                        .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 ForEach(groups) { card($0) }
                 Text("Main checkouts are not listed: they are the repos themselves, and git never deletes one.")
                     .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
@@ -220,6 +235,10 @@ struct FoldersView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Deleted folders leave, and the rest close up, rather than the page
+        // jumping to its new shape.
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.28), value: rows.map(\.id))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: only)
     }
 
     /// What one delete of the ticked folders would do, said on its button.
@@ -281,16 +300,32 @@ struct FoldersView: View {
         .help("Preview first: nothing is deleted until you confirm")
     }
 
+    /// The folder's own name in weight, the way to it muted, in the window's
+    /// type: a narrow window cuts the way, never the name. Bold monospace was
+    /// the heaviest thing on the page and lost the name first.
+    private func pathTitle(_ g: Group) -> some View {
+        let parent = (g.id as NSString).deletingLastPathComponent
+        let name = (g.id as NSString).lastPathComponent
+        return HStack(spacing: 0) {
+            if !g.elsewhere && !parent.isEmpty {
+                Text(parent + "/").foregroundStyle(Palette.muted)
+                    .lineLimit(1).truncationMode(.head)
+            }
+            Text(g.elsewhere ? g.id : name).fontWeight(.semibold)
+                .lineLimit(1).layoutPriority(1)
+        }
+        .font(.system(size: 13))
+        .help(g.elsewhere ? "Folders that sit alone in their parent" : g.id)
+    }
+
     private func card(_ g: Group) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: g.elsewhere ? "folder.badge.questionmark" : "folder.fill")
+                Image(systemName: g.elsewhere ? "folder" : "folder.fill")
                     .font(.system(size: 18)).foregroundStyle(Palette.status("trunk"))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(g.id)
-                        .font(.system(size: 12.5, weight: .semibold, design: g.elsewhere ? .default : .monospaced))
-                        .lineLimit(1).truncationMode(.head)
+                    pathTitle(g)
                     Text(g.elsewhere
                          ? "one folder in each of \(g.rows.count) places · " + Store.human(g.kb)
                          : Store.count(g.rows.count, "folder") + " · " + Store.human(g.kb))
@@ -303,7 +338,9 @@ struct FoldersView: View {
                 let pickable = Set(g.rows.filter(\.verdict.lossless).map(\.id))
                 if !pickable.isEmpty {
                     let all = pickable.isSubset(of: selected)
-                    Button(all ? "Deselect all" : "Select all") {
+                    // Named for what it ticks when a card has nothing safe.
+                    let label = g.safe.isEmpty ? "Select in progress" : "Select all"
+                    Button(all ? "Deselect" : label) {
                         if all { selected.subtract(pickable) } else { selected.formUnion(pickable) }
                     }
                     .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Palette.muted)
@@ -369,8 +406,14 @@ private struct FolderRow: View {
                         .lineLimit(1).truncationMode(.middle)
                         .layoutPriority(1)
                     Spacer(minLength: 0)
-                    Text(v.label).font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(Palette.ink(v.tint)).fixedSize()
+                    // A dot carries the colour; the word stays quiet. Twelve
+                    // bold orange "Unsaved work" labels were most of the page.
+                    HStack(spacing: 5) {
+                        Circle().fill(v.tint).frame(width: 6, height: 6)
+                        Text(v.label).font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .fixedSize()
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text((w.branch ?? "detached") + " · " + (elsewhere ? row.parent : w.repo))

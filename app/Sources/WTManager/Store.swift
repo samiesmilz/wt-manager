@@ -1125,20 +1125,28 @@ extension Store {
             // after the one thing on this window that already knows the
             // answer, because the engine reported exactly what it freed and
             // `absorb` has already applied it. The hourly pass trues it up.
-            self.refreshWhenIdle(measureDisk: !absorbed)
+            // What failed may have lost some of its files on the way, so its
+            // size is measured again, alone; everything else is known.
+            let failed = Set(preview.paths).subtracting(p.result?.completedPaths ?? [])
+            if absorbed, !failed.isEmpty, !self.busy {
+                self.refresh(measureDisk: false, measure: Array(failed))
+            } else {
+                self.refreshWhenIdle(measureDisk: !absorbed)
+            }
         }
     }
 
     /// Apply an outcome the engine has already measured, rather than asking
     /// for the whole machine to be walked again.
     ///
-    /// Only when nothing failed: the engine reports *how many* failed and not
-    /// *which*, so a partial run leaves us unable to say which paths are still
-    /// there — and guessing wrong here means the window claims something is
-    /// gone that is not. A partial run pays for the full re-measure.
+    /// A partial run too. The engine names every path it completed, and its
+    /// freed figure counts only those, so what went can be taken off the page
+    /// at once. Waiting for a full re-measure instead left deleted folders on
+    /// screen for minutes, as if the delete had not happened. The paths that
+    /// failed are measured again on their own, in `commit`.
     @discardableResult
     private func absorb(_ r: PlanResult, from preview: PlanResult) -> Bool {
-        guard r.done, r.failed == 0, var env = envelope else { return false }
+        guard r.done, !r.completedPaths.isEmpty || r.failed == 0, var env = envelope else { return false }
         let touched = Set(r.completedPaths)
         switch plan?.action.kind {
         case .reap:

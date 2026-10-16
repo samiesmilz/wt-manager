@@ -677,6 +677,72 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
     print("snapshots in \(dir)")
 }
 
+/// `--check-delete DIR PATH`: the app's own delete, end to end, on one real
+/// worktree, without a person at the window. It loads the envelope, previews
+/// the delete the Folders page would make, confirms it, and then checks what
+/// a person would see: the folder off the page the moment the engine says it
+/// went, the banner saying so, and the refresh after it agreeing. The page is
+/// drawn before, just after, and once the refresh lands.
+@MainActor
+func checkDelete(into dir: String, path: String) -> Int32 {
+    _ = NSApplication.shared
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let store = Store(mascot: AppDelegate.loadMascotForSnapshot())
+    func wait(_ what: String, _ seconds: Double = 600, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while !done() && Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+        if !done() { print("FAIL timed out: \(what)") }
+        return done()
+    }
+    func draw(_ file: String) {
+        let host = NSHostingView(rootView: FoldersView(store: store, scrolls: false)
+            .background(Color(nsColor: .windowBackgroundColor)))
+        host.frame = NSRect(x: 0, y: 0, width: 820, height: 1400)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        for _ in 0..<3 { host.layoutSubtreeIfNeeded(); RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: dir).appendingPathComponent(file))
+        }
+    }
+    var ok = true
+    func check(_ cond: Bool, _ what: String) { print((cond ? "ok   " : "FAIL ") + what); ok = ok && cond }
+
+    store.refresh(measureDisk: false)
+    guard wait("first refresh", until: { store.envelope != nil && !store.busy }) else { return 1 }
+    guard let row = store.folderRows.first(where: { $0.path == path }), let folder = row.folder else {
+        print("FAIL \(path) is not on the Folders page"); return 1
+    }
+    check(true, "on the page before: \(folder.verdict), \(folder.reason)")
+    let before = store.folderRows.count
+    draw("1-before.png")
+
+    let lossless = folder.verdict == "safe" || folder.verdict == "busy"
+    store.preview(Store.Action(kind: .reap, paths: [path], discardChanges: row.removalDiscards,
+                               folders: true, discardWork: !lossless))
+    guard wait("preview", until: { store.plan.map { $0.stage != .previewing } ?? false }) else { return 1 }
+    check(store.plan?.preview?.paths == [path], "preview names exactly this folder")
+
+    store.commit()
+    guard wait("delete", until: { store.plan.map { $0.stage != .committing } ?? false }) else { return 1 }
+    check(store.plan?.stage == .done, "delete finished (\(store.plan?.stage == .done ? "done" : store.plan?.error ?? "failed"))")
+    // Straight after: the engine's answer applied, before any refresh lands.
+    check(!store.folderRows.contains { $0.path == path }, "gone from the page at once")
+    check(store.folderRows.count == before - 1, "page count \(before) → \(store.folderRows.count)")
+    check(store.completion?.result?.completedPaths == [path], "banner reports it: \(store.completion?.result?.removed ?? 0) deleted")
+    check(!FileManager.default.fileExists(atPath: path), "folder gone from disk")
+    draw("2-just-after.png")
+
+    _ = wait("refresh after the delete", until: { !store.busy })
+    check(!store.folderRows.contains { $0.path == path }, "still gone after the refresh")
+    check(store.folderRows.count == before - 1, "refresh agrees: \(store.folderRows.count) folders")
+    draw("3-after-refresh.png")
+    print(ok ? "PASS" : "FAILED")
+    return ok ? 0 : 1
+}
+
 // Top-level code already runs on the main thread; Swift 6 just needs telling.
 MainActor.assumeIsolated {
     let args = CommandLine.arguments
@@ -700,6 +766,9 @@ MainActor.assumeIsolated {
         _ = NSApplication.shared
         if let m = AppDelegate.loadMascotForSnapshot() { FloatingMascot.snapshotBalloons(mascot: m, into: args[i + 1]) }
         exit(0)
+    }
+    if let i = args.firstIndex(of: "--check-delete"), i + 2 < args.count {
+        exit(checkDelete(into: args[i + 1], path: args[i + 2]))
     }
     if let i = args.firstIndex(of: "--snapshot-folders"), i + 2 < args.count {
         snapshot(into: args[i + 1], envelopePath: args[i + 2], foldersOnly: true)

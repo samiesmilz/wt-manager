@@ -738,7 +738,16 @@ struct CompletionBanner: View {
         guard let r = plan.result else { return "Operation finished" }
         if issues && r.completedPaths.isEmpty { return "Operation needs attention" }
         if issues { return "Finished with \(r.failed) issue\(r.failed == 1 ? "" : "s")" }
+        if plan.action.folders { return "Deleted \(r.removed) folder\(r.removed == 1 ? "" : "s")" }
         return plan.action.kind == .reap ? "Removed \(r.removed) worktree\(r.removed == 1 ? "" : "s")" : "Cleanup complete"
+    }
+    /// Where this run put what it saved: edits, bundles, set-aside files.
+    /// Said here because the sheet that named it has closed by the time
+    /// anyone wonders where their work went.
+    private var savedIn: String? {
+        guard let p = plan.preview else { return nil }
+        let dir = !p.changesKeptIn.isEmpty ? p.changesKeptIn : p.keptIn
+        return dir.isEmpty ? nil : dir
     }
     var body: some View {
         HStack(spacing: 10) {
@@ -760,6 +769,11 @@ struct CompletionBanner: View {
                 }
             }
             Spacer(minLength: 4)
+            if let savedIn, !(plan.result?.completedPaths.isEmpty ?? true) {
+                Button("Show saved work") { NSWorkspace.shared.open(URL(fileURLWithPath: savedIn)) }
+                    .controlSize(.small)
+                    .help(savedIn)
+            }
             Button("View result") { store.plan = plan }.controlSize(.small)
             Button { store.completion = nil } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain).accessibilityLabel("Dismiss operation result")

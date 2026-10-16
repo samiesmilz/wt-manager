@@ -2295,7 +2295,9 @@ class Sizes(unittest.TestCase):
 
     CASES = [(0, "0KB"), (1, "1KB"), (999, "999KB"), (1 << 10, "1.0MB"),
              (10 << 10, "10MB"), (1 << 20, "1.0GB"), (348 << 10, "348MB"),
-             (1 << 30, "1.0TB"), (-1, "—")]
+             (1 << 30, "1.0TB"), (-1, "—"),
+             # A thousand of the smaller unit moves up one: never "1015MB".
+             (1015 << 10, "1.0GB"), (999 << 10, "999MB"), (1000, "1.0MB")]
 
     def test_the_unit_is_spelled_far_enough_to_be_a_unit(self):
         """`348M` in a row of counts reads as 348 million. It is megabytes."""

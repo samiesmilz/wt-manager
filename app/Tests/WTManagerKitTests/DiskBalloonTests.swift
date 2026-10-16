@@ -137,6 +137,9 @@ final class DiskBalloonTests: XCTestCase {
         XCTAssertEqual(DiskSize.human(Int(5.0 * g)), "5.0GB")
         XCTAssertEqual(DiskSize.human(Int(0.84 * g)), "860MB")
         XCTAssertEqual(DiskSize.human(Int(1234 * g)), "1.2TB")
+        // A thousand of the smaller unit moves up, as the engine does.
+        XCTAssertEqual(DiskSize.human(1015 << 10), "1.0GB", "never 1015MB beside 2.8GB")
+        XCTAssertEqual(DiskSize.human(999 << 10), "999MB")
         XCTAssertEqual(DiskSize.human(0), "—")
         for v in [0.3, 0.84, 1, 4.95, 9.96, 26.4, 56.6, 999, 1234] {
             let k = Int(v * g), b = DiskBalloon.label(kb: k)

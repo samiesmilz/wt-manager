@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.2
+
+- After a delete, the page follows through: deleted folders fade out and the rest close up, a ticked folder that went is unticked, and the banner says "Deleted N folders", with **Show saved work** when edits, commits or set-aside files were kept. A partly failed delete now takes off the folders that did go at once, and re-measures only the ones that failed. Before, everything stayed on screen until a full measure minutes later.
+- `--check-delete DIR PATH` runs the app's own delete on one real worktree, with no one at the window: preview, confirm, apply, refresh. It checks each step and draws the page before and after.
+- Folders polish:
+  - The sidebar counts every folder, as other entries do; it said "0" beside a page of 14.
+  - When nothing is safe, a line says why.
+  - Zero counts are hollow and unclickable, and all four pills always show.
+  - Verdicts are a coloured dot and a quiet word, no longer twelve bold orange labels.
+  - Card titles show the folder name in bold after a muted path, in the window's own type, so a narrow window cuts the path, not the name.
+  - "Elsewhere" gets a plain folder icon.
+  - A card with nothing safe says "Select in progress".
+  - The subtitle fits on one line.
+- Sizes move up a unit at a thousand of the smaller one: "1.0GB", not "1015MB" beside "2.8GB". The engine, the mascot and the app change together.
+
 ## 0.11.1
 
 - The Forgotten and Finished sections are retired. Folders answers what both were for, what can go, for every worktree at once, and stale, merged and empty worktrees remain in All worktrees. The header's "N forgotten" and "N finished" tags become one "N safe to delete" tag that opens Folders.

@@ -103,10 +103,11 @@ struct Sidebar: View {
             entry("overview", "Overview", "square.grid.2x2", nil)
             entry("disk", "Disk", "internaldrive", store.freeable.map { Store.human($0.totalKb) },
                   tint: store.freeable == nil ? nil : Palette.reclaim)
-            // The count is of folders safe to delete: the number this page
-            // exists to bring down, as Disk's is the space it can free.
+            // Every folder, as every other entry counts what its page lists.
+            // Counting only the safe ones put "0" beside a page of fourteen.
+            // Green says some of them can go.
             entry("folders", "Folders", "folder",
-                  store.envelope == nil ? nil : "\(store.folderRows.filter { $0.folder?.verdict == "safe" }.count)",
+                  store.envelope == nil ? nil : "\(store.folderRows.count)",
                   tint: store.folderRows.contains { $0.folder?.verdict == "safe" } ? Palette.reclaim : nil)
 
             heading("Worktrees")

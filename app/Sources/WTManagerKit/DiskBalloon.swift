@@ -7,7 +7,8 @@ import Foundation
 /// read as a disagreement.
 public enum DiskSize {
     public static func parts(_ kb: Int) -> (number: String, unit: String) {
-        for (unit, factor) in [("TB", 1 << 30), ("GB", 1 << 20), ("MB", 1 << 10)] where kb >= factor {
+        // At a thousand of the smaller unit, as the engine: "1.0GB", never "1015MB".
+        for (unit, factor) in [("TB", 1 << 30), ("GB", 1 << 20), ("MB", 1 << 10)] where kb >= factor * 1000 / 1024 {
             let v = Double(kb) / Double(factor)
             return (String(format: v < 10 ? "%.1f" : "%.0f", v), unit)
         }

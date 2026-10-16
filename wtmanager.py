@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.11.1"
+VERSION = "0.11.2"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -1749,7 +1749,9 @@ def human(kb: int) -> str:
         return "—"
     units = [("TB", 1 << 30), ("GB", 1 << 20), ("MB", 1 << 10)]
     for suffix, factor in units:
-        if kb >= factor:
+        # At a thousand of the smaller unit, not 1024: "1015MB" beside
+        # "2.8GB" read as a bigger number than a gigabyte. It is 1.0GB.
+        if kb >= factor * 1000 // 1024:
             v = kb / factor
             return f"{v:.1f}{suffix}" if v < 10 else f"{v:.0f}{suffix}"
     return f"{kb}KB"

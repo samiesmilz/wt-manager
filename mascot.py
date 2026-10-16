@@ -782,7 +782,7 @@ def human(kb: int) -> str:
     if kb is None or kb < 0:
         return "—"
     for suffix, factor in (("TB", 1 << 30), ("GB", 1 << 20), ("MB", 1 << 10)):
-        if kb >= factor:
+        if kb >= factor * 1000 // 1024:   # as the engine: "1.0GB", never "1015MB"
             v = kb / factor
             return f"{v:.1f}{suffix}" if v < 10 else f"{v:.0f}{suffix}"
     return f"{kb}KB"
