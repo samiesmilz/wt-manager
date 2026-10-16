@@ -572,7 +572,7 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
             continue
         }
         for (suffix, size) in sizes {
-            for section in ["overview", "all", "disk", "folders", "need", "forgot", "flight", "others", "done", "repos"] {
+            for section in ["overview", "all", "disk", "folders", "need", "flight", "others", "repos"] {
                 store.section = section
                 draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                      size: size, appearance: appearance, to: "\(name)-\(section)\(suffix).png")

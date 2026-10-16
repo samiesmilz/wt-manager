@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.11.0"
+VERSION = "0.11.1"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -3600,7 +3600,7 @@ def cmd_agent(wts: List[Worktree], args) -> int:
         # page, so the two never disagree about what is worth pointing at.
         "insights": mascot.insights(
             counts, reclaim, sum(w.unpushed_mine for w in wts),
-            finished=counts.get(MERGED, 0) + counts.get(EMPTY, 0),
+            safe=sum(1 for w in wts if (folder_info(w) or {}).get("verdict") == "safe"),
             unreadable=len({n[1] for n in NOTICES if n[0] == "unseen"})),
         "face": {k: face[k] for k in ("mood", "meaning", "eyes", "tint",
                                       "tint_name", "bob", "gauge", "mark")},

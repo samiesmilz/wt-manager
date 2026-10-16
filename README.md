@@ -64,9 +64,9 @@ The app and CLI share the engine inside the installed bundle, so they use the sa
 4. **Review cleanup.** Read the exact paths and preservation details. Nothing is deleted during the preview.
 5. **Confirm deliberately.** Only confirmed completions earn reclaimed-space credit. Results remain available after the modal closes.
 
-The sidebar separates **Needs you**, **Forgotten**, **In flight**, **With others**, **Finished**, and **Main checkouts**. Filter by repository or branch, expand a checkout for details, or hand work off to Terminal, Finder, or its pull request.
+The sidebar separates **Needs you**, **In flight**, **With others**, and **Main checkouts**, with **All worktrees** above them. Filter by repository or branch, expand a checkout for details, or hand work off to Terminal, Finder, or its pull request.
 
-“Finished” describes branch history. It does not automatically mean “safe to delete.” A checkout with local changes or another known blocker explains why removal is unavailable. Unchecked checkouts offer inspection first.
+What can go is the **Folders** section's question. It replaced the old Forgotten and Finished sections, which sorted by branch history and left "is it safe to delete?" to you.
 
 ## Cleanup with a review first
 

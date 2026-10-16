@@ -831,7 +831,7 @@ def headline(mood_name: str, counts: Dict[str, int], reclaim_kb: int, worktrees:
 # nowhere else to live: work that exists on this machine alone, and repos that
 # could not be read. A surface with no sidebar (the page) shows them all.
 def insights(counts: Dict[str, int], reclaim_kb: int, unpushed: int,
-             finished: int = 0, unreadable: int = 0) -> List[Dict[str, object]]:
+             safe: int = 0, unreadable: int = 0) -> List[Dict[str, object]]:
     def n(k):
         return counts.get(k, 0)
     out: List[Dict[str, object]] = []
@@ -839,10 +839,6 @@ def insights(counts: Dict[str, int], reclaim_kb: int, unpushed: int,
     if need:
         out.append({"id": "need", "label": f"{need} need{'s' if need == 1 else ''} you",
                     "tint": "blocked", "target": "need", "value": need,
-                    "solo": False})
-    if n("stale"):
-        out.append({"id": "stale", "label": f"{n('stale')} forgotten",
-                    "tint": "stale", "target": "forgot", "value": n("stale"),
                     "solo": False})
     if unpushed:
         out.append({"id": "unpushed",
@@ -861,9 +857,12 @@ def insights(counts: Dict[str, int], reclaim_kb: int, unpushed: int,
         out.append({"id": "draft", "label": f"{n('draft')} draft{'s' if n('draft') != 1 else ''}",
                     "tint": "draft", "target": "flight", "value": n("draft"),
                     "solo": False})
-    if finished:
-        out.append({"id": "finished", "label": f"{finished} finished",
-                    "tint": "merged", "target": "done", "value": finished,
+    # One tag for what used to be two sections, Forgotten and Finished: the
+    # question both were asked to answer was what can go, and Folders answers
+    # it for every worktree at once.
+    if safe:
+        out.append({"id": "folders", "label": f"{safe} safe to delete",
+                    "tint": "reclaim", "target": "folders", "value": safe,
                     "solo": False})
     if unreadable:
         out.append({"id": "unreadable",

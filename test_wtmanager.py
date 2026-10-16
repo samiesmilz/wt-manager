@@ -244,10 +244,10 @@ class Mood(unittest.TestCase):
             self.assertLess(len(M.headline(mood, {"blocked": 3}, 1 << 20, 9)), 40, mood)
 
     def test_insights_carry_each_fact_once_and_only_when_present(self):
-        tags = M.insights({"stale": 18, "blocked": 0}, 244 << 20, 95, finished=4)
+        tags = M.insights({"stale": 18, "blocked": 0}, 244 << 20, 95, safe=4)
         self.assertEqual([t["label"] for t in tags],
-                         ["18 forgotten", "95 commits only here", "244GB rebuildable", "4 finished"])
-        self.assertEqual([t["target"] for t in tags], ["forgot", "overview", "disk", "done"])
+                         ["95 commits only here", "244GB rebuildable", "4 safe to delete"])
+        self.assertEqual([t["target"] for t in tags], ["overview", "disk", "folders"])
         self.assertEqual(M.insights({}, 0, 0), [])
         self.assertEqual(M.insights({"blocked": 1}, 0, 1)[0]["label"], "1 needs you")
 
@@ -257,13 +257,13 @@ class Mood(unittest.TestCase):
         # sidebar. "1 needs you" is the worst of them: it also *is* the
         # headline, word for word.
         tags = M.insights({"blocked": 1, "stale": 18, "waiting": 3, "draft": 1},
-                          244 << 20, 96, finished=4, unreadable=16)
+                          244 << 20, 96, safe=4, unreadable=16)
         solo = [t["id"] for t in tags if t["solo"]]
         self.assertEqual(solo, ["unpushed", "unreadable"])
         for t in tags:
             if t["solo"]:
                 continue
-            self.assertIn(t["target"], {"need", "forgot", "flight", "others", "done", "disk"},
+            self.assertIn(t["target"], {"need", "flight", "others", "folders", "disk"},
                           "%s claims a home the sidebar does not have" % t["id"])
 
     def test_the_agent_envelope_carries_the_headline(self):
@@ -273,11 +273,14 @@ class Mood(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             T.cmd_agent([wt(status="stale", ahead=2, unpushed=2, unpushed_mine=2),
-                         wt(path="/q", status="active")], Args())
+                         wt(path="/q", status="active"),
+                         wt(path="/m", status="merged", age_days=30)], Args())
         env = json.loads(out.getvalue())
         self.assertEqual(env["face"]["mood"], "nudging")
         self.assertEqual(env["headline"], "Nothing is blocking you")
-        self.assertEqual([t["id"] for t in env["insights"]], ["stale", "unpushed"])
+        # The stale one holds your commits, so it is not safe; the merged one is.
+        self.assertEqual([t["id"] for t in env["insights"]], ["unpushed", "folders"])
+        self.assertEqual(env["insights"][1]["label"], "1 safe to delete")
 
     def test_agent_keeps_two_repositories_with_the_same_name_distinct(self):
         a = wt(status="active")

@@ -39,10 +39,8 @@ enum Palette {
         switch id {
         case "all":    return Color.accentColor
         case "need":   return status("blocked")
-        case "forgot": return status("stale")
         case "flight": return status("active")
         case "others": return status("waiting")
-        case "done":   return status("merged")
         case "repos":  return status("trunk")
         case "disk":   return reclaim
         case "folders": return reclaim

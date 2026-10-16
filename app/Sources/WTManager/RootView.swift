@@ -150,7 +150,6 @@ struct Sidebar: View {
         switch id {
         case "all":    return "square.stack"
         case "need":   return "exclamationmark.circle"
-        case "forgot": return "clock.badge.exclamationmark"
         case "flight": return "arrow.triangle.branch"
         case "others": return "person.2"
         case "repos":  return "shippingbox"

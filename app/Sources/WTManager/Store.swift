@@ -451,11 +451,10 @@ final class Store: ObservableObject {
             switch id {
             case "all":    return "No worktrees yet."
             case "need":   return "Nothing needs you."
-            case "forgot": return "Nothing has been forgotten."
             case "flight": return "Nothing in flight."
             case "others": return "Nothing is with other people."
             case "repos":  return "No repositories in scope."
-            default:       return "Nothing finished to remove."
+            default:       return "Nothing here."
             }
         }
     }
@@ -485,10 +484,8 @@ final class Store: ObservableObject {
     static let spec: [(String, String, String, [String])] = [
         ("all",    "All worktrees",     "every checkout, including the main one",     ["blocked", "review", "stale", "active", "draft", "waiting", "merged", "empty", "trunk"]),
         ("need",   "Needs you",         "specific to your branch",     ["blocked", "review"]),
-        ("forgot", "Forgotten",         "without a recent commit",   ["stale"]),
         ("flight", "In flight",         "your recent work",     ["active", "draft"]),
         ("others", "With others",       "nothing for you to do",       ["waiting"]),
-        ("done",   "Finished",          "landed or already in the base", ["merged", "empty"]),
         // Your repositories themselves, not worktrees you made. They were
         // filed under "Finished" — so `private/main`, holding 64GB, sat under
         // a heading that means landed and safe to delete. It is neither
@@ -1187,7 +1184,7 @@ extension Store {
         // And drop the tag this action just answered, rather than leaving it
         // asserting a number that is now zero. Subtracting a fact the action
         // resolved is not re-running the rule that produced it.
-        let answered = plan?.action.kind == .reap ? "finished" : "reclaim"
+        let answered = plan?.action.kind == .reap ? "folders" : "reclaim"
         env.insights.removeAll { $0.id == answered }
         envelope = env
         if plan?.action.kind == .reap { for p in touched { lastSizes[p] = nil } }

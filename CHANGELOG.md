@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1
+
+- The Forgotten and Finished sections are retired. Folders answers what both were for, what can go, for every worktree at once, and stale, merged and empty worktrees remain in All worktrees. The header's "N forgotten" and "N finished" tags become one "N safe to delete" tag that opens Folders.
+
 ## 0.11.0
 
 - New **Folders** section: every worktree shown as a folder, grouped by where it lives on disk, with one verdict each: safe to delete, in progress, unsaved work, or kept. Folders that sit alone in their parent are gathered into one "Elsewhere" card. **Clear everything safe** and a per-folder clear do the start-of-sprint cleanup with a preview first. Each row has its own delete, or a link to what it holds.
