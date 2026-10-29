@@ -174,23 +174,26 @@ struct FoldersView: View {
                     .accessibilityLabel(Store.count(rows.count, "folder"))
                 Spacer()
             }
-            chips(rows)
             if let e = store.error {
                 notice(e, tint: Palette.status("blocked"), mono: true)
             }
             if let notices = store.envelope?.notices, !notices.isEmpty {
                 notice(notices.joined(separator: "\n"), tint: Palette.status("stale"))
             }
-            if !caches.isEmpty || !safe.isEmpty {
-                HStack(spacing: 8) {
-                    if !caches.isEmpty { cleanButton(caches) }
-                    if !safe.isEmpty {
-                        clearButton("Delete \(safe.count) safe · "
-                                    + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
-                                    rows: safe, prominent: true)
-                    }
-                    Spacer(minLength: 0)
+            // One line: the two cleanups, each carrying its own size, then
+            // what exists only here. The sizes are the "could free"; saying
+            // it again in a chip above was the same number twice.
+            let actions = HStack(spacing: 8) {
+                if !caches.isEmpty { cleanButton(caches) }
+                if !safe.isEmpty {
+                    clearButton("Delete \(safe.count) safe · "
+                                + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
+                                rows: safe, prominent: true)
                 }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { actions; chips(rows); Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 8) { actions; chips(rows) }
             }
         }
         .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
@@ -202,26 +205,15 @@ struct FoldersView: View {
         return store.locationLabel(l)
     }
 
-    /// What the page is about, in colour: what could be freed, and what
-    /// exists only here. Each is a way in: the second opens the folders
-    /// holding that work.
+    /// What exists only here, in colour, and a way in: it opens the folders
+    /// holding that work. Before the disk is measured, a word saying so.
     @ViewBuilder
     private func chips(_ rows: [Row]) -> some View {
         let commits = rows.reduce(0) { $0 + max($1.worktree.atRisk, 0) }
         let unsaved = rows.filter { $0.verdict == .unsaved }.count
-        // The whole machine, or only the place the sidebar narrowed to.
-        let narrowed = store.locationFilter != nil || !store.query.isEmpty
-        let free = narrowed
-            ? rows.reduce(0) { $0 + ($1.verdict == .safe ? max($1.worktree.sizeKb, 0) : max($1.worktree.reclaimKb, 0)) }
-            : store.freeable.map(\.totalKb) ?? 0
-        if free > 0 || commits > 0 || (store.disk == nil && store.envelope != nil) {
+        if commits > 0 || (store.disk == nil && store.envelope != nil) {
             HStack(spacing: 7) {
-                if free > 0 {
-                    chip("\(Store.human(free)) you could free", "sparkles", Palette.reclaim)
-                        .help([store.freeable.flatMap { $0.cachesKb > 0 ? "\(Store.human($0.cachesKb)) of caches" : nil },
-                               store.freeable.flatMap { $0.finishedCount > 0 ? "\(Store.human($0.finishedKb)) in safe folders" : nil }]
-                              .compactMap { $0 }.joined(separator: " · "))
-                } else if store.disk == nil, store.envelope != nil {
+                if store.disk == nil, store.envelope != nil {
                     chip(store.phase == "measuring disk" ? "measuring disk…" : "disk not measured yet",
                          "internaldrive", Palette.status("empty"))
                 }
@@ -234,7 +226,6 @@ struct FoldersView: View {
                     .buttonStyle(RowButtonStyle(radius: 12))
                     .help("Show the folders holding work that is on no remote")
                 }
-                Spacer(minLength: 0)
             }
         }
     }
