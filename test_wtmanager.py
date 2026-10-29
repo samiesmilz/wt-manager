@@ -230,6 +230,35 @@ class Classification(unittest.TestCase):
         self.assertIn("dist/.env", w.precious_hits)
 
 
+class EmptyParent(unittest.TestCase):
+    """Deleting the last worktree in `task-3/` left `task-3/` behind, empty."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.loc = os.path.join(self.root, "dev", "worktrees", "task-3")
+        os.makedirs(self.loc)
+        self.gone = os.path.join(self.loc, "feat-a")   # already removed by git
+
+    def test_the_last_worktree_takes_its_folder_with_it(self):
+        open(os.path.join(self.loc, ".DS_Store"), "w").close()
+        self.assertTrue(T.drop_empty_parent(self.gone))
+        self.assertFalse(os.path.exists(self.loc))
+        self.assertTrue(os.path.isdir(os.path.dirname(self.loc)), "one level only")
+
+    def test_a_folder_with_anything_else_in_it_stays(self):
+        os.makedirs(os.path.join(self.loc, "feat-b"))
+        self.assertFalse(T.drop_empty_parent(self.gone))
+        open(os.path.join(self.loc, "notes.md"), "w").close()
+        os.rmdir(os.path.join(self.loc, "feat-b"))
+        self.assertFalse(T.drop_empty_parent(self.gone))
+        self.assertTrue(os.path.isdir(self.loc))
+
+    def test_home_and_shallow_folders_are_never_removed(self):
+        self.assertFalse(T.drop_empty_parent(os.path.join(os.path.expanduser("~"), "x")))
+        self.assertFalse(T.drop_empty_parent("/tmp/x"))
+
+
 class Containment(unittest.TestCase):
     def test_paths_outside_the_worktree_are_refused(self):
         self.assertFalse(T.inside("/tmp/a", "/tmp/b"))

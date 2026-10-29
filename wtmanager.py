@@ -3215,6 +3215,8 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
             freed += max(w.size_kb - archived_kb, 0)
             forget_size(w.path)
             print(f"{C.green}removed{C.off} {w.repo}/{w.name}")
+            if drop_empty_parent(w.path):
+                print(f"{C.green}removed{C.off} {os.path.dirname(w.path)} {C.dim}(now empty){C.off}")
         else:
             failed += 1
             print(f"{C.red}failed{C.off}  {w.repo}/{w.name} {C.dim}{err[:90]}{C.off}")
@@ -3224,6 +3226,27 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     print(f"\n{removed} removed" + (f", {failed} failed" if failed else "")
           + (f", {human(freed)} returned" if removed and total > 0 else ""))
     return 1 if failed else 0
+
+
+def drop_empty_parent(path: str) -> bool:
+    """Remove the folder a worktree sat in, once the worktree was its last
+    occupant. Deleting the last worktree in `task-3/` left `task-3/` behind,
+    empty, and a sprint of those is a directory of empty folders. One level
+    only, nothing but Finder's `.DS_Store` may be in it, and never a home,
+    a filesystem root or a folder that holds a repo."""
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent in ("/", os.path.expanduser("~")) or parent.count(os.sep) < 3:
+        return False
+    try:
+        inside = os.listdir(parent)
+        if any(n != ".DS_Store" for n in inside):
+            return False
+        if ".DS_Store" in inside:
+            os.remove(os.path.join(parent, ".DS_Store"))
+        os.rmdir(parent)
+        return True
+    except OSError:
+        return False
 
 
 def inside(root: str, candidate: str) -> bool:
