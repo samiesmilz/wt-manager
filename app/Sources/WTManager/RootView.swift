@@ -97,13 +97,13 @@ struct Sidebar: View {
                 .padding(.horizontal, 17).padding(.bottom, 18)
 
             let ready = store.envelope != nil && !store.unconfigured
-            entry("Folders", "folder", ready ? "\(store.folderRows.count)" : "–",
+            entry("Folders", "folder", ready ? "\(store.folderRows.count)" : nil,
                   tint: Palette.reclaim, on: store.page == .folders && store.verdictFilter == nil && store.locationFilter == nil) {
                 store.page = .folders
                 store.verdictFilter = nil
                 store.locationFilter = nil
             }
-            entry("Locations", "folder.fill.badge.gearshape", ready ? "\(store.locations.count)" : "–",
+            entry("Locations", "folder.fill.badge.gearshape", ready ? "\(store.locations.count)" : nil,
                   tint: Palette.status("trunk"),
                   on: store.page == .locations || (store.page == .folders && store.locationFilter != nil)) {
                 store.locationFilter = nil
@@ -325,7 +325,7 @@ struct Header: View {
 struct StatusBar: View {
     @ObservedObject var store: Store
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             if store.unconfigured {
                 // Not "0 worktrees · 0 repos". Nothing has been counted, and
                 // an inventory of zero reads as a finding.

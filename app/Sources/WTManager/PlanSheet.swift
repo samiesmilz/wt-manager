@@ -154,10 +154,10 @@ struct PlanSheet: View {
             // every reason to think they just deleted them.
             switch kind {
             case .reap:
-                return "Only eligible worktrees were removed. Uncommitted, unpushed, "
+                return "Only eligible folders were deleted. Uncommitted, unpushed, "
                     + "and unclassified local files were kept."
             case .clean:
-                return "The worktrees are untouched — only build output went. "
+                return "The folders are untouched — only build output went. "
                     + "All of it comes back with a build or an install, and "
                     + "environment files and keys were never read."
             }
@@ -193,10 +193,10 @@ struct PlanSheet: View {
 
     private var scopeText: String {
         if plan.action.single {
-            return "One worktree: " + (plan.action.paths.first.map {
+            return "One folder: " + (plan.action.paths.first.map {
                 URL(fileURLWithPath: $0).lastPathComponent } ?? "")
         }
-        if !plan.action.paths.isEmpty { return "\(plan.action.paths.count) selected worktrees" }
+        if !plan.action.paths.isEmpty { return Store.count(plan.action.paths.count, "selected folder") }
         if kind == .reap { return "Every finished worktree under your roots" }
         return plan.action.staleOnly
             ? "Every forgotten or finished worktree under your roots"
@@ -206,7 +206,7 @@ struct PlanSheet: View {
     private func summaryText(_ p: Store.PlanResult) -> String {
         let n = p.paths.count
         let amount = p.kb > 0 ? " · " + Store.human(p.kb) : ""
-        return "\(n) worktree\(n == 1 ? "" : "s")" + amount
+        return Store.count(n, "folder") + amount
     }
 
     // MARK: body
@@ -224,9 +224,9 @@ struct PlanSheet: View {
         case .committing:
             switch kind {
             case .reap:
-                working("Removing", "Through git, one worktree at a time.")
+                working("Deleting", "Through git, one folder at a time.")
             case .clean:
-                working("Deleting", "Build output only, one worktree at a time.")
+                working("Cleaning", "Build output only, one folder at a time.")
             }
         case .failed:
             ScrollView {
@@ -535,7 +535,7 @@ struct PlanSheet: View {
                     switch kind {
                     case .reap:
                         figure("\(r.removed)",
-                               r.removed == 1 ? "worktree removed" : "worktrees removed",
+                               r.removed == 1 ? "folder deleted" : "folders deleted",
                                tint: Palette.inkReclaim)
                     case .clean:
                         figure(Store.human(r.freedKb), "of build output deleted",
@@ -543,8 +543,8 @@ struct PlanSheet: View {
                     }
                     if kind == .clean {
                         figure("\(doneRows.count)",
-                               doneRows.count == 1 ? "worktree, still there"
-                                                   : "worktrees, all still there",
+                               doneRows.count == 1 ? "folder, still there"
+                                                   : "folders, all still there",
                                tint: Palette.status("active"))
                     }
                     if kind == .reap && r.freedKb > 0 {

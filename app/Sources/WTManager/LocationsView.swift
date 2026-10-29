@@ -31,17 +31,20 @@ struct LocationsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .center, spacing: 10) {
-                    Text("Locations")
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
-                    Text(verbatim: "\(places.count)")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Palette.ink(Palette.status("trunk")))
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(Capsule().fill(Palette.wash(Palette.status("trunk"))))
+                // Title and line together, the way the Mascots page has them.
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .center, spacing: 10) {
+                        Text("Locations")
+                            .font(.system(size: 19, weight: .semibold, design: .rounded))
+                        Text(verbatim: "\(places.count)")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Palette.ink(Palette.status("trunk")))
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(Capsule().fill(Palette.wash(Palette.status("trunk"))))
+                    }
+                    Text("Where your worktree folders live, biggest first. Open one to see them.")
+                        .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                 }
-                Text("Where your worktrees live, biggest first. Open one to see its folders.")
-                    .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                 if places.isEmpty {
                     Text(store.envelope == nil ? "Reading your repos…" : "No worktree folders yet.")
                         .font(.system(size: 12)).foregroundStyle(Palette.muted)

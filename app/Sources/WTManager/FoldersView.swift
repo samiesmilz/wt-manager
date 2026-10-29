@@ -113,7 +113,6 @@ struct FoldersView: View {
         }
     }
 
-    /// The search field and the project filter, by the one rule in Store.
     /// The search field and the sidebar's location, by the one rule in Store.
     private func searched(_ row: Row) -> Bool { store.inScope(row.worktree) }
 
@@ -126,8 +125,12 @@ struct FoldersView: View {
             if scrolls {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        Color.clear.frame(height: 0).id(Self.top)
-                        content(rows)
+                        // No stack spacing under the anchor: it added a gap
+                        // above the first card that nothing else had.
+                        VStack(spacing: 0) {
+                            Color.clear.frame(height: 0).id(Self.top)
+                            content(rows)
+                        }
                     }
                         .safeAreaInset(edge: .bottom) { if !selected.isEmpty { selectionBar(rows) } }
                         // Another page asked for this folder: open it and
@@ -444,13 +447,16 @@ struct FoldersView: View {
     private func pathTitle(_ g: Group) -> some View {
         let parent = (g.id as NSString).deletingLastPathComponent
         let name = (g.id as NSString).lastPathComponent
-        return HStack(spacing: 0) {
+        let named = Text(g.elsewhere ? g.id : name).fontWeight(.semibold).lineLimit(1)
+        // The whole way, then only its last step, then the name alone. Cut
+        // with an ellipsis, the way shrank to a stray dot beside the name.
+        let near = (parent as NSString).lastPathComponent
+        return ViewThatFits(in: .horizontal) {
             if !g.elsewhere && !parent.isEmpty {
-                Text(parent + "/").foregroundStyle(Palette.muted)
-                    .lineLimit(1).truncationMode(.head)
+                HStack(spacing: 0) { Text(parent + "/").foregroundStyle(Palette.muted); named }
+                HStack(spacing: 0) { Text("…/" + near + "/").foregroundStyle(Palette.muted); named }
             }
-            Text(g.elsewhere ? g.id : name).fontWeight(.semibold)
-                .lineLimit(1).layoutPriority(1)
+            named.truncationMode(.middle)
         }
         .font(.system(size: 13))
         .help(g.elsewhere ? "Folders that sit alone in their parent" : g.id)
@@ -476,9 +482,7 @@ struct FoldersView: View {
                 let pickable = Set(g.rows.filter(\.verdict.lossless).map(\.id))
                 if !pickable.isEmpty {
                     let all = pickable.isSubset(of: selected)
-                    // Named for what it ticks when a card has nothing safe.
-                    let label = g.safe.isEmpty ? "Select in progress" : "Select all"
-                    Button(all ? "Deselect" : label) {
+                    Button(all ? "Deselect" : "Select all") {
                         if all { selected.subtract(pickable) } else { selected.formUnion(pickable) }
                     }
                     .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Palette.muted)
@@ -486,7 +490,7 @@ struct FoldersView: View {
                     .help("Ticks the folders that lose nothing; unsaved work is ticked one at a time")
                 }
                 if !g.safe.isEmpty {
-                    clearButton("Clear \(g.safe.count) safe · "
+                    clearButton("Delete \(g.safe.count) safe · "
                                 + Store.human(g.safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
                                 rows: g.safe)
                 }

@@ -169,7 +169,7 @@ struct CompletionBanner: View {
         if issues && r.completedPaths.isEmpty { return "Operation needs attention" }
         if issues { return "Finished with \(r.failed) issue\(r.failed == 1 ? "" : "s")" }
         if plan.action.folders { return "Deleted \(r.removed) folder\(r.removed == 1 ? "" : "s")" }
-        return plan.action.kind == .reap ? "Removed \(r.removed) worktree\(r.removed == 1 ? "" : "s")" : "Cleanup complete"
+        return plan.action.kind == .reap ? "Deleted \(Store.count(r.removed, "folder"))" : "Cleanup complete"
     }
     /// Where this run put what it saved: edits, bundles, set-aside files.
     /// Said here because the sheet that named it has closed by the time

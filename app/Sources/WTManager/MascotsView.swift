@@ -188,7 +188,7 @@ struct MascotsView: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
         }
-        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A label with one line of what it means, and its control on the right.
