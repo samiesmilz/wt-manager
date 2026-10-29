@@ -34,16 +34,6 @@ enum Palette {
         }
     }
 
-    /// A section takes the colour of whatever it holds.
-    static func section(_ id: String) -> Color {
-        switch id {
-        case "repos":  return status("trunk")
-        case "disk":   return reclaim
-        case "folders": return reclaim
-        default:       return Color.accentColor
-        }
-    }
-
     static let reclaim = Color(red: 0.30, green: 0.70, blue: 0.52)
     static let risk    = Color(red: 0.91, green: 0.55, blue: 0.20)
 
@@ -100,8 +90,6 @@ enum Palette {
     /// the small mark; the reading surface stays consistent across topics.
     static let surface = dynamic(light: Color.white.opacity(0.72),
                                  dark: Color.white.opacity(0.055))
-    static let surfaceEdge = dynamic(light: Color.black.opacity(0.085),
-                                     dark: Color.white.opacity(0.11))
 
     /// Solid ground for a badge that carries white text. Constant, not dynamic:
     /// a lighter red in the dark appearance would lose the white on top of it.
@@ -124,20 +112,6 @@ enum Palette {
     ]
 
     static func categorical(_ i: Int) -> Color { categorical[i % categorical.count] }
-
-    /// How long something has sat, as a temperature. A gradient rather than a
-    /// threshold, because decay is continuous and a cliff at fourteen days would
-    /// imply the thirteenth is fine.
-    static func age(_ upperDays: Int) -> Color {
-        switch upperDays {
-        case ..<2:   return status("active")
-        case ..<8:   return Color(red: 0.42, green: 0.70, blue: 0.62)
-        case ..<15:  return Color(red: 0.72, green: 0.70, blue: 0.34)
-        case ..<32:  return status("stale")
-        case ..<93:  return Color(red: 0.88, green: 0.46, blue: 0.24)
-        default:     return status("blocked")
-        }
-    }
 
     // MARK: mechanics
 

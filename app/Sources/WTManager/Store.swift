@@ -69,38 +69,21 @@ final class Store: ObservableObject {
     /// Which character, or `Store.ownFigure` for a picture the person chose.
     @AppStorage("wtmanager.figure") var figure: String = "cat"
     @AppStorage("wtmanager.theme") var theme: String = "system"     // system | light | dark
-    /// Free text and status chips, applied to the rows. Kept out of the engine
-    /// on purpose: filtering is a question about what you want to look at, not
-    /// about what is true, and the counts and the mood must not move when you
-    /// narrow the view.
+    /// Free text, applied to the rows. Kept out of the engine on purpose:
+    /// filtering is a question about what you want to look at, not about what
+    /// is true, and the counts and the mood must not move when you narrow it.
     @Published var query: String = ""
-    @Published var repoFilter: String?
     /// A worktree another page asked the list to show: it opens expanded and
     /// scrolled into view, and is cleared once it has been.
     @Published var focusPath: String?
-    @Published var statusFilter: Set<String> = []
-    @Published var section: String = "overview"
-    @Published var selected: Worktree?
     @Published var showingSettings = false
     /// Bumped to move focus into the filter field. A counter rather than a Bool
     /// because focusing twice in a row is a real request, and a Bool that is
     /// already true is silently ignored.
     @Published private(set) var focusFilter = 0
 
-    /// ⌘F. Only the worktree sections carry a filter bar, so asking for it from
-    /// Overview or Disk has to land somewhere that has one — otherwise the
-    /// shortcut works on five screens of seven, which is the kind of nearly
-    /// that reads as broken. The first populated group is where you were going
-    /// to look anyway.
-    func focusTheFilter() {
-        if section == "overview" || section == "disk" {
-            section = "folders"
-        }
-        focusFilter += 1
-    }
-
-    /// The sections in sidebar order, for ⌘1…⌘9.
-    var sectionOrder: [String] { ["overview", "folders", "repos", "disk"] }
+    /// ⌘F.
+    func focusTheFilter() { focusFilter += 1 }
 
     /// Every worktree folder the engine judged, main checkouts excluded.
     var folderRows: [Worktree] { (envelope?.worktrees ?? []).filter { $0.folder != nil } }
@@ -242,9 +225,6 @@ final class Store: ObservableObject {
                 self.envelope = env
                 self.error = nil
                 self.countedAt = Date()
-                // Fresh measurements: whatever was retired was retired against
-                // numbers that no longer apply.
-                self.retired.removeAll()
             case .failure(let e):
                 self.error = e.localizedDescription
             }
@@ -389,15 +369,6 @@ final class Store: ObservableObject {
     @Published private(set) var adopting = false
     @Published private(set) var settingsError: String?
 
-    /// Offers whose own dry run came back empty.
-    ///
-    /// A card that says "reclaim 97GB", is asked, finds nothing, and then goes
-    /// on saying "reclaim 97GB" has been told it is wrong and kept talking.
-    /// The preview is the most authoritative answer in the app — it is the
-    /// engine re-measuring right now — so an empty one retires the offer that
-    /// produced it until a refresh establishes otherwise.
-    @Published private(set) var retired: Set<String> = []
-
     /// Take these folders as the roots, then read them.
     ///
     /// Written through the engine rather than by encoding JSON here: the
@@ -442,130 +413,27 @@ final class Store: ObservableObject {
         adopt(roots: panel.urls.map(\.path))
     }
 
-    /// Rows grouped by what you would do about them. The order is the advice.
-    struct Group: Identifiable {
-        let id: String
-        let title: String
-        let hint: String
-        let items: [Worktree]
-        /// What an empty section means, in its own words. "Nothing here" is
-        /// the same sentence for good news and for a filter that matched nothing.
-        var emptyText: String {
-            switch id {
-            case "repos":  return "No repositories in scope."
-            default:       return "Nothing here."
-            }
-        }
-    }
-
-    var filtering: Bool { !query.isEmpty || !statusFilter.isEmpty || repoFilter != nil }
-
-    /// Land on one worktree in the list, from anywhere.
-    ///
-    /// The one way to do it. Folders and the at-risk card each set the filter
-    /// themselves, by the repo's name, while the list matches by its identity,
-    /// the `.git` path that tells two repos called `private` apart. Nothing
-    /// matched, and the arrow opened an empty page.
+    /// Land on one folder: every filter off, so it is on the page, opened and
+    /// scrolled into view.
     func show(_ w: Worktree) {
-        statusFilter = []
+        query = ""
         focusPath = w.path
-        if w.folder != nil {
-            // Every filter off, so the folder is on the page to open.
-            query = ""
-            repoFilter = nil
-            section = "folders"
-        } else {
-            repoFilter = w.repoId ?? w.repo
-            query = w.branch ?? ""
-            section = "repos"
-        }
     }
 
-    private func matches(_ w: Worktree) -> Bool {
-        if let repoFilter, (w.repoId ?? w.repo) != repoFilter { return false }
-        if !statusFilter.isEmpty && !statusFilter.contains(w.status) { return false }
+    var filtering: Bool { !query.isEmpty }
+
+    /// The search field: one rule for the page and the status bar's "N shown".
+    func passes(_ w: Worktree) -> Bool {
         guard !query.isEmpty else { return true }
         let q = query.lowercased()
         return w.repo.lowercased().contains(q)
             || (w.branch ?? "").lowercased().contains(q)
             || URL(fileURLWithPath: w.path).lastPathComponent.lowercased().contains(q)
-            || w.status.contains(q)
-    }
-
-    /// The search field and project filter, one rule for every page that
-    /// lists worktrees, and for the status bar's "N shown".
-    func passes(_ w: Worktree) -> Bool { matches(w) }
-
-    /// Every section, empty ones included. The sidebar must not reshuffle as
-    /// counts change — a nav whose items move is a nav you stop trusting.
-    var allGroups: [Group] {
-        let w = envelope?.worktrees ?? []
-        return Self.spec.map { id, title, hint, statuses in
-            Group(id: id, title: title, hint: hint,
-                  items: w.filter { Self.belongs($0, to: id, statuses) })
-        }
-    }
-
-    /// The one list left. Every worktree you made is on the Folders page,
-    /// which says what can go and opens into the same details this did; the
-    /// status sections (all, needs you, in flight, with others) sorted the
-    /// same rows a second way. What stays is the repos themselves: a third of
-    /// the checkouts and most of the disk, which git never deletes.
-    /// Repos is every checkout that is not a folder, so the two pages hold
-    /// every worktree between them, once. By status alone it missed a main
-    /// checkout with a feature branch out: eight of them, on no page at all.
-    static func belongs(_ w: Worktree, to id: String, _ statuses: [String]) -> Bool {
-        if id == "repos" { return w.folder == nil }
-        return statuses.contains(w.status)
-    }
-
-    static let spec: [(String, String, String, [String])] = [
-        ("repos",  "Repos",    "the repos themselves, which git never deletes", ["trunk"]),
-    ]
-
-    var groups: [Group] {
-        let w = (envelope?.worktrees ?? []).filter(matches)
-        return Self.spec.compactMap { id, title, hint, statuses in
-            let items = w.filter { Self.belongs($0, to: id, statuses) }
-            return items.isEmpty ? nil : Group(id: id, title: title, hint: hint, items: items)
-        }
     }
 
     /// "1 commit", "2 commits": a count, where the sentence supplies the verb.
     static func count(_ n: Int, _ noun: String) -> String {
         n == 1 ? "1 \(noun)" : "\(n) \(noun)s"
-    }
-
-    /// "1 commit exists", "2 commits exist". Grammar is part of being read.
-    static func commits(_ n: Int, _ verb: (String, String) = ("exists", "exist")) -> String {
-        n == 1 ? "1 commit \(verb.0)" : "\(n) commits \(verb.1)"
-    }
-
-    /// Why a row is where it is, in the words a person would use.
-    func reason(_ w: Worktree) -> String {
-        if let pr = w.pr, !pr.distinctFailing.isEmpty {
-            return "failing here and not across the repo — " + pr.distinctFailing.joined(separator: ", ")
-        }
-        switch w.status {
-        case "review": return "a reviewer asked for changes"
-        case "draft":  return w.pr.map { "#\($0.number) is a draft — yours, not yet offered" } ?? "a draft"
-        case "stale":
-            var s = "last commit \(w.ageDays) days ago"
-            if w.atRisk > 0 { s += " · " + Self.commits(w.atRisk) + " only here" }
-            return s
-        case "empty":  return "no commits ahead of \(w.base) — review local files before removal"
-        case "merged": return w.pr.map { "landed in #\($0.number)" } ?? "landed"
-        case "trunk":  return "the base branch itself"
-        default: break
-        }
-        if let pr = w.pr, !pr.endemic.isEmpty {
-            return "#\(pr.number) — failing across the repo, so not yours"
-        }
-        if w.dirty > 0 {
-            return "\(w.dirty) uncommitted" + (w.atRisk > 0 ? " · \(w.atRisk) unpushed" : "")
-        }
-        if w.atRisk > 0 { return Self.commits(w.atRisk) + " only on this machine" }
-        return w.meaning
     }
 
     /// A size, with the unit spelled far enough to be a unit. `348M` sitting in
@@ -577,247 +445,16 @@ final class Store: ObservableObject {
     static func human(_ kb: Int) -> String { DiskSize.human(kb) }
 }
 
-// MARK: - insight
-//
-// A list of worktrees is not insight; you already knew you had branches. These
-// are the three things the data knows that you do not: what you could lose,
-// what it is costing, and how much of it has quietly died.
+// MARK: - reclaim
 
 extension Store {
-    /// Work that exists on this machine and nowhere else. The only number here
-    /// that describes a *risk* rather than a cost — if the disk failed this
-    /// morning, this is what would not come back.
-    struct Risk {
-        let items: [Worktree]
-        /// Commits on no remote that someone else wrote — review checkouts,
-        /// mostly. Counted so the card can say they were left out, rather
-        /// than the total silently shrinking.
-        let others: Int
-        let othersIn: Int
-        var commits: Int { items.reduce(0) { $0 + $1.atRisk } }
-        var dirtyFiles: Int { items.reduce(0) { $0 + $1.wouldLose } }
-        var withCommits: Int { items.filter { $0.atRisk > 0 }.count }
-        var withChanges: Int { items.filter { $0.wouldLose > 0 }.count }
-    }
-
-    var risk: Risk {
-        let rows = envelope?.worktrees ?? []
-        let foreign = rows.filter { $0.unpushed > $0.atRisk }
-        return Risk(items: rows
-                        .filter { $0.atRisk > 0 || $0.wouldLose > 0 }
-                        .sorted { ($0.atRisk, $0.wouldLose) > ($1.atRisk, $1.wouldLose) },
-                    others: foreign.reduce(0) { $0 + $1.unpushed - $1.atRisk },
-                    othersIn: foreign.count)
-    }
-
-    struct RepoWeight: Identifiable {
-        /// The repo's identity, its `.git` path: two repos can share a name.
-        let id: String
-        let name: String
-        let total: Int
-        let reclaim: Int
-        /// Whether any of its rebuildable output was measured. Zero measured
-        /// and nothing measured are different answers.
-        let measured: Bool
-        var keep: Int { max(total - reclaim, 0) }
-    }
-
-    /// Disk by repo, biggest first. Per repo rather than per worktree because
-    /// the actionable unit is "this project is eating the disk", and fifteen
-    /// worktrees of one monorepo is one decision, not fifteen.
-    var weights: [RepoWeight] {
-        var totals: [String: (name: String, total: Int, reclaim: Int, measured: Bool)] = [:]
-        for w in envelope?.worktrees ?? [] where w.sizeKb > 0 {
-            let id = w.repoId ?? w.repo
-            var e = totals[id] ?? (w.repo, 0, 0, false)
-            e.total += w.sizeKb
-            e.reclaim += max(w.reclaimKb, 0)
-            e.measured = e.measured || w.reclaimKb >= 0
-            totals[id] = e
-        }
-        return totals.map { RepoWeight(id: $0.key, name: $0.value.name, total: $0.value.total,
-                                       reclaim: $0.value.reclaim, measured: $0.value.measured) }
-            .sorted { $0.total > $1.total }
-    }
-
-    /// A next move, with its payoff attached.
-    struct Move: Identifiable {
-        let title: String
-        let detail: String
-        /// What to do about it, if it is something the app can do. Carrying the
-        /// action rather than a string means the recommendation and the button
-        /// cannot disagree about what "this" is.
-        let action: Action?
-        let tint: Color
-        /// Where to go to decide, when the decision is not the app's to make.
-        var handoff: Worktree? = nil
-        var id: String { title }
-    }
-
-    /// The moves worth making, most urgent first, and never more than three.
-    ///
-    /// One was too few: the rule below is an ordered first-match, so a single
-    /// blocked PR hid a hundred gigabytes of reclaimable build output behind
-    /// it for as long as the PR stayed blocked — and a blocked PR can stay
-    /// blocked for a week. Three is the cap because the order *is* the advice,
-    /// and a list long enough to skim stops being advice at all.
-    var moves: [Move] {
-        guard let env = envelope else { return [] }
-        var out: [Move] = []
-        // Anything whose own dry run came back empty is not offered again
-        // until the next refresh.
-        func live(_ m: Move) -> Bool { m.action.map { !retired.contains($0.id) } ?? true }
-        if let first = env.worktrees.first(where: { $0.status == "blocked" || $0.status == "review" }) {
-            // A sentence, like every other move, rather than a bare label.
-            out.append(Move(title: (first.status == "review" ? "Changes requested on " : "A check is failing on ")
-                                + first.name,
-                            detail: reason(first), action: nil, tint: Palette.status("blocked"), handoff: first))
-        }
-        if env.worktrees.contains(where: { $0.folder != nil }) {
-            // One offer, in the Folders page's words, for the same set it
-            // calls safe. A merged PR's stray edits are among them, saved first.
-            let safe = removalCandidates
-            if !safe.isEmpty {
-                let kb = safe.reduce(0) { $0 + max($1.sizeKb, 0) }
-                let edits = safe.filter(\.removalDiscards).reduce(0) { $0 + $1.wouldLose }
-                out.append(Move(title: "Clear " + Store.count(safe.count, "safe folder")
-                                    + (kb > 0 ? ", \(Store.human(kb))" : ""),
-                                detail: "nothing in them exists only on this Mac"
-                                    + (edits > 0 ? "; " + Store.count(edits, "stray edit") + " from merged PRs saved first" : ""),
-                                action: Store.removeAction(safe), tint: Palette.reclaim))
-            }
-        } else {
-        let leftovers = (envelope?.worktrees ?? []).filter(\.removalDiscards)
-        if !leftovers.isEmpty {
-            let kb = leftovers.reduce(0) { $0 + max($1.sizeKb, 0) }
-            let edits = leftovers.reduce(0) { $0 + $1.wouldLose }
-            out.append(Move(title: (leftovers.count == 1 ? "Remove a merged worktree" : "Remove \(leftovers.count) merged worktrees")
-                                + (kb > 0 ? ", \(Store.human(kb))" : ""),
-                            detail: "their pull requests merged; " + Store.count(edits, "uncommitted change")
-                                + " held them back and will be saved first",
-                            action: Action(kind: .reap, paths: leftovers.map(\.path), discardChanges: true),
-                            tint: Palette.reclaim))
-        }
-        let ready = removalCandidates.filter(\.removalReady)
-        let pending = removalCandidates.filter { !$0.removalReady }
-        if !ready.isEmpty {
-            let kb = ready.reduce(0) { $0 + max($1.sizeKb, 0) }
-            out.append(Move(title: "Review removal of " + Store.count(ready.count, "eligible worktree"),
-                            detail: "up to \(Store.human(kb)); local files were checked and protected files will be archived",
-                            action: Action(kind: .reap, paths: ready.map(\.path)), tint: Palette.reclaim))
-        } else if !pending.isEmpty {
-            out.append(Move(title: "Check " + Store.count(pending.count, "finished worktree"),
-                            detail: "local files have not been checked yet; this opens a preview",
-                            action: Action(kind: .reap, paths: pending.map(\.path)), tint: Palette.reclaim))
-        } else if let kept = env.worktrees.first(where: { ["merged", "empty"].contains($0.status) && $0.removalBlocked }) {
-            out.append(Move(title: "Finished work is being kept",
-                            detail: kept.removal?.reason ?? "Review local files first",
-                            action: nil, tint: Palette.status("stale"), handoff: kept))
-        }
-        }
-        // The number and the button have to come from one query.
-        //
-        // This offered "Reclaim 97GB of build output" and ran `clean --stale`,
-        // which on this machine reclaims *nothing*: a worktree untouched for
-        // sixty days was cleaned long ago or never built. The title took the
-        // whole-machine figure, the action took the forgotten-only filter, and
-        // the gap between them was the worst sentence in the app — a promise
-        // of ninety-seven gigabytes answered with "nothing reclaimable under
-        // that filter".
-        let staleKb = env.worktrees
-            .filter { ["stale", "merged", "empty"].contains($0.status) }
-            .reduce(0) { $0 + max($1.reclaimKb, 0) }
-        let allKb = disk?.reclaim ?? 0
-        if staleKb > (2 << 20) {
-            out.append(Move(title: "Reclaim \(Store.human(staleKb)) from forgotten work",
-                            detail: "build output in finished branches or branches without a recent commit",
-                            action: Action(kind: .clean, paths: reclaimCandidates(staleOnly: true).map(\.path), staleOnly: true), tint: Palette.reclaim))
-        } else if allKb > (20 << 20) {
-            // Where the disk actually is. Most of it sits in the repos
-            // themselves, which no amount of reaping reaches.
-            out.append(Move(title: "Reclaim \(Store.human(allKb)) of build output",
-                            detail: "mostly in the repos themselves, not in worktrees — you will need to reinstall before building again",
-                            action: Action(kind: .clean, paths: reclaimCandidates().map(\.path)), tint: Palette.reclaim))
-        }
-        // Work that exists only here is the At Risk card's, which lists it
-        // and lands on each one; a move that said the same number again,
-        // with only "Open in Terminal" to act on, was the third copy on the
-        // page. Quiet branches are Folders' question now.
-        return Array(out.filter(live).prefix(3))
-    }
-
-    /// Removing a set of worktrees, with the flags the set needs: folder
-    /// rules when the engine judged them as folders, and save-first when a
-    /// merged PR's stray edits are among them.
-    static func removeAction(_ ws: [Worktree]) -> Action {
-        Action(kind: .reap, paths: ws.map(\.path),
-               discardChanges: ws.contains(where: \.removalDiscards),
-               folders: ws.contains { $0.folder != nil })
-    }
-
-    var removalCandidates: [Worktree] {
-        (envelope?.worktrees ?? []).filter(\.removable)
-    }
-
-    /// What cleaning up could free — the balloon's number, the Disk badge and
-    /// the Disk page's headline, all from one calculation.
+    /// What cleaning up could free — the header line and the balloon's number,
+    /// from one calculation.
     var freeable: DiskBalloon.Freeable? { DiskBalloon.freeable(envelope?.worktrees ?? []) }
 
-    func reclaimCandidates(staleOnly: Bool = false) -> [Worktree] {
-        (envelope?.worktrees ?? []).filter {
-            $0.reclaimKb > 0 && (!staleOnly || ["stale", "merged", "empty"].contains($0.status))
-        }
-    }
-
-    /// One row per repository: where the work, the waiting and the waste
-    /// actually are.
-    ///
-    /// Nothing else in the window answers this. The sidebar counts by *kind*
-    /// across every repo at once, the worktree list is a flat fifty-seven rows,
-    /// and Disk counts bytes. But the decision a person makes is per project —
-    /// "ec-website has six forgotten branches and forty-four commits that exist
-    /// nowhere else" is one afternoon's work, and it is invisible in every
-    /// other view here.
-    struct RepoRow: Identifiable {
-        let id: String
-        let name: String
-        let path: String
-        let worktrees: Int
-        let needs: Int
-        /// Folders safe to delete, as the Folders page counts them.
-        let safe: Int
-        let unpushed: Int
-        let oldestDays: Int
-        let reclaim: Int
-    }
-
-    /// Ranked by what would make you open it: something waiting on you first,
-    /// then work that exists only here, then forgotten branches. Disk is
-    /// deliberately *not* in the ranking — it has its own section, and letting
-    /// bytes sort this list buries a blocked PR under a big `node_modules`.
-    var repoRows: [RepoRow] {
-        var by: [String: [Worktree]] = [:]
-        for w in envelope?.worktrees ?? [] where w.status != "trunk" {
-            by[w.repoId ?? w.repo, default: []].append(w)
-        }
-        return by.map { repoId, ws in
-            RepoRow(id: repoId, name: ws[0].repo,
-                    path: ws.first(where: \.primary)?.path ?? ws[0].path,
-                    worktrees: ws.count,
-                    needs: ws.filter { $0.status == "blocked" || $0.status == "review" }.count,
-                    safe: ws.filter { $0.folder?.verdict == "safe" }.count,
-                    unpushed: ws.reduce(0) { $0 + max($1.atRisk, 0) },
-                    oldestDays: ws.filter { $0.ageDays < 9999 }.map(\.ageDays).max() ?? 0,
-                    reclaim: ws.reduce(0) { $0 + max($1.reclaimKb, 0) })
-        }
-        .filter { $0.needs + $0.safe + $0.unpushed > 0 || $0.worktrees > 1 }
-        .sorted {
-            if $0.needs != $1.needs { return $0.needs > $1.needs }
-            if $0.unpushed != $1.unpushed { return $0.unpushed > $1.unpushed }
-            if $0.safe != $1.safe { return $0.safe > $1.safe }
-            return $0.worktrees > $1.worktrees
-        }
-    }
+    /// Every checkout with rebuildable output, main checkouts included: most
+    /// of the caches live in the repos themselves, which no delete reaches.
+    var cacheCandidates: [Worktree] { (envelope?.worktrees ?? []).filter { $0.reclaimKb > 0 } }
 }
 
 
@@ -1058,9 +695,6 @@ extension Store {
                         }
                     }
                     p.stage = .reviewing
-                    // Asked and answered "nothing". The offer that led here
-                    // stops being made.
-                    if parsed.paths.isEmpty { self.retired.insert(action.id) }
                 } else {
                     p.error = "could not read the plan:\n" + text
                     p.stage = .failed

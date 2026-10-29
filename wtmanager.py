@@ -85,6 +85,23 @@ SIGNATURES = {
 }
 
 
+# The Cache Directory Tagging spec (bford.info/cachedir): a folder holding a
+# CACHEDIR.TAG that starts with this line declares everything inside it
+# regenerable. Cargo tags every `target/`, and so do other build tools. It is
+# the tool's own word, and it is what keeps a crate's test certificate, copied
+# into `target/debug/build/*/out/` by a build script, from turning 62GB of
+# Rust output into "unknown" that is neither counted nor cleaned.
+CACHEDIR_SIGNATURE = b"Signature: 8a477f597d28d172789f06886806bc55"
+
+
+def cache_tagged(full: str) -> bool:
+    try:
+        with open(os.path.join(full, "CACHEDIR.TAG"), "rb") as f:
+            return f.read(len(CACHEDIR_SIGNATURE)) == CACHEDIR_SIGNATURE
+    except OSError:
+        return False
+
+
 def signed(full: str) -> bool:
     """Whether `full`, or the lone folder it wraps, carries a known generator's
     fingerprint. Wrappers count only when they hold nothing else: git reports
@@ -161,7 +178,7 @@ def classify_ignored(name: str, root: Optional[str] = None) -> str:
         if full and precious_inside(full):
             return UNKNOWN
         return SAFE
-    if full and signed(full) and not precious_inside(full):
+    if full and (signed(full) or cache_tagged(full)) and not precious_inside(full):
         return SAFE
     return UNKNOWN
 
@@ -171,7 +188,7 @@ def recognized_output(name: str, root: str) -> bool:
     base = name.rstrip("/").split("/")[-1]
     full = os.path.join(root, name)
     return (base in REGENERABLE
-            or (base in SHAPED and SHAPED[base](full)) or signed(full))
+            or (base in SHAPED and SHAPED[base](full)) or signed(full) or cache_tagged(full))
 
 
 def record_ignored(w: Worktree, entry: str) -> str:
@@ -207,7 +224,18 @@ def record_ignored(w: Worktree, entry: str) -> str:
 # `user_credential.d.ts` — and walking into them turned every `node_modules`
 # into "unknown" and its SDK files into "secrets" for reap to archive.
 DEPENDENCY_STORES = {"node_modules", "bower_components", ".pnpm", "site-packages",
-                     "vendor", "Pods", "Carthage"}
+                     "vendor", "Pods", "Carthage",
+                     # SwiftPM: Xcode's DerivedData/SourcePackages and `swift
+                     # build`'s .build/checkouts. Measured: clerk-ios ships
+                     # `fetch-1password-secrets.sh`, and one copy per
+                     # DerivedData shielded 26GB of Xcode output.
+                     "SourcePackages", "checkouts"}
+
+# Built products. Xcode copies the provisioning profile into every signed
+# bundle as `embedded.mobileprovision`; the original lives in Xcode's own
+# store and the copy comes back with the next build. A key found inside a
+# bundle is the bundle's, not the person's.
+BUILT_BUNDLES = (".app", ".appex", ".framework", ".xctest", ".xcarchive", ".dSYM")
 
 
 def precious_paths(full: str) -> List[str]:
@@ -215,15 +243,16 @@ def precious_paths(full: str) -> List[str]:
 
     An unreadable subtree is uncertain, not safe. Callers must preserve it.
     Protected directories are kept whole rather than inspecting their secrets.
-    Dependency stores are looked into one level only: a `.env` someone
-    dropped at the top of one is theirs; the packages below are not.
+    Dependency stores and tagged caches are looked into one level only: a
+    `.env` someone dropped at the top of one is theirs; what the installer or
+    build wrote below is not.
     """
     if not os.path.isdir(full) or os.path.islink(full):
         return []
     hits = []
     def unreadable(error):
         raise error
-    top = os.path.basename(full.rstrip("/")) in DEPENDENCY_STORES
+    top = os.path.basename(full.rstrip("/")) in DEPENDENCY_STORES or cache_tagged(full)
     for parent, dirs, files in os.walk(full, followlinks=False, onerror=unreadable):
         for name in dirs + files:
             if any(rx.match(name) for rx in _PRECIOUS_RE):
@@ -232,7 +261,7 @@ def precious_paths(full: str) -> List[str]:
                     dirs.remove(name)
         if top:
             break
-        dirs[:] = [d for d in dirs if d not in DEPENDENCY_STORES]
+        dirs[:] = [d for d in dirs if d not in DEPENDENCY_STORES and not d.endswith(BUILT_BUNDLES)]
     return sorted(hits)
 
 
@@ -1576,7 +1605,7 @@ def forget_size(path: str) -> None:
         _SIZE_CACHE.pop(k, None)
 
 
-def du_many(paths: List[str], timeout: int = 180) -> Dict[str, int]:
+def du_many(paths: List[str], timeout: int = 600) -> Dict[str, int]:
     """Size several paths in one `du`.
 
     One spawn per path is the whole cost of a sized scan: a monorepo worktree
@@ -1733,6 +1762,10 @@ def measure(w: Worktree, want_detail: bool = True) -> None:
         if kb > 0:
             reclaim += kb
             w.reclaim_paths.append(entry)
+    # A du that timed out is not a checkout with nothing to clean: tens of
+    # gigabytes of Cargo output once read as 0 here. Unmeasured says so.
+    if safe and all(sizes.get(full, -1) < 0 for _, full in safe):
+        reclaim = -1
     w.reclaim_kb = reclaim
 
 

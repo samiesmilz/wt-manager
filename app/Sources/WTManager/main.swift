@@ -63,14 +63,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             case "r": self.store.refresh(measureDisk: true); return nil
             case "f": self.store.focusTheFilter(); return nil
             case ",": self.store.showingSettings = true; return nil
-            case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-                let i = Int(event.charactersIgnoringModifiers ?? "1")! - 1
-                let order = self.store.sectionOrder
-                if i < order.count {
-                    self.store.query = ""; self.store.repoFilter = nil
-                    self.store.section = order[i]
-                }
-                return nil
             default: return event
             }
         }
@@ -161,8 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             m.isEnabled = false
             menu.addItem(m)
         }
-        if store.attention > 0 {
-            let m = NSMenuItem(title: "\(store.attention) need you", action: nil, keyEquivalent: "")
+        if let f = store.freeable, f.totalKb > 0 {
+            let m = NSMenuItem(title: "\(Store.human(f.totalKb)) you could free", action: nil, keyEquivalent: "")
             m.isEnabled = false
             menu.addItem(m)
         }
@@ -229,18 +221,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     static func limits(for screen: NSScreen?, contentNeeds: CGFloat) -> Limits {
         let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 850)
         let margin: CGFloat = 48
-        // Half the screen for the *content*, plus the sidebar on top of it.
-        // The sidebar is chrome — a fixed 177pt of navigation that never holds
-        // any of the data — so charging the worktree table for it made the
-        // table narrower than half the screen, which is not what "half the
-        // screen" was meant to promise.
-        let maxW = floor(vf.width / 2) + Sidebar.railWidth
+        // Half the screen: one list of folders needs no more.
+        let minW: CGFloat = 540
+        let maxW = max(minW, floor(vf.width / 2))
         let maxH = max(480, floor(vf.height - margin))
-        let minW: CGFloat = 640
         let minH: CGFloat = 480
         // A ceiling is not a default: comfortably under it, so there is room
         // to drag either way.
-        let idealW = Swift.min(Swift.max(minW, 780), maxW)
+        let idealW = Swift.min(Swift.max(minW, 680), maxW)
         let idealH = Swift.min(Swift.max(minH, ceil(contentNeeds)), maxH)
         return Limits(min: NSSize(width: minW, height: minH),
                       max: NSSize(width: maxW, height: maxH),
@@ -534,7 +522,6 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
             if let nudge = try? JSONDecoder().decode(MergeNudge.self, from: Data(json.utf8)) {
                 draw(VStack(spacing: 20) {
                     MergeSpeechBanner(store: store, nudge: nudge)
-                    LinkedPRCard(store: store).padding(.horizontal, 14)
                     Text("Floating mascot message").font(.system(size: 12, weight: .medium))
                     MergeSpeechBanner(store: store, nudge: nudge, compact: true)
                         .frame(width: 320, height: 180)
@@ -564,8 +551,6 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         }
         NSApp.appearance = NSAppearance(named: appearance)
         if feedbackOnly {
-            draw(CleanupScoreCard(store: store).padding(20).background(Color(nsColor: .windowBackgroundColor)),
-                 size: CGSize(width: 500, height: 400), appearance: appearance, to: "\(name)-rewards.png")
             draw(PixelCelebration(previewElapsed: 0.9).background(Color(nsColor: .windowBackgroundColor)),
                  size: CGSize(width: 500, height: 300), appearance: appearance, to: "\(name)-celebration.png")
             store.updates.loadSnapshotRelease(Data(#"{"tag_name":"v0.4.0","html_url":"https://github.com/samiesmilz/wt-manager/releases/tag/v0.4.0","draft":false,"prerelease":false}"#.utf8))
@@ -575,25 +560,9 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
             continue
         }
         for (suffix, size) in sizes {
-            for section in ["overview", "folders", "repos", "disk"] {
-                store.section = section
-                draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
-                     size: size, appearance: appearance, to: "\(name)-\(section)\(suffix).png")
-            }
+            draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                 size: size, appearance: appearance, to: "\(name)-folders\(suffix).png")
         }
-        // The overview is a scroll view, and a window-sized picture shows only
-        // its first two cards. Tall enough to show every card once.
-        store.section = "overview"
-        draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
-             size: CGSize(width: lim.ideal.width, height: 2000), appearance: appearance,
-             to: "\(name)-overview-tall.png")
-        // Disk scrolls too, and its actions sit below the first screen.
-        store.section = "disk"
-        draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
-             size: CGSize(width: lim.ideal.width, height: 2000), appearance: appearance,
-             to: "\(name)-disk-tall.png")
-        draw(CleanupScoreCard(store: store).padding(20).background(Color(nsColor: .windowBackgroundColor)),
-             size: CGSize(width: 500, height: 400), appearance: appearance, to: "\(name)-rewards.png")
         draw(PixelCelebration(previewElapsed: 0.9).background(Color(nsColor: .windowBackgroundColor)),
              size: CGSize(width: 500, height: 300), appearance: appearance, to: "\(name)-celebration.png")
         draw(SettingsSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
@@ -604,7 +573,6 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         if let risky = store.envelope?.worktrees
             .filter({ $0.atRisk > 0 && !$0.soloLog.isEmpty && $0.status != "trunk" })
             .max(by: { $0.atRisk < $1.atRisk }) {
-            store.section = risky.folder != nil ? "folders" : "repos"
             // Filtered to it, so the open row is the first one rather than
             // the ninth — a snapshot of a scroll view shows the top of it.
             store.query = risky.branch ?? risky.repo
@@ -672,7 +640,6 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
                  size: CGSize(width: 740, height: 680), appearance: appearance, to: "\(name)-\(file).png")
             store.plan = nil
         }
-        store.section = "overview"
         for (file, result) in [("completion", Store.samplePlan(.done)), ("completion-partial", partial)] {
             store.completion = result
             draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
@@ -775,7 +742,7 @@ func snapshotShow(into dir: String, envelopePath: String, path: String) {
         try? rep.representation(using: .png, properties: [:])?
             .write(to: URL(fileURLWithPath: dir).appendingPathComponent("show.png"))
     }
-    print("section=\(store.section) filter=\(store.repoFilter ?? "-") focus=\(store.focusPath ?? "-")")
+    print("query=\(store.query) focus=\(store.focusPath ?? "-")")
 }
 
 // Top-level code already runs on the main thread; Swift 6 just needs telling.

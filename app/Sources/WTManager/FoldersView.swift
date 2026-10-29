@@ -119,7 +119,7 @@ struct FoldersView: View {
         let rows = allRows
         VStack(spacing: 0) {
             header(rows.filter(searched))
-            FilterBar(store: store)
+            if !rows.isEmpty { FilterBar(store: store) }
             Divider().opacity(0.35)
             if scrolls {
                 ScrollViewReader { proxy in
@@ -141,51 +141,104 @@ struct FoldersView: View {
 
     // MARK: header
 
-    /// The same header as the worktree lists: title, one line of what the
-    /// page is, a count, and below them the controls. It stays put while the
-    /// folders scroll.
+    /// Title, what could be freed, and the two sweeps: caches everywhere,
+    /// and every folder that loses nothing. It stays put while the folders
+    /// scroll.
     private func header(_ rows: [Row]) -> some View {
         let safe = rows.filter { $0.verdict == .safe }
+        let caches = store.cacheCandidates
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Folders")
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
-                    Text("deleting a folder loses only what isn't on GitHub")
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
-                }
+            HStack(alignment: .firstTextBaseline) {
+                Text("Folders")
+                    .font(.system(size: 19, weight: .semibold, design: .rounded))
                 Spacer()
-                Text(verbatim: "\(rows.count)")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Palette.ink(Palette.section("folders")))
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().fill(Palette.wash(Palette.section("folders"))))
-                    .accessibilityLabel("\(rows.count) folders")
+                freeLine
             }
-            if !rows.isEmpty {
+            if let e = store.error {
+                notice(e, tint: Palette.status("blocked"), mono: true)
+            }
+            if let notices = store.envelope?.notices, !notices.isEmpty {
+                notice(notices.joined(separator: "\n"), tint: Palette.status("stale"))
+            }
+            if !rows.isEmpty || !caches.isEmpty {
+                // All four, always, when there are folders: a pill that comes
+                // and goes moves the others under the pointer. With none, four
+                // zeros say nothing the empty list does not.
                 let tallies = HStack(spacing: 7) {
-                    // All four, always: a pill that comes and goes moves the
-                    // others under the pointer.
-                    ForEach(Verdict.allCases, id: \.self) { v in tally(v, rows) }
+                    if !rows.isEmpty {
+                        ForEach(Verdict.allCases, id: \.self) { v in tally(v, rows) }
+                    }
                 }
-                let sweep = clearButton("Clear everything safe · \(Store.count(safe.count, "folder")), "
-                                        + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
-                                        rows: safe, prominent: true)
-                // One line when it fits; the sweep on its own line when not.
+                let sweeps = HStack(spacing: 8) {
+                    if !caches.isEmpty {
+                        cleanButton(caches)
+                    }
+                    if !safe.isEmpty {
+                        clearButton("Delete \(safe.count) safe · "
+                                    + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
+                                    rows: safe, prominent: true)
+                    }
+                }
+                // One line when it fits; the sweeps on their own line when not.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
                         tallies
                         Spacer(minLength: 8)
-                        if !safe.isEmpty { sweep }
+                        sweeps
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         tallies
-                        if !safe.isEmpty { sweep }
+                        sweeps
                     }
                 }
             }
         }
-        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
+        .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
+    }
+
+    /// The one number: what deleting and cleaning could give back.
+    @ViewBuilder
+    private var freeLine: some View {
+        if let f = store.freeable, f.totalKb > 0 {
+            Text("\(Store.human(f.totalKb)) you could free")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.inkReclaim)
+                .help([f.cachesKb > 0 ? "\(Store.human(f.cachesKb)) of caches" : nil,
+                       f.finishedCount > 0 ? "\(Store.human(f.finishedKb)) in safe folders" : nil]
+                      .compactMap { $0 }.joined(separator: " · "))
+        } else if store.disk == nil, store.envelope != nil {
+            Text(store.phase == "measuring disk" ? "measuring disk…" : "disk not measured yet")
+                .font(.system(size: 11)).foregroundStyle(Palette.muted)
+        }
+    }
+
+    private func notice(_ text: String, tint: Color, mono: Bool = false) -> some View {
+        Text(text)
+            .font(.system(size: 11, design: mono ? .monospaced : .default))
+            .foregroundStyle(Palette.ink(tint)).textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.wash(tint)))
+    }
+
+    /// Caches in every checkout, main ones included: most build output lives
+    /// in the repos themselves, which no folder delete reaches.
+    private func cleanButton(_ ws: [Worktree]) -> some View {
+        let kb = ws.reduce(0) { $0 + max($1.reclaimKb, 0) }
+        return Button {
+            store.preview(Store.Action(kind: .clean, paths: ws.map(\.path)))
+        } label: {
+            Label("Clean caches · \(Store.human(kb))", systemImage: "sparkles")
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .foregroundStyle(Palette.ink(Palette.reclaim))
+                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.wash(Palette.reclaim)))
+                .fixedSize()
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Build output and dependencies in every checkout, main ones included. "
+              + "Preview first; an install or build puts them back.")
     }
 
     /// A filter, since a count that looks like a pill gets clicked. A zero is
@@ -232,7 +285,7 @@ struct FoldersView: View {
             } else if groups.isEmpty {
                 HStack(spacing: 6) {
                     Text("No folders match.").foregroundStyle(Palette.muted)
-                    Button("Clear the filter") { store.query = ""; store.repoFilter = nil }
+                    Button("Clear the filter") { store.query = "" }
                         .buttonStyle(.link)
                 }
                 .font(.system(size: 12))
@@ -418,7 +471,7 @@ private struct FolderRow: View {
         VStack(alignment: .leading, spacing: 0) {
             line
             if expanded {
-                WorktreeDetail(store: store, worktree: row.worktree, removes: false)
+                WorktreeDetail(store: store, worktree: row.worktree)
                     .padding(.leading, 52).padding(.top, 2).padding(.bottom, 12)
                     .transition(.opacity)
             }
@@ -472,9 +525,25 @@ private struct FolderRow: View {
                 }
             }
             .help(w.path)
-            Text(w.sizeKb > 0 ? Store.human(w.sizeKb) : "—")
-                .font(.system(size: 11, design: .rounded)).monospacedDigit()
-                .foregroundStyle(Palette.muted).frame(width: 52, alignment: .trailing)
+            // The size, and under it the part a build puts back. A folder
+            // holding unsaved work cannot go, but its caches can: measured,
+            // 44GB of a 45GB Rust worktree was `target/`.
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(w.sizeKb > 0 ? Store.human(w.sizeKb) : "—")
+                    .font(.system(size: 11, design: .rounded)).monospacedDigit()
+                    .foregroundStyle(Palette.muted)
+                if w.reclaimKb > 0 {
+                    Button("clean \(Store.human(w.reclaimKb))") {
+                        store.preview(Store.Action(kind: .clean, paths: [w.path]))
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(Palette.inkReclaim)
+                    .help("Clean this folder's caches (preview first). The folder stays.")
+                    .accessibilityLabel("Clean \(Store.human(w.reclaimKb)) of caches in \(row.name)")
+                }
+            }
+            .frame(width: 72, alignment: .trailing)
             SwiftUI.Group {
                 if v.lossless {
                     Button(action: delete) { Image(systemName: "trash") }
@@ -501,6 +570,11 @@ private struct FolderRow: View {
                 Button("Delete…", action: delete)
             } else if row.anyway {
                 Button("Delete anyway…", action: delete)
+            }
+            if w.reclaimKb > 0 {
+                Button("Clean caches · \(Store.human(w.reclaimKb))…") {
+                    store.preview(Store.Action(kind: .clean, paths: [w.path]))
+                }
             }
             Button(expanded ? "Hide details" : "Show details", action: toggle)
             Button("Reveal in Finder") { store.reveal(w) }

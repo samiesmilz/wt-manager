@@ -166,6 +166,43 @@ class Classification(unittest.TestCase):
         open(os.path.join(root, "env", "prod.pem"), "w").close()
         self.assertEqual(T.classify_ignored("env/", root), T.UNKNOWN, "a key inside")
 
+    def test_a_tagged_cache_is_not_shielded_by_a_build_scripts_fixture(self):
+        # Measured: a crate's build script copied a test certificate into
+        # target/debug/build/*/out/, and 62GB of Cargo output became
+        # "unknown": neither counted as rebuildable nor cleaned.
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        out = os.path.join(root, "target", "debug", "build", "ring-1", "out")
+        os.makedirs(out)
+        open(os.path.join(out, "test.pem"), "w").close()
+        self.assertEqual(T.classify_ignored("target/", root), T.UNKNOWN, "untagged")
+        with open(os.path.join(root, "target", "CACHEDIR.TAG"), "w") as fh:
+            fh.write("Signature: 8a477f597d28d172789f06886806bc55\n# cargo\n")
+        self.assertEqual(T.classify_ignored("target/", root), T.SAFE)
+        # Any name, once tagged; a secret at its top is still seen.
+        os.rename(os.path.join(root, "target"), os.path.join(root, "out-cache"))
+        self.assertEqual(T.classify_ignored("out-cache/", root), T.SAFE)
+        open(os.path.join(root, "out-cache", ".env"), "w").close()
+        self.assertEqual(T.classify_ignored("out-cache/", root), T.UNKNOWN)
+
+    def test_xcode_output_is_not_shielded_by_its_own_copies(self):
+        # Measured: a SwiftPM checkout's `fetch-1password-secrets.sh` and the
+        # `embedded.mobileprovision` Xcode copies into every signed bundle
+        # turned 26GB of DerivedData into "unknown".
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        dd = os.path.join(root, "build", "DerivedData")
+        scripts = os.path.join(dd, "SourcePackages", "checkouts", "clerk-ios", "scripts")
+        app = os.path.join(dd, "Build", "Products", "Debug-iphoneos", "App.app")
+        os.makedirs(scripts)
+        os.makedirs(app)
+        open(os.path.join(scripts, "fetch-1password-secrets.sh"), "w").close()
+        open(os.path.join(app, "embedded.mobileprovision"), "w").close()
+        self.assertEqual(T.classify_ignored("build/", root), T.SAFE)
+        # A profile the person keeps loose in the output is still theirs.
+        open(os.path.join(dd, "dist.mobileprovision"), "w").close()
+        self.assertEqual(T.classify_ignored("build/", root), T.UNKNOWN)
+
     def test_a_precious_file_inside_a_regenerable_dir_shields_it(self):
         # What git actually reports for dist/.env is one line, "dist/": the
         # traditional listing collapses a wholly-ignored directory, so the

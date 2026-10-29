@@ -15,25 +15,23 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 0) {
-            Sidebar(store: store)
-                .frame(width: Sidebar.railWidth - 1)
-            Rectangle().fill(.primary.opacity(0.07)).frame(width: 1)
-            VStack(spacing: 0) {
-                Header(store: store)
-                UpdateBanner(store: store, updates: store.updates)
-                if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
-                    MergeSpeechBanner(store: store, nudge: nudge)
-                }
-                Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
-                if let completion = store.completion {
-                    CompletionBanner(store: store, plan: completion)
-                        .transition(.opacity)
-                }
-                content
-                Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
-                StatusBar(store: store)
+        // One page. The app does two things, delete folders and clean their
+        // caches, and both live on the folder list; a sidebar of four places
+        // was navigation for summaries of that one list.
+        VStack(spacing: 0) {
+            Header(store: store)
+            UpdateBanner(store: store, updates: store.updates)
+            if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
+                MergeSpeechBanner(store: store, nudge: nudge)
             }
+            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            if let completion = store.completion {
+                CompletionBanner(store: store, plan: completion)
+                    .transition(.opacity)
+            }
+            content
+            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            StatusBar(store: store)
         }
         // The window enforces the minimum via contentMinSize. Declaring it here
         // too makes the hosting view demand a size the window may not have yet,
@@ -47,171 +45,17 @@ struct RootView: View {
         .onChange(of: store.figure) { figure in
             if let coat = Mascot.drawnCoats[figure] { store.skin = coat }
         }
-        .onChange(of: store.section) { next in
-            // Status chips describe the current group. A selection from the
-            // previous group would silently empty the next one.
-            store.statusFilter = []
-        }
     }
 
     @ViewBuilder
     private var content: some View {
-        // Before anything else, and whatever section is selected: with no
-        // roots there is nothing for any of them to show, and five empty
-        // lists do not add up to the one question that is actually in the way.
+        // With no roots there is nothing to list, and the one question in
+        // the way is where the repositories are.
         if store.unconfigured {
             FirstRun(store: store)
         } else {
-            switch store.section {
-            case "overview": Overview(store: store)
-            case "disk":     DiskDetail(store: store)
-            case "folders":  FoldersView(store: store, open: openRow ?? store.focusPath)
-            default:         WorktreeList(store: store, section: store.section,
-                                          initiallyOpen: openRow)
-            }
+            FoldersView(store: store, open: openRow ?? store.focusPath)
         }
-    }
-}
-
-// MARK: - sidebar
-
-struct Sidebar: View {
-    /// The rail, hairline included. Named because the window's width ceiling
-    /// is measured against it: half the screen is promised to the content, and
-    /// the rail is added on top of that rather than taken out of it.
-    static let railWidth: CGFloat = 194
-    /// One entry, ground included: 12.5pt text on 5.5pt of padding either side,
-    /// plus the half-point that separates it from its neighbour.
-    static let rowHeight: CGFloat = 28
-
-    @ObservedObject var store: Store
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // The traffic lights end 23pt down — measured, not guessed — and
-            // only the sidebar owes them anything, since they sit entirely
-            // within its width. But clearing them by a hair is not the same as
-            // looking clear of them: 24pt puts the first row's tint directly
-            // under the green button. A whole row's height of air above the
-            // first row reads as deliberate, and the header keeps its own
-            // tighter padding because nothing overlaps it.
-            Color.clear.frame(height: 34)
-            PixelWordmark()
-                .padding(.horizontal, 17).padding(.bottom, 18)
-
-            // One place per job: what to do, the worktrees you made, the
-            // repos themselves, and the disk. Five status lists used to sort
-            // the same worktrees a second way under a "Worktrees" heading.
-            entry("overview", "Overview", "square.grid.2x2", nil)
-            // Every folder, as every other entry counts what its page lists.
-            // Green says some of them can go.
-            entry("folders", "Folders", "folder",
-                  store.envelope == nil || store.unconfigured ? "–" : "\(store.folderRows.count)",
-                  tint: store.folderRows.contains { $0.folder?.verdict == "safe" } ? Palette.reclaim : nil)
-            ForEach(store.allGroups) { g in
-                // A dash before the first envelope: "0 repos" is a claim
-                // nothing has established on a machine not yet scanned.
-                entry(g.id, g.title, icon(g.id),
-                      store.envelope == nil || store.unconfigured ? "–" : "\(g.items.count)",
-                      tint: g.items.isEmpty ? nil : Palette.section(g.id))
-            }
-            entry("disk", "Disk", "internaldrive", store.freeable.map { Store.human($0.totalKb) },
-                  tint: store.freeable == nil ? nil : Palette.reclaim)
-
-            Spacer(minLength: 12)
-            VStack(spacing: 7) {
-                Button { store.showingSettings = true } label: {
-                    Label("Watched folders", systemImage: "folder.badge.gearshape")
-                        .font(.system(size: 11))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Palette.muted)
-                .padding(.horizontal, 7)
-            }
-            .padding(.horizontal, 12).padding(.bottom, 15)
-        }
-        .frame(maxHeight: .infinity, alignment: .top)
-    }
-
-    private func icon(_ id: String) -> String {
-        switch id {
-        case "repos":  return "shippingbox"
-        default:       return "checkmark.circle"
-        }
-    }
-
-    /// One row, in the system's own sidebar idiom.
-    ///
-    /// The selected row used to be a saturated accent slab with white text on
-    /// it, which is a *button*, not a selection — it shouted louder than
-    /// anything in the content it was pointing at, and it made the rail the
-    /// loudest thing on the window. A pale accent ground with accent ink is
-    /// what every sidebar on this machine does, and it reads as selected
-    /// without competing.
-    private func entry(_ id: String, _ title: String, _ symbol: String,
-                       _ badge: String?, tint: Color? = nil) -> some View {
-        let on = store.section == id
-        // From the sidebar a page starts clean. A link from elsewhere (a
-        // folder's arrow, a project row) sets its filter and then the
-        // section, and keeps it.
-        return Button {
-            store.query = ""
-            store.repoFilter = nil
-            store.section = id
-        } label: {
-            HStack(spacing: 9) {
-                Image(systemName: symbol)
-                    .font(.system(size: 13)).frame(width: 18)
-                    .foregroundStyle(on ? Color.accentColor : (tint ?? Palette.muted))
-                Text(title).font(.system(size: 13))
-                    .foregroundStyle(on ? Color.accentColor : .primary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if let badge {
-                    // The count is read, so it takes the ink, not the mark.
-                    Text(badge).font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(on ? Color.accentColor : (tint.map(Palette.ink) ?? Palette.muted))
-                }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6)
-                .fill(on ? Palette.selection : .clear))
-        }
-        .buttonStyle(RowButtonStyle())
-        .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityRemoveTraits(on ? [] : .isSelected)
-        .padding(.horizontal, 9).padding(.vertical, 1)
-    }
-}
-
-/// A small bitmap alphabet, drawn on whole cells like the app's mascot.
-struct PixelWordmark: View {
-    private let glyphs: [Character: [String]] = [
-        "w": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
-        "t": ["00100", "00100", "11111", "00100", "00100", "00100", "00011"],
-        "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
-        "m": ["00000", "00000", "11011", "10101", "10101", "10101", "10101"],
-        "a": ["00000", "00000", "01110", "00001", "01111", "10001", "01111"],
-        "n": ["00000", "00000", "11110", "10001", "10001", "10001", "10001"],
-        "g": ["00000", "01111", "10001", "10001", "01111", "00001", "01110"],
-        "e": ["00000", "00000", "01110", "10001", "11111", "10000", "01111"],
-        "r": ["00000", "00000", "10110", "11001", "10000", "10000", "10000"],
-    ]
-    var body: some View {
-        Canvas { context, _ in
-            for (i, character) in "wt-manager".enumerated() {
-                for (y, row) in (glyphs[character] ?? []).enumerated() {
-                    for (x, pixel) in row.enumerated() where pixel == "1" {
-                        let rect = CGRect(x: (i * 6 + x) * 2, y: y * 2, width: 2, height: 2)
-                        context.fill(Path(rect), with: .color(i < 3 ? Color(red: 0.72, green: 0.36, blue: 0.17) : .primary))
-                    }
-                }
-            }
-        }
-        .frame(width: 118, height: 14)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("wt-manager")
     }
 }
 
@@ -271,22 +115,8 @@ struct Header: View {
                 MascotSwitcher(store: store)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            if !tags.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(tags) { tag in InsightTag(tag: tag) { store.section = tag.target } }
-                    Spacer(minLength: 0)
-                }
-            }
         }
         .padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 11)
-    }
-
-    /// Only the facts with no other home, and never more than three of them.
-    /// The cap is not decoration: a row that can wrap will wrap on the day
-    /// everything is wrong at once, which is the day the header most needs to
-    /// stay the size it was.
-    private var tags: [Insight] {
-        Array((store.envelope?.insights ?? []).filter(\.solo).prefix(3))
     }
 
     /// The engine's sentence, verbatim. Before an envelope exists there is
@@ -315,6 +145,7 @@ struct Header: View {
                 Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
                 Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()
+                Button("Watched folders…") { store.showingSettings = true }
                 Picker("Theme", selection: $store.theme) {
                     Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
                 }
@@ -391,41 +222,6 @@ struct MascotSwitcher: View {
     }
 }
 
-/// One clickable fact. The hue is on the mark, the wash and the edge; the words
-/// are ink, so it reads in both appearances (white on the stale orange is 2.1:1).
-struct InsightTag: View {
-    let tag: Insight
-    let action: () -> Void
-    private var mark: Color { Palette.tint(named: tag.tint) }
-    private var symbol: String {
-        switch tag.id {
-        case "need":       return "exclamationmark.circle.fill"
-        case "stale":      return "clock.badge.exclamationmark"
-        case "unpushed":   return "arrow.up.circle"
-        case "reclaim":    return "sparkles"
-        case "waiting":    return "person.2"
-        case "draft":      return "pencil.line"
-        case "finished":   return "checkmark.circle"
-        default:           return "eye.slash"
-        }
-    }
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 9.5, weight: .semibold))
-                    .foregroundStyle(mark)
-                Text(tag.label).font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Palette.ink(mark)).lineLimit(1)
-            }
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(Palette.wash(mark))
-                .overlay(Capsule().strokeBorder(Palette.edge(mark), lineWidth: 1)))
-        }
-        .buttonStyle(RowButtonStyle(radius: 12))
-        .help("Show " + tag.label)
-    }
-}
-
 /// Inventory: what there is, not what to do about it. It lives down here and
 /// not in the header because it is the least urgent thing on the window, and
 /// it was in both places at once — "57 worktrees" twice, "330G" twice.
@@ -438,13 +234,10 @@ struct StatusBar: View {
                 // an inventory of zero reads as a finding.
                 Text("no folders being watched yet")
             } else if let env = store.envelope {
-                Text("\(env.worktrees.count) worktrees")
-                Text("· \(Set(env.worktrees.map(\.repo)).count) repos")
+                Text(Store.count(store.folderRows.count, "folder"))
+                Text("· " + Store.count(Set(env.worktrees.map(\.repo)).count, "repo"))
                 if store.filtering {
-                    let shown = store.section == "folders"
-                        ? store.folderRows.filter(store.passes).count
-                        : store.groups.first(where: { $0.id == store.section })?.items.count ?? 0
-                    Text("· \(shown) shown")
+                    Text("· \(store.folderRows.filter(store.passes).count) shown")
                 }
             }
             Spacer()

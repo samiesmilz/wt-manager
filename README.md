@@ -59,12 +59,12 @@ The app and CLI share the engine inside the installed bundle, so they use the sa
 ## Your first five minutes
 
 1. **Choose watched folders.** Select a parent such as `~/dev`. wt-manager searches up to three directory levels deep for repositories.
-2. **Read Overview.** Get the next useful action, project summaries, and work that exists only on this machine.
-3. **Open Disk.** See space per repository, rebuildable output, and the latest measured growth. The first full scan can take a few minutes; counts appear first and disk measurement runs behind them.
+2. **Read the Folders page.** Every worktree folder, its size, and one verdict: safe to delete, in progress, unsaved work, or kept. The header says how much you could free. The first full scan can take a few minutes; counts appear first and disk measurement runs behind them.
+3. **Pick a cleanup.** **Clean caches** removes rebuildable output in every checkout, main ones included. **Delete N safe** removes every folder that loses nothing. Each row has its own **clean** link and delete button.
 4. **Review cleanup.** Read the exact paths and preservation details. Nothing is deleted during the preview.
 5. **Confirm deliberately.** Only confirmed completions earn reclaimed-space credit. Results remain available after the modal closes.
 
-The sidebar has one place per job: **Overview** (what to do next, and what is at risk), **Folders** (every worktree you made), **Repos** (the repositories themselves) and **Disk**. Folders and Repos together hold every checkout, once. Search either by repo, branch or folder name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder.
+The window is one page. Search by folder, branch or repo name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder.
 
 Folders answers what can go. It replaced the old status lists (All worktrees, Needs you, In flight, With others, Forgotten, Finished), which sorted the same worktrees by branch history and left "is it safe to delete?" to you.
 
@@ -86,34 +86,16 @@ The preview and confirmation are bound to the same reviewed set. If that set cha
 
 **Deletion is consequential.** Preserved local files are not a full checkout backup. Read the preview and keep your own backups. Rebuildable output must be installed or built again.
 
-## Make space. Get a little celebration.
+## A little celebration
 
-![Local reclaim badges and measured disk growth](docs/images/rewards.png)
+A successful cleanup in the app triggers a short burst of pixel sparks, and the result banner shows how much you have freed in all. Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Motion** disables the particle burst and mascot motion; readable completion feedback stays.
 
-Your **Space** card tracks local progress:
-
-- Estimated reclaimed space and confirmed cleanup count.
-- Badges at **1, 5, 25, 100, and 500 GiB**, from **Space Scout** to **Space Legend**.
-- Watched-checkout size, rebuildable space, and change since the previous full measurement.
-- A compact history line for the last 48 full scans.
-
-A successful cleanup in the app triggers a short burst of pixel sparks. Partial successes earn credit for confirmed reclaimed space but keep warning feedback prominent. Failed operations and previews earn nothing. There are no streak penalties or leaderboards. Badge credit is recorded for cleanups performed through the native app; CLI changes appear in subsequent disk measurements.
-
-Measurements and rewards stay on your Mac. Changing watched folders resets the comparison baseline so a different scope does not appear as disk growth. Figures are estimates from the engine, not a filesystem quota or a promise of exact free-space changes. Sparse files, shared objects, and rebuilds can affect actual disk use.
-
-Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Motion** disables the particle burst and mascot motion; readable completion feedback stays.
-
-## PR intelligence
-
-Overview counts **known PRs linked to local worktrees**, with separate Open, Merged, and Closed-not-merged counters. One PR counts once even when several checkouts reference it. Unconfirmed checkouts and GitHub access warnings stay visible; these are not repository-wide or lifetime totals. Closed PRs are associated only when their head commit matches the local checkout. Historic query limits can leave older PRs unconfirmed.
-
-**Click an Open, Merged or Closed counter to see its linked PRs**, then click a PR number and title to open it on GitHub. Open PRs appear immediately. Titles fall back to the local branch name while older cached data refreshes. Merge messages also offer **Open PR**.
+## Merge messages
 
 After wt-manager has observed a PR open, a later verified merge produces a mascot speech message. It appears in the window, or beside the floating companion when the window is closed. **Review checkout** opens the engine's safety preview; merging a PR never automatically deletes files. New local commits, protected files, locked worktrees and unreadable folders can still prevent removal. Occupied disk space is labelled separately from safely reclaimable space.
 
 The first scan quietly establishes a baseline. Messages and dismissals persist locally, partial scans preserve known state, and duplicate checkouts do not duplicate alerts. Turn them off using **Appearance → Mascot merge messages**. PR reads use your existing `gh` session and short local caches; detection follows periodic refreshes, rather than real-time GitHub push events.
 
-![Demo PR counters and mascot merge messages](docs/images/pr-intelligence.png)
 
 ## Meet the pixel crew
 
@@ -147,7 +129,7 @@ The floating character holds a balloon showing **how much wt-manager could free*
 - **Size** grows in three steps with the amount; urgency changes the colour, not the size.
 - **Growth** shows as a brief "+0.6 GB" tag each time the figure crosses a half-gigabyte step. A new worktree is measured as soon as it appears instead of waiting for the hourly measure. After a cleanup the balloon shrinks and shows what was freed.
 - **Motion:** the character holds the string in its hand (Bork ties it to his bandana, Mallow to its side). A breeze swings the balloon from out at the side to almost overhead, and the character glances up when it passes. Setting off swings it back, and stopping makes it overshoot. In orange, it tugs restlessly. With nothing left to free, the character lets go and it floats away. Reduce Motion holds it still at its resting lean.
-- **Clicking** the balloon opens the Disk section, whose badge and headline show the same number, split into folders safe to delete and rebuildable output beside the actions that free each. Only the character and its balloon take clicks; the rest of the floating window lets them through.
+- **Clicking** the balloon opens the window, whose header shows the same number beside the actions that free it. Only the character and its balloon take clicks; the rest of the floating window lets them through.
 
 Before anything has been measured the balloon is grey with "…", and grey with "?" if nothing could be measured.
 
@@ -232,7 +214,6 @@ Counts refresh about every five minutes, disk measurements about hourly. Opening
 | `⌘R` | Refresh and measure disk |
 | `⌘F` | Find a checkout |
 | `⌘,` | Watched folders |
-| `⌘1`–`⌘9` | Navigate sections |
 
 From a source checkout:
 
