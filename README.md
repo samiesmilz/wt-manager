@@ -64,7 +64,7 @@ The app and CLI share the engine inside the installed bundle, so they use the sa
 4. **Review cleanup.** Read the exact paths and preservation details. Nothing is deleted during the preview.
 5. **Confirm deliberately.** Only confirmed completions earn reclaimed-space credit. Results remain available after the modal closes.
 
-The sidebar holds the filters: **Show** narrows the list to one verdict, and **Locations** to one worktrees folder. Search by folder, branch or repo name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder. **Mascots** shows the whole cast, large and animated, with the coat, your own picture and the desktop companion's settings; clicking the character in the header opens it too.
+The sidebar holds the filters: **Show** narrows the list to one verdict. **Locations** lists every place your worktree folders live, biggest first, with its size, verdicts and caches; open one to see only its folders. Empty locations left behind count as safe to delete. Search by folder, branch or repo name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder. **Mascots** shows the whole cast, large and animated, with the coat, your own picture and the desktop companion's settings; clicking the character in the header opens it too.
 
 Folders answers what can go. It replaced the old status lists (All worktrees, Needs you, In flight, With others, Forgotten, Finished), which sorted the same worktrees by branch history and left "is it safe to delete?" to you.
 
