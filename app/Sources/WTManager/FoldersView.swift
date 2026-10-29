@@ -16,15 +16,15 @@ struct FoldersView: View {
     var scrolls = true
     /// The folders ticked for one delete, by path.
     @State var selected: Set<String> = []
-    /// The tally pressed, if any: the page shows only folders with that verdict.
-    @State var only: Verdict? = nil
+    /// The verdict picked in the sidebar, if any.
+    private var only: Verdict? { store.verdictFilter.flatMap(Verdict.init(rawValue:)) }
     /// The folder opened to its details, as a row of the old list opened.
     @State var open: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Verdict: String, CaseIterable {
         case safe, busy, unsaved, kept
-        /// For the tally, where four of them share one line.
+        /// For the sidebar, where four of them share one list.
         var short: String {
             switch self {
             case .safe: return "safe"
@@ -77,6 +77,7 @@ struct FoldersView: View {
     }
 
     static let elsewhereID = "Elsewhere"
+    private static let top = "top"
 
     private var allRows: [Row] {
         let home = NSHomeDirectory()
@@ -112,23 +113,36 @@ struct FoldersView: View {
         }
     }
 
-    /// The search field and the project filter, by the one rule in Store.
-    private func searched(_ row: Row) -> Bool { store.passes(row.worktree) }
+    /// The search field and the sidebar's location, by the one rule in Store.
+    private func searched(_ row: Row) -> Bool { store.inScope(row.worktree) }
 
     var body: some View {
         let rows = allRows
         VStack(spacing: 0) {
             header(rows.filter(searched))
-            FilterBar(store: store)
+            if !rows.isEmpty { FilterBar(store: store) }
             Divider().opacity(0.35)
             if scrolls {
                 ScrollViewReader { proxy in
-                    ScrollView { content(rows) }
+                    ScrollView {
+                        // No stack spacing under the anchor: it added a gap
+                        // above the first card that nothing else had.
+                        VStack(spacing: 0) {
+                            Color.clear.frame(height: 0).id(Self.top)
+                            content(rows)
+                        }
+                    }
                         .safeAreaInset(edge: .bottom) { if !selected.isEmpty { selectionBar(rows) } }
                         // Another page asked for this folder: open it and
                         // bring it into view, then let go of the request.
                         .onAppear { reveal(store.focusPath, proxy) }
                         .onChange(of: store.focusPath) { reveal($0, proxy) }
+                        // A filter from the sidebar shortens the list. Left
+                        // where it was scrolled, the page showed the space
+                        // below two folders: blank, as if the place were empty.
+                        .onChange(of: store.locationFilter) { _ in proxy.scrollTo(Self.top, anchor: .top) }
+                        .onChange(of: store.verdictFilter) { _ in proxy.scrollTo(Self.top, anchor: .top) }
+                        .onChange(of: store.query) { _ in proxy.scrollTo(Self.top, anchor: .top) }
                 }
             } else {
                 if !selected.isEmpty { selectionBar(rows) }
@@ -141,103 +155,161 @@ struct FoldersView: View {
 
     // MARK: header
 
-    /// The same header as the worktree lists: title, one line of what the
-    /// page is, a count, and below them the controls. It stays put while the
-    /// folders scroll.
+    /// Title, what could be freed, and the two sweeps: caches everywhere,
+    /// and every folder that loses nothing. It stays put while the folders
+    /// scroll.
     private func header(_ rows: [Row]) -> some View {
         let safe = rows.filter { $0.verdict == .safe }
+        // Every checkout's caches, main ones included, unless the sidebar
+        // narrowed the page to one place: then that place's folders.
+        let caches = store.locationFilter == nil && store.query.isEmpty
+            ? store.cacheCandidates : rows.map(\.worktree).filter { $0.reclaimKb > 0 }
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Folders")
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
-                    Text("deleting a folder loses only what isn't on GitHub")
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
+            if store.locationFilter != nil {
+                // The way back to the place list, where this one was opened.
+                Button { store.locationFilter = nil; store.page = .locations } label: {
+                    Label("All locations", systemImage: "chevron.left")
+                        .font(.system(size: 11, weight: .medium))
                 }
-                Spacer()
-                Text(verbatim: "\(rows.count)")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Palette.ink(Palette.section("folders")))
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().fill(Palette.wash(Palette.section("folders"))))
-                    .accessibilityLabel("\(rows.count) folders")
+                .buttonStyle(.plain).foregroundStyle(Palette.ink(Palette.status("trunk")))
+                .padding(.bottom, -4)
             }
-            if !rows.isEmpty {
-                let tallies = HStack(spacing: 7) {
-                    // All four, always: a pill that comes and goes moves the
-                    // others under the pointer.
-                    ForEach(Verdict.allCases, id: \.self) { v in tally(v, rows) }
+            HStack(alignment: .center, spacing: 10) {
+                Text(title)
+                    .font(.system(size: 19, weight: .semibold, design: .rounded))
+                    .lineLimit(1).truncationMode(.head)
+                Text(verbatim: "\(rows.count)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Palette.ink(Palette.reclaim))
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Capsule().fill(Palette.wash(Palette.reclaim)))
+                    .accessibilityLabel(Store.count(rows.count, "folder"))
+                Spacer()
+            }
+            if let e = store.error {
+                notice(e, tint: Palette.status("blocked"), mono: true)
+            }
+            if let notices = store.envelope?.notices, !notices.isEmpty {
+                notice(notices.joined(separator: "\n"), tint: Palette.status("stale"))
+            }
+            // One line: the two cleanups, each carrying its own size, then
+            // what exists only here. The sizes are the "could free"; saying
+            // it again in a chip above was the same number twice.
+            let actions = HStack(spacing: 8) {
+                if !caches.isEmpty { cleanButton(caches) }
+                if !safe.isEmpty {
+                    clearButton("Delete \(safe.count) safe · "
+                                + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
+                                rows: safe, prominent: true)
                 }
-                let sweep = clearButton("Clear everything safe · \(Store.count(safe.count, "folder")), "
-                                        + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
-                                        rows: safe, prominent: true)
-                // One line when it fits; the sweep on its own line when not.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        tallies
-                        Spacer(minLength: 8)
-                        if !safe.isEmpty { sweep }
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        tallies
-                        if !safe.isEmpty { sweep }
-                    }
-                }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { actions; chips(rows); Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 8) { actions; chips(rows) }
             }
         }
-        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
+        .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
     }
 
-    /// A filter, since a count that looks like a pill gets clicked. A zero is
-    /// drawn hollow and does nothing: filled, "0 safe" looked as live as
-    /// "12 unsaved" and led to an empty page.
-    private func tally(_ v: Verdict, _ rows: [Row]) -> some View {
-        let on = only == v
-        let n = rows.filter { $0.verdict == v }.count
-        return Button { only = on ? nil : v } label: {
-            HStack(spacing: 5) {
-                Circle().fill(n == 0 ? Palette.faint : v.tint).frame(width: 7, height: 7)
-                Text(verbatim: "\(n)").font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(n == 0 ? Palette.muted : Color.primary)
-                Text(v.short).font(.system(size: 11.5))
-                    .foregroundStyle(on ? Palette.ink(v.tint) : Palette.muted)
+    /// The place picked in the sidebar, or the page's own name.
+    private var title: String {
+        guard let l = store.locationFilter else { return "Folders" }
+        return store.locationLabel(l)
+    }
+
+    /// What exists only here, in colour, and a way in: it opens the folders
+    /// holding that work. Before the disk is measured, a word saying so.
+    @ViewBuilder
+    private func chips(_ rows: [Row]) -> some View {
+        let commits = rows.reduce(0) { $0 + max($1.worktree.atRisk, 0) }
+        let unsaved = rows.filter { $0.verdict == .unsaved }.count
+        if commits > 0 || (store.disk == nil && store.envelope != nil) {
+            HStack(spacing: 7) {
+                if store.disk == nil, store.envelope != nil {
+                    chip(store.phase == "measuring disk" ? "measuring disk…" : "disk not measured yet",
+                         "internaldrive", Palette.status("empty"))
+                }
+                if commits > 0 {
+                    Button { store.verdictFilter = only == .unsaved ? nil : FoldersView.Verdict.unsaved.rawValue } label: {
+                        chip(Store.count(commits, "commit") + " only here"
+                             + (unsaved > 0 ? " · " + Store.count(unsaved, "folder") : ""),
+                             "arrow.up.circle", Palette.risk)
+                    }
+                    .buttonStyle(RowButtonStyle(radius: 12))
+                    .help("Show the folders holding work that is on no remote")
+                }
             }
-            .fixedSize()
-            .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(Capsule().fill(n == 0 ? Color.clear : Palette.wash(v.tint)))
-            .overlay(Capsule().strokeBorder(on ? Palette.ink(v.tint)
-                                            : n == 0 ? Color.primary.opacity(0.10) : .clear, lineWidth: 1.2))
-            .contentShape(Capsule())
+        }
+    }
+
+    private func chip(_ text: String, _ symbol: String, _ tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(tint)
+            Text(text).font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.ink(tint)).lineLimit(1)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(Capsule().fill(Palette.wash(tint))
+            .overlay(Capsule().strokeBorder(Palette.edge(tint), lineWidth: 1)))
+    }
+
+    private func notice(_ text: String, tint: Color, mono: Bool = false) -> some View {
+        Text(text)
+            .font(.system(size: 11, design: mono ? .monospaced : .default))
+            .foregroundStyle(Palette.ink(tint)).textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.wash(tint)))
+    }
+
+    /// Caches in every checkout, main ones included: most build output lives
+    /// in the repos themselves, which no folder delete reaches.
+    private func cleanButton(_ ws: [Worktree]) -> some View {
+        let kb = ws.reduce(0) { $0 + max($1.reclaimKb, 0) }
+        return Button {
+            store.preview(Store.Action(kind: .clean, paths: ws.map(\.path)))
+        } label: {
+            Label("Clean caches · \(Store.human(kb))", systemImage: "sparkles")
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .foregroundStyle(Palette.ink(Palette.reclaim))
+                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.wash(Palette.reclaim)))
+                .fixedSize()
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(n == 0 && !on)
-        .help(on ? "Show every folder" : "Show only folders that are \(v.short)")
-        .accessibilityLabel("\(n) \(v.short)")
-        .accessibilityHint(on ? "Shows every folder" : "Shows only these folders")
-        .accessibilityAddTraits(on ? .isSelected : [])
+        .help("Build output and dependencies in every checkout, main ones included. "
+              + "Preview first; an install or build puts them back.")
     }
 
     // MARK: content
 
     private func content(_ rows: [Row]) -> some View {
         let groups = self.groups(rows)
+        let empties = shownEmpties
         return VStack(alignment: .leading, spacing: 14) {
-            if rows.isEmpty {
+            if !empties.isEmpty { emptyCard(empties) }
+            if rows.isEmpty && !empties.isEmpty {
+                // Only the empty folders: nothing more to say.
+            } else if rows.isEmpty {
                 Text(store.envelope == nil ? "Reading your repos…"
                      : "No worktree folders. Every checkout here is a repo's main one.")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
             } else if groups.isEmpty, let only {
-                Text("No folders are \(only.short).")
-                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                if empties.isEmpty {
+                    Text("No folders are \(only.short).")
+                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                }
             } else if groups.isEmpty {
                 HStack(spacing: 6) {
                     Text("No folders match.").foregroundStyle(Palette.muted)
-                    Button("Clear the filter") { store.query = ""; store.repoFilter = nil }
+                    Button("Clear the filters") { store.query = ""; store.verdictFilter = nil; store.locationFilter = nil }
                         .buttonStyle(.link)
                 }
                 .font(.system(size: 12))
             } else {
-                if only == nil, !rows.contains(where: { $0.verdict == .safe }) {
+                if only == nil, empties.isEmpty, !rows.contains(where: { $0.verdict == .safe }) {
                     // After a cleanup this is the usual state, and a page with
                     // no sweep button and no word about why looks unfinished.
                     let held = rows.contains { !$0.verdict.lossless }
@@ -257,6 +329,54 @@ struct FoldersView: View {
         // jumping to its new shape.
         .animation(reduceMotion ? nil : .easeOut(duration: 0.28), value: rows.map(\.id))
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: only)
+    }
+
+    /// Empty folders left where worktrees were, when the page is showing
+    /// what is safe: all of it, or the safe filter, with no narrower search.
+    private var shownEmpties: [String] {
+        guard only == nil || only == .safe, store.locationFilter == nil, store.query.isEmpty else { return [] }
+        return store.emptyLocations
+    }
+
+    /// Folders that held worktrees and hold nothing now. Safe by definition,
+    /// so one button, and no preview: there is nothing in them to show.
+    private func emptyCard(_ paths: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "folder").font(.system(size: 18))
+                    .foregroundStyle(Palette.reclaim).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Empty folders").font(.system(size: 13, weight: .semibold))
+                    Text("left where worktrees used to be · nothing inside")
+                        .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                }
+                Spacer(minLength: 8)
+                Button { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                    store.removeEmptyLocations(paths)
+                } } label: {
+                    Label("Remove \(Store.count(paths.count, "empty folder"))", systemImage: "trash")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(Palette.ink(Palette.reclaim))
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Palette.wash(Palette.reclaim)))
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+                .help("Each is checked again first; a folder with anything in it is left alone.")
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(paths, id: \.self) { p in
+                    let home = NSHomeDirectory()
+                    Text(p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                        .lineLimit(1).truncationMode(.head)
+                }
+            }
+            .padding(.leading, 30)
+        }
+        .padding(15)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface)
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08))))
     }
 
     /// What one delete of the ticked folders would do, said on its button.
@@ -292,7 +412,6 @@ struct FoldersView: View {
 
     private func reveal(_ path: String?, _ proxy: ScrollViewProxy) {
         guard let path else { return }
-        only = nil
         open = path
         DispatchQueue.main.async {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo(path, anchor: .top) }
@@ -328,13 +447,16 @@ struct FoldersView: View {
     private func pathTitle(_ g: Group) -> some View {
         let parent = (g.id as NSString).deletingLastPathComponent
         let name = (g.id as NSString).lastPathComponent
-        return HStack(spacing: 0) {
+        let named = Text(g.elsewhere ? g.id : name).fontWeight(.semibold).lineLimit(1)
+        // The whole way, then only its last step, then the name alone. Cut
+        // with an ellipsis, the way shrank to a stray dot beside the name.
+        let near = (parent as NSString).lastPathComponent
+        return ViewThatFits(in: .horizontal) {
             if !g.elsewhere && !parent.isEmpty {
-                Text(parent + "/").foregroundStyle(Palette.muted)
-                    .lineLimit(1).truncationMode(.head)
+                HStack(spacing: 0) { Text(parent + "/").foregroundStyle(Palette.muted); named }
+                HStack(spacing: 0) { Text("…/" + near + "/").foregroundStyle(Palette.muted); named }
             }
-            Text(g.elsewhere ? g.id : name).fontWeight(.semibold)
-                .lineLimit(1).layoutPriority(1)
+            named.truncationMode(.middle)
         }
         .font(.system(size: 13))
         .help(g.elsewhere ? "Folders that sit alone in their parent" : g.id)
@@ -360,9 +482,7 @@ struct FoldersView: View {
                 let pickable = Set(g.rows.filter(\.verdict.lossless).map(\.id))
                 if !pickable.isEmpty {
                     let all = pickable.isSubset(of: selected)
-                    // Named for what it ticks when a card has nothing safe.
-                    let label = g.safe.isEmpty ? "Select in progress" : "Select all"
-                    Button(all ? "Deselect" : label) {
+                    Button(all ? "Deselect" : "Select all") {
                         if all { selected.subtract(pickable) } else { selected.formUnion(pickable) }
                     }
                     .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Palette.muted)
@@ -370,7 +490,7 @@ struct FoldersView: View {
                     .help("Ticks the folders that lose nothing; unsaved work is ticked one at a time")
                 }
                 if !g.safe.isEmpty {
-                    clearButton("Clear \(g.safe.count) safe · "
+                    clearButton("Delete \(g.safe.count) safe · "
                                 + Store.human(g.safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
                                 rows: g.safe)
                 }
@@ -418,7 +538,7 @@ private struct FolderRow: View {
         VStack(alignment: .leading, spacing: 0) {
             line
             if expanded {
-                WorktreeDetail(store: store, worktree: row.worktree, removes: false)
+                WorktreeDetail(store: store, worktree: row.worktree)
                     .padding(.leading, 52).padding(.top, 2).padding(.bottom, 12)
                     .transition(.opacity)
             }
@@ -456,7 +576,7 @@ private struct FolderRow: View {
                     HStack(spacing: 5) {
                         Circle().fill(v.tint).frame(width: 6, height: 6)
                         Text(v.label).font(.system(size: 10.5, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.ink(v.tint))
                     }
                     .fixedSize()
                 }
@@ -472,9 +592,25 @@ private struct FolderRow: View {
                 }
             }
             .help(w.path)
-            Text(w.sizeKb > 0 ? Store.human(w.sizeKb) : "—")
-                .font(.system(size: 11, design: .rounded)).monospacedDigit()
-                .foregroundStyle(Palette.muted).frame(width: 52, alignment: .trailing)
+            // The size, and under it the part a build puts back. A folder
+            // holding unsaved work cannot go, but its caches can: measured,
+            // 44GB of a 45GB Rust worktree was `target/`.
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(w.sizeKb > 0 ? Store.human(w.sizeKb) : "—")
+                    .font(.system(size: 11, design: .rounded)).monospacedDigit()
+                    .foregroundStyle(Palette.muted)
+                if w.reclaimKb > 0 {
+                    Button("clean \(Store.human(w.reclaimKb))") {
+                        store.preview(Store.Action(kind: .clean, paths: [w.path]))
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(Palette.inkReclaim)
+                    .help("Clean this folder's caches (preview first). The folder stays.")
+                    .accessibilityLabel("Clean \(Store.human(w.reclaimKb)) of caches in \(row.name)")
+                }
+            }
+            .frame(width: 72, alignment: .trailing)
             SwiftUI.Group {
                 if v.lossless {
                     Button(action: delete) { Image(systemName: "trash") }
@@ -501,6 +637,11 @@ private struct FolderRow: View {
                 Button("Delete…", action: delete)
             } else if row.anyway {
                 Button("Delete anyway…", action: delete)
+            }
+            if w.reclaimKb > 0 {
+                Button("Clean caches · \(Store.human(w.reclaimKb))…") {
+                    store.preview(Store.Action(kind: .clean, paths: [w.path]))
+                }
             }
             Button(expanded ? "Hide details" : "Show details", action: toggle)
             Button("Reveal in Finder") { store.reveal(w) }

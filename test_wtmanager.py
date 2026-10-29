@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import contextlib
 import io
 import sys
@@ -166,6 +167,43 @@ class Classification(unittest.TestCase):
         open(os.path.join(root, "env", "prod.pem"), "w").close()
         self.assertEqual(T.classify_ignored("env/", root), T.UNKNOWN, "a key inside")
 
+    def test_a_tagged_cache_is_not_shielded_by_a_build_scripts_fixture(self):
+        # Measured: a crate's build script copied a test certificate into
+        # target/debug/build/*/out/, and 62GB of Cargo output became
+        # "unknown": neither counted as rebuildable nor cleaned.
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        out = os.path.join(root, "target", "debug", "build", "ring-1", "out")
+        os.makedirs(out)
+        open(os.path.join(out, "test.pem"), "w").close()
+        self.assertEqual(T.classify_ignored("target/", root), T.UNKNOWN, "untagged")
+        with open(os.path.join(root, "target", "CACHEDIR.TAG"), "w") as fh:
+            fh.write("Signature: 8a477f597d28d172789f06886806bc55\n# cargo\n")
+        self.assertEqual(T.classify_ignored("target/", root), T.SAFE)
+        # Any name, once tagged; a secret at its top is still seen.
+        os.rename(os.path.join(root, "target"), os.path.join(root, "out-cache"))
+        self.assertEqual(T.classify_ignored("out-cache/", root), T.SAFE)
+        open(os.path.join(root, "out-cache", ".env"), "w").close()
+        self.assertEqual(T.classify_ignored("out-cache/", root), T.UNKNOWN)
+
+    def test_xcode_output_is_not_shielded_by_its_own_copies(self):
+        # Measured: a SwiftPM checkout's `fetch-1password-secrets.sh` and the
+        # `embedded.mobileprovision` Xcode copies into every signed bundle
+        # turned 26GB of DerivedData into "unknown".
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        dd = os.path.join(root, "build", "DerivedData")
+        scripts = os.path.join(dd, "SourcePackages", "checkouts", "clerk-ios", "scripts")
+        app = os.path.join(dd, "Build", "Products", "Debug-iphoneos", "App.app")
+        os.makedirs(scripts)
+        os.makedirs(app)
+        open(os.path.join(scripts, "fetch-1password-secrets.sh"), "w").close()
+        open(os.path.join(app, "embedded.mobileprovision"), "w").close()
+        self.assertEqual(T.classify_ignored("build/", root), T.SAFE)
+        # A profile the person keeps loose in the output is still theirs.
+        open(os.path.join(dd, "dist.mobileprovision"), "w").close()
+        self.assertEqual(T.classify_ignored("build/", root), T.UNKNOWN)
+
     def test_a_precious_file_inside_a_regenerable_dir_shields_it(self):
         # What git actually reports for dist/.env is one line, "dist/": the
         # traditional listing collapses a wholly-ignored directory, so the
@@ -191,6 +229,49 @@ class Classification(unittest.TestCase):
         T.measure(w)
         self.assertEqual(w.reclaim_paths, [])
         self.assertIn("dist/.env", w.precious_hits)
+
+
+class EmptyParent(unittest.TestCase):
+    """Deleting the last worktree in `task-3/` left `task-3/` behind, empty."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.loc = os.path.join(self.root, "dev", "worktrees", "task-3")
+        os.makedirs(self.loc)
+        self.gone = os.path.join(self.loc, "feat-a")   # already removed by git
+
+    def test_the_last_worktree_takes_its_folder_with_it(self):
+        open(os.path.join(self.loc, ".DS_Store"), "w").close()
+        self.assertTrue(T.drop_empty_parent(self.gone))
+        self.assertFalse(os.path.exists(self.loc))
+        self.assertTrue(os.path.isdir(os.path.dirname(self.loc)), "one level only")
+
+    def test_a_folder_with_anything_else_in_it_stays(self):
+        os.makedirs(os.path.join(self.loc, "feat-b"))
+        self.assertFalse(T.drop_empty_parent(self.gone))
+        open(os.path.join(self.loc, "notes.md"), "w").close()
+        os.rmdir(os.path.join(self.loc, "feat-b"))
+        self.assertFalse(T.drop_empty_parent(self.gone))
+        self.assertTrue(os.path.isdir(self.loc))
+
+    def test_a_location_emptied_elsewhere_is_remembered_and_reported(self):
+        isolate_caches(self)
+        orig = T.folder_info
+        T.folder_info = lambda w: {"verdict": "safe"}
+        self.addCleanup(setattr, T, "folder_info", orig)
+        wt = types.SimpleNamespace(path=os.path.join(self.loc, "feat-a"))
+        os.makedirs(wt.path)
+        self.assertEqual(T.empty_locations([wt]), [], "occupied")
+        os.rmdir(wt.path)                      # deleted by Finder, say
+        open(os.path.join(self.loc, ".DS_Store"), "w").close()
+        self.assertEqual(T.empty_locations([]), [self.loc], "remembered, now empty")
+        open(os.path.join(self.loc, "notes.md"), "w").close()
+        self.assertEqual(T.empty_locations([]), [], "holds something")
+
+    def test_home_and_shallow_folders_are_never_removed(self):
+        self.assertFalse(T.drop_empty_parent(os.path.join(os.path.expanduser("~"), "x")))
+        self.assertFalse(T.drop_empty_parent("/tmp/x"))
 
 
 class Containment(unittest.TestCase):

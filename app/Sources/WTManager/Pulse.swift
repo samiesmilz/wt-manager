@@ -57,13 +57,54 @@ final class Pulse: ObservableObject {
     /// menu bar and the tail in the window drift apart within a minute.
     static let tickNote = Notification.Name("wtmanager.tick")
 
+    /// Whether the clock should be running at all. Something always shows
+    /// the character — the menu bar does — so it never stops for a closed
+    /// window. It stops when nobody can see any screen: the displays are
+    /// asleep, or the session is switched away or locked. Four redraws a
+    /// second of a picture on a dark screen is power spent on nothing.
+    private var wanted = false
+    private var dark = false
+    private var away = false
+    private var observers: [NSObjectProtocol] = []
+
     func start() {
-        guard timer == nil else { return }
+        wanted = true
+        if observers.isEmpty { watchVisibility() }
+        resume()
+    }
+
+    private func resume() {
+        guard wanted, !dark, !away, timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.tick += 1
                 NotificationCenter.default.post(name: Pulse.tickNote, object: nil)
             }
         }
+        // Coalesced with the system's other wakeups; an animation clock does
+        // not need to fire on the exact millisecond.
+        timer?.tolerance = Self.interval * 0.2
+    }
+
+    private func pause() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func watchVisibility() {
+        let center = NSWorkspace.shared.notificationCenter
+        func on(_ name: Notification.Name, _ change: @escaping (Pulse) -> Void) {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    change(self)
+                    if self.dark || self.away { self.pause() } else { self.resume() }
+                }
+            })
+        }
+        on(NSWorkspace.screensDidSleepNotification) { $0.dark = true }
+        on(NSWorkspace.screensDidWakeNotification) { $0.dark = false }
+        on(NSWorkspace.sessionDidResignActiveNotification) { $0.away = true }
+        on(NSWorkspace.sessionDidBecomeActiveNotification) { $0.away = false }
     }
 }

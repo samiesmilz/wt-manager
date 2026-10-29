@@ -84,7 +84,6 @@ final class FloatingMascot {
         }
         view.interactionEnded = { [weak self] in self?.userInteracting = false }
         view.balloonClicked = { [weak self] in
-            self?.store.section = "disk"
             self?.openWindow()
         }
         // Only the character and its balloon catch the mouse; see

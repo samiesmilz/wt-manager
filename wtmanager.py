@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.12.1"
+VERSION = "0.13.0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Safety classification — the heart of `clean`.
@@ -83,6 +83,23 @@ SHAPED = {
 SIGNATURES = {
     "rustdoc": ("static.files", "crates.js"),
 }
+
+
+# The Cache Directory Tagging spec (bford.info/cachedir): a folder holding a
+# CACHEDIR.TAG that starts with this line declares everything inside it
+# regenerable. Cargo tags every `target/`, and so do other build tools. It is
+# the tool's own word, and it is what keeps a crate's test certificate, copied
+# into `target/debug/build/*/out/` by a build script, from turning 62GB of
+# Rust output into "unknown" that is neither counted nor cleaned.
+CACHEDIR_SIGNATURE = b"Signature: 8a477f597d28d172789f06886806bc55"
+
+
+def cache_tagged(full: str) -> bool:
+    try:
+        with open(os.path.join(full, "CACHEDIR.TAG"), "rb") as f:
+            return f.read(len(CACHEDIR_SIGNATURE)) == CACHEDIR_SIGNATURE
+    except OSError:
+        return False
 
 
 def signed(full: str) -> bool:
@@ -161,7 +178,7 @@ def classify_ignored(name: str, root: Optional[str] = None) -> str:
         if full and precious_inside(full):
             return UNKNOWN
         return SAFE
-    if full and signed(full) and not precious_inside(full):
+    if full and (signed(full) or cache_tagged(full)) and not precious_inside(full):
         return SAFE
     return UNKNOWN
 
@@ -171,7 +188,7 @@ def recognized_output(name: str, root: str) -> bool:
     base = name.rstrip("/").split("/")[-1]
     full = os.path.join(root, name)
     return (base in REGENERABLE
-            or (base in SHAPED and SHAPED[base](full)) or signed(full))
+            or (base in SHAPED and SHAPED[base](full)) or signed(full) or cache_tagged(full))
 
 
 def record_ignored(w: Worktree, entry: str) -> str:
@@ -207,7 +224,18 @@ def record_ignored(w: Worktree, entry: str) -> str:
 # `user_credential.d.ts` — and walking into them turned every `node_modules`
 # into "unknown" and its SDK files into "secrets" for reap to archive.
 DEPENDENCY_STORES = {"node_modules", "bower_components", ".pnpm", "site-packages",
-                     "vendor", "Pods", "Carthage"}
+                     "vendor", "Pods", "Carthage",
+                     # SwiftPM: Xcode's DerivedData/SourcePackages and `swift
+                     # build`'s .build/checkouts. Measured: clerk-ios ships
+                     # `fetch-1password-secrets.sh`, and one copy per
+                     # DerivedData shielded 26GB of Xcode output.
+                     "SourcePackages", "checkouts"}
+
+# Built products. Xcode copies the provisioning profile into every signed
+# bundle as `embedded.mobileprovision`; the original lives in Xcode's own
+# store and the copy comes back with the next build. A key found inside a
+# bundle is the bundle's, not the person's.
+BUILT_BUNDLES = (".app", ".appex", ".framework", ".xctest", ".xcarchive", ".dSYM")
 
 
 def precious_paths(full: str) -> List[str]:
@@ -215,15 +243,16 @@ def precious_paths(full: str) -> List[str]:
 
     An unreadable subtree is uncertain, not safe. Callers must preserve it.
     Protected directories are kept whole rather than inspecting their secrets.
-    Dependency stores are looked into one level only: a `.env` someone
-    dropped at the top of one is theirs; the packages below are not.
+    Dependency stores and tagged caches are looked into one level only: a
+    `.env` someone dropped at the top of one is theirs; what the installer or
+    build wrote below is not.
     """
     if not os.path.isdir(full) or os.path.islink(full):
         return []
     hits = []
     def unreadable(error):
         raise error
-    top = os.path.basename(full.rstrip("/")) in DEPENDENCY_STORES
+    top = os.path.basename(full.rstrip("/")) in DEPENDENCY_STORES or cache_tagged(full)
     for parent, dirs, files in os.walk(full, followlinks=False, onerror=unreadable):
         for name in dirs + files:
             if any(rx.match(name) for rx in _PRECIOUS_RE):
@@ -232,7 +261,7 @@ def precious_paths(full: str) -> List[str]:
                     dirs.remove(name)
         if top:
             break
-        dirs[:] = [d for d in dirs if d not in DEPENDENCY_STORES]
+        dirs[:] = [d for d in dirs if d not in DEPENDENCY_STORES and not d.endswith(BUILT_BUNDLES)]
     return sorted(hits)
 
 
@@ -1576,7 +1605,7 @@ def forget_size(path: str) -> None:
         _SIZE_CACHE.pop(k, None)
 
 
-def du_many(paths: List[str], timeout: int = 180) -> Dict[str, int]:
+def du_many(paths: List[str], timeout: int = 600) -> Dict[str, int]:
     """Size several paths in one `du`.
 
     One spawn per path is the whole cost of a sized scan: a monorepo worktree
@@ -1733,6 +1762,10 @@ def measure(w: Worktree, want_detail: bool = True) -> None:
         if kb > 0:
             reclaim += kb
             w.reclaim_paths.append(entry)
+    # A du that timed out is not a checkout with nothing to clean: tens of
+    # gigabytes of Cargo output once read as 0 here. Unmeasured says so.
+    if safe and all(sizes.get(full, -1) < 0 for _, full in safe):
+        reclaim = -1
     w.reclaim_kb = reclaim
 
 
@@ -3182,6 +3215,8 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
             freed += max(w.size_kb - archived_kb, 0)
             forget_size(w.path)
             print(f"{C.green}removed{C.off} {w.repo}/{w.name}")
+            if drop_empty_parent(w.path):
+                print(f"{C.green}removed{C.off} {os.path.dirname(w.path)} {C.dim}(now empty){C.off}")
         else:
             failed += 1
             print(f"{C.red}failed{C.off}  {w.repo}/{w.name} {C.dim}{err[:90]}{C.off}")
@@ -3191,6 +3226,26 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     print(f"\n{removed} removed" + (f", {failed} failed" if failed else "")
           + (f", {human(freed)} returned" if removed and total > 0 else ""))
     return 1 if failed else 0
+
+
+def drop_empty_parent(path: str) -> bool:
+    """Remove the folder a worktree sat in, once the worktree was its last
+    occupant. Deleting the last worktree in `task-3/` left `task-3/` behind,
+    empty, and a sprint of those is a directory of empty folders. One level
+    only, nothing but Finder's `.DS_Store` may be in it, and never a home,
+    a filesystem root or a folder that holds a repo."""
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent in ("/", os.path.expanduser("~")) or parent.count(os.sep) < 3:
+        return False
+    try:
+        if not only_finder_litter(parent):
+            return False
+        if ".DS_Store" in os.listdir(parent):
+            os.remove(os.path.join(parent, ".DS_Store"))
+        os.rmdir(parent)
+        return True
+    except OSError:
+        return False
 
 
 def inside(root: str, candidate: str) -> bool:
@@ -3549,6 +3604,43 @@ def cmd_unconfigured() -> int:
     return 0
 
 
+def _locations_file() -> Path:
+    return cache_dir() / "locations.json"
+
+
+def only_finder_litter(path: str) -> bool:
+    """A folder with nothing in it but Finder's `.DS_Store`."""
+    try:
+        return all(n == ".DS_Store" for n in os.listdir(path))
+    except OSError:
+        return False
+
+
+def empty_locations(wts: List[Worktree]) -> List[str]:
+    """Folders that held worktrees and now hold nothing.
+
+    A location exists for the list only while a worktree is in it, so one
+    emptied by Finder, another tool or an older version of this one simply
+    vanished: measured, thirteen empty `task-N/` folders under Codex. Every
+    parent of a worktree folder is remembered, and a remembered one that is
+    empty is reported, so it can be offered as safe to delete.
+    """
+    try:
+        seen = set(json.loads(_locations_file().read_text()))
+    except Exception:
+        seen = set()
+    seen |= {os.path.dirname(w.path) for w in wts if folder_info(w) is not None}
+    seen = {p for p in seen if os.path.isdir(p)}
+    try:
+        f = _locations_file()
+        f.write_text(json.dumps(sorted(seen)))
+        os.chmod(f, 0o600)     # private repo layout, as with the size cache
+    except OSError:
+        pass
+    occupied = {os.path.dirname(w.path) for w in wts}
+    return sorted(p for p in seen if p not in occupied and only_finder_litter(p))
+
+
 def cmd_agent(wts: List[Worktree], args) -> int:
     """One envelope with everything an ambient client needs, mood included.
 
@@ -3595,6 +3687,7 @@ def cmd_agent(wts: List[Worktree], args) -> int:
         **({"measured_paths": measured_paths} if partial else {}),
         "notices": notice_lines(),
         "roots": load_config().get("roots", []),
+        "empty_locations": empty_locations(wts),
         # The sentence, decided here beside the mood it is derived from. A
         # client that wrote its own would rank the same facts a second time.
         "headline": mascot.headline(face["mood"], counts, reclaim, len(wts)),

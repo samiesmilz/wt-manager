@@ -19,21 +19,7 @@ struct RootView: View {
             Sidebar(store: store)
                 .frame(width: Sidebar.railWidth - 1)
             Rectangle().fill(.primary.opacity(0.07)).frame(width: 1)
-            VStack(spacing: 0) {
-                Header(store: store)
-                UpdateBanner(store: store, updates: store.updates)
-                if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
-                    MergeSpeechBanner(store: store, nudge: nudge)
-                }
-                Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
-                if let completion = store.completion {
-                    CompletionBanner(store: store, plan: completion)
-                        .transition(.opacity)
-                }
-                content
-                Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
-                StatusBar(store: store)
-            }
+            page
         }
         // The window enforces the minimum via contentMinSize. Declaring it here
         // too makes the hosting view demand a size the window may not have yet,
@@ -47,27 +33,38 @@ struct RootView: View {
         .onChange(of: store.figure) { figure in
             if let coat = Mascot.drawnCoats[figure] { store.skin = coat }
         }
-        .onChange(of: store.section) { next in
-            // Status chips describe the current group. A selection from the
-            // previous group would silently empty the next one.
-            store.statusFilter = []
+    }
+
+    /// The header, banners, the folder list and the inventory strip.
+    private var page: some View {
+        VStack(spacing: 0) {
+            Header(store: store)
+            UpdateBanner(store: store, updates: store.updates)
+            if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
+                MergeSpeechBanner(store: store, nudge: nudge)
+            }
+            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            if let completion = store.completion {
+                CompletionBanner(store: store, plan: completion)
+                    .transition(.opacity)
+            }
+            content
+            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            StatusBar(store: store)
         }
     }
 
     @ViewBuilder
     private var content: some View {
-        // Before anything else, and whatever section is selected: with no
-        // roots there is nothing for any of them to show, and five empty
-        // lists do not add up to the one question that is actually in the way.
+        // With no roots there is nothing to list, and the one question in
+        // the way is where the repositories are.
         if store.unconfigured {
             FirstRun(store: store)
         } else {
-            switch store.section {
-            case "overview": Overview(store: store)
-            case "disk":     DiskDetail(store: store)
-            case "folders":  FoldersView(store: store, open: openRow ?? store.focusPath)
-            default:         WorktreeList(store: store, section: store.section,
-                                          initiallyOpen: openRow)
+            switch store.page {
+            case .folders: FoldersView(store: store, open: openRow ?? store.focusPath)
+            case .locations: LocationsView(store: store)
+            case .mascots: MascotsView(store: store)
             }
         }
     }
@@ -99,24 +96,45 @@ struct Sidebar: View {
             PixelWordmark()
                 .padding(.horizontal, 17).padding(.bottom, 18)
 
-            // One place per job: what to do, the worktrees you made, the
-            // repos themselves, and the disk. Five status lists used to sort
-            // the same worktrees a second way under a "Worktrees" heading.
-            entry("overview", "Overview", "square.grid.2x2", nil)
-            // Every folder, as every other entry counts what its page lists.
-            // Green says some of them can go.
-            entry("folders", "Folders", "folder",
-                  store.envelope == nil || store.unconfigured ? "–" : "\(store.folderRows.count)",
-                  tint: store.folderRows.contains { $0.folder?.verdict == "safe" } ? Palette.reclaim : nil)
-            ForEach(store.allGroups) { g in
-                // A dash before the first envelope: "0 repos" is a claim
-                // nothing has established on a machine not yet scanned.
-                entry(g.id, g.title, icon(g.id),
-                      store.envelope == nil || store.unconfigured ? "–" : "\(g.items.count)",
-                      tint: g.items.isEmpty ? nil : Palette.section(g.id))
+            let ready = store.envelope != nil && !store.unconfigured
+            entry("Folders", "folder", ready ? "\(store.folderRows.count)" : nil,
+                  tint: Palette.reclaim, on: store.page == .folders && store.verdictFilter == nil && store.locationFilter == nil) {
+                store.page = .folders
+                store.verdictFilter = nil
+                store.locationFilter = nil
             }
-            entry("disk", "Disk", "internaldrive", store.freeable.map { Store.human($0.totalKb) },
-                  tint: store.freeable == nil ? nil : Palette.reclaim)
+            entry("Locations", "folder.fill.badge.gearshape", ready ? "\(store.locations.count)" : nil,
+                  tint: Palette.status("trunk"),
+                  on: store.page == .locations || (store.page == .folders && store.locationFilter != nil)) {
+                store.locationFilter = nil
+                store.page = .locations
+            }
+            entry("Mascots", "pawprint.fill", nil, tint: Palette.mascot, on: store.page == .mascots) {
+                store.page = .mascots
+            }
+
+            if ready && !(store.folderRows.isEmpty && store.emptyLocations.isEmpty) {
+                // The list's filters, here rather than as pills over it: a
+                // filter is where you are, and where you are is the sidebar's.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        heading("Show")
+                        let scoped = store.folderRows.filter(store.inScope)
+                        ForEach(FoldersView.Verdict.allCases, id: \.self) { v in
+                            // Empty leftover folders are safe by definition.
+                            let n = scoped.filter { $0.folder?.verdict == v.rawValue }.count
+                                + (v == .safe && store.locationFilter == nil && store.query.isEmpty
+                                   ? store.emptyLocations.count : 0)
+                            let on = store.page == .folders && store.verdictFilter == v.rawValue
+                            entry(v == .unsaved ? "Unsaved" : v.label, nil, "\(n)", dot: v.tint, tint: v.tint, on: on, dim: n == 0 && !on) {
+                                store.page = .folders
+                                store.verdictFilter = on ? nil : v.rawValue
+                            }
+                        }
+                    }
+                }
+                .scrollIndicators(.never)
+            }
 
             Spacer(minLength: 12)
             VStack(spacing: 7) {
@@ -134,13 +152,6 @@ struct Sidebar: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func icon(_ id: String) -> String {
-        switch id {
-        case "repos":  return "shippingbox"
-        default:       return "checkmark.circle"
-        }
-    }
-
     /// One row, in the system's own sidebar idiom.
     ///
     /// The selected row used to be a saturated accent slab with white text on
@@ -149,38 +160,49 @@ struct Sidebar: View {
     /// loudest thing on the window. A pale accent ground with accent ink is
     /// what every sidebar on this machine does, and it reads as selected
     /// without competing.
-    private func entry(_ id: String, _ title: String, _ symbol: String,
-                       _ badge: String?, tint: Color? = nil) -> some View {
-        let on = store.section == id
-        // From the sidebar a page starts clean. A link from elsewhere (a
-        // folder's arrow, a project row) sets its filter and then the
-        // section, and keeps it.
-        return Button {
-            store.query = ""
-            store.repoFilter = nil
-            store.section = id
-        } label: {
+    private func heading(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
+            .foregroundStyle(Palette.muted)
+            .padding(.horizontal, 17).padding(.top, 16).padding(.bottom, 4)
+    }
+
+    /// `symbol` or `dot`: an icon for a place, the verdict's colour for a
+    /// filter. Each entry carries its own colour on the mark, the count and,
+    /// when selected, the ground; the words stay ink so they read in both
+    /// appearances.
+    private func entry(_ title: String, _ symbol: String?, _ badge: String?, dot: Color? = nil,
+                       tint: Color, on: Bool, dim: Bool = false,
+                       action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 9) {
-                Image(systemName: symbol)
-                    .font(.system(size: 13)).frame(width: 18)
-                    .foregroundStyle(on ? Color.accentColor : (tint ?? Palette.muted))
-                Text(title).font(.system(size: 13))
-                    .foregroundStyle(on ? Color.accentColor : .primary)
-                    .lineLimit(1)
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 13)).frame(width: 18)
+                        .foregroundStyle(dim ? Palette.faint : tint)
+                } else if let dot {
+                    Circle().fill(dim ? Palette.faint : dot).frame(width: 8, height: 8).frame(width: 18)
+                }
+                Text(title).font(.system(size: 13, weight: on ? .semibold : .regular))
+                    .foregroundStyle(on ? Palette.ink(tint) : dim ? Palette.muted : .primary)
+                    .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
                 if let badge {
-                    // The count is read, so it takes the ink, not the mark.
-                    Text(badge).font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(on ? Color.accentColor : (tint.map(Palette.ink) ?? Palette.muted))
+                    Text(badge).font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(dim ? Palette.muted : Palette.ink(tint))
+                        .padding(.horizontal, 6).padding(.vertical, 1.5)
+                        .background(Capsule().fill(dim ? Color.clear : Palette.wash(tint)))
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6)
-                .fill(on ? Palette.selection : .clear))
+            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Palette.wash(tint) : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(on ? Palette.edge(tint) : .clear, lineWidth: 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
+        .disabled(dim)
         .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityRemoveTraits(on ? [] : .isSelected)
         .padding(.horizontal, 9).padding(.vertical, 1)
     }
 }
@@ -204,7 +226,7 @@ struct PixelWordmark: View {
                 for (y, row) in (glyphs[character] ?? []).enumerated() {
                     for (x, pixel) in row.enumerated() where pixel == "1" {
                         let rect = CGRect(x: (i * 6 + x) * 2, y: y * 2, width: 2, height: 2)
-                        context.fill(Path(rect), with: .color(i < 3 ? Color(red: 0.72, green: 0.36, blue: 0.17) : .primary))
+                        context.fill(Path(rect), with: .color(i < 3 ? Palette.mascot : .primary))
                     }
                 }
             }
@@ -219,10 +241,6 @@ struct PixelWordmark: View {
 
 struct Header: View {
     @ObservedObject var store: Store
-    /// The character picker, open only while choosing. All eleven portraits
-    /// on every page took a quarter of the window for a setting changed once
-    /// in a while.
-    @State private var choosing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Keep status and direct character selection available above the scrolling content.
@@ -230,14 +248,12 @@ struct Header: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 13) {
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { choosing.toggle() }
-                } label: {
+                Button { store.page = .mascots } label: {
                     WityView(store: store, height: 44).frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(choosing ? "Close the character picker" : "Choose a character")
-                .help(choosing ? "Close the character picker" : "Choose a character")
+                .accessibilityLabel("Choose a character")
+                .help("Choose a character")
                 .contextMenu {
                     Button("Next character") { store.nextCharacter() }
                     Button("Change coat") { store.nextSkin() }.disabled(store.usingOwnImage)
@@ -267,31 +283,14 @@ struct Header: View {
                 Spacer(minLength: 8)
                 controls
             }
-            if choosing {
-                MascotSwitcher(store: store)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-            if !tags.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(tags) { tag in InsightTag(tag: tag) { store.section = tag.target } }
-                    Spacer(minLength: 0)
-                }
-            }
         }
         .padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 11)
-    }
-
-    /// Only the facts with no other home, and never more than three of them.
-    /// The cap is not decoration: a row that can wrap will wrap on the day
-    /// everything is wrong at once, which is the day the header most needs to
-    /// stay the size it was.
-    private var tags: [Insight] {
-        Array((store.envelope?.insights ?? []).filter(\.solo).prefix(3))
     }
 
     /// The engine's sentence, verbatim. Before an envelope exists there is
     /// nothing to derive it from, so the only honest lines are about the wait.
     private var headline: String {
+        if let cheer = store.cheer { return cheer.meaning }
         if store.error != nil { return "Something could not be read" }
         guard let env = store.envelope else {
             return store.phase == "measuring disk" ? "Measuring disk…" : "Reading your repos…"
@@ -309,120 +308,14 @@ struct Header: View {
             Menu {
                 Button("Check for updates…") { store.updates.check(manual: true) }
                 Toggle("Check updates automatically", isOn: $store.automaticUpdates)
-                Toggle("Mascot merge messages", isOn: $store.mergeNudges)
-                Toggle("Let the mascot wander", isOn: $store.mascotWanders)
-                    .help("Occasional screen strolls. Respects Reduce Motion.")
-                Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
-                Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()
                 Picker("Theme", selection: $store.theme) {
                     Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
                 }
-                if let mascot = store.mascot {
-                    Picker("Coat", selection: $store.skin) {
-                        ForEach(mascot.skins.keys.sorted(), id: \.self) { Text($0).tag($0) }
-                    }
-                    .disabled(store.usingOwnImage)
-                    Button(OwnFace.exists ? "Choose another picture…" : "Use your own picture…") {
-                        store.chooseOwnImage()
-                    }
-                    if OwnFace.exists {
-                        Button("Forget that picture") {
-                            OwnFace.forget()
-                            store.figure = mascot.defaultFigure
-                        }
-                    }
-                }
             } label: { Image(systemName: "slider.horizontal.3") }
-            .menuStyle(.borderlessButton).fixedSize().help("Appearance")
+            .menuStyle(.borderlessButton).fixedSize().help("Theme and updates")
         }
         .buttonStyle(.borderless).font(.system(size: 12))
-    }
-}
-
-/// Always-visible portraits: one press selects the exact character, with no menu or confirmation.
-struct MascotSwitcher: View {
-    @ObservedObject var store: Store
-    private let coats = Mascot.drawnCoats
-
-    var body: some View {
-        if let mascot = store.mascot {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 40), spacing: 4)], spacing: 4) {
-                ForEach(mascot.figures) { figure in
-                    portrait(id: figure.id, name: figure.name, help: figure.tell) {
-                        if let image = mascot.image(figure: figure.id, gauge: 0, eyes: "open", frame: 0,
-                            skin: coats[figure.id] ?? "acorn", tint: "#3fb27f", fitting: 26, showSignal: false) {
-                            Image(nsImage: image).interpolation(.none)
-                        }
-                    }
-                }
-                if OwnFace.exists {
-                    portrait(id: Store.ownFigure, name: "Yours", help: "Your own picture") {
-                        if let image = OwnFace.image(fitting: 26, tint: nil) {
-                            Image(nsImage: image).interpolation(.none)
-                        }
-                    }
-                }
-            }
-            .accessibilityLabel("Choose a mascot")
-        }
-    }
-
-    private func portrait<Content: View>(id: String, name: String, help: String,
-                                         @ViewBuilder image: () -> Content) -> some View {
-        let selected = store.figure == id
-        return Button { store.figure = id } label: {
-            VStack(spacing: 2) {
-                image().frame(height: 26)
-                Text(name).font(.system(size: 10, weight: selected ? .semibold : .regular))
-                    .lineLimit(1).minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 5)
-            .background(selected ? Palette.brand.opacity(0.12) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7)
-                .stroke(selected ? Palette.brand : Color.clear, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .help("\(name) — \(help)")
-        .accessibilityLabel("Choose \(name)")
-        .accessibilityValue(selected ? "Selected" : "")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// One clickable fact. The hue is on the mark, the wash and the edge; the words
-/// are ink, so it reads in both appearances (white on the stale orange is 2.1:1).
-struct InsightTag: View {
-    let tag: Insight
-    let action: () -> Void
-    private var mark: Color { Palette.tint(named: tag.tint) }
-    private var symbol: String {
-        switch tag.id {
-        case "need":       return "exclamationmark.circle.fill"
-        case "stale":      return "clock.badge.exclamationmark"
-        case "unpushed":   return "arrow.up.circle"
-        case "reclaim":    return "sparkles"
-        case "waiting":    return "person.2"
-        case "draft":      return "pencil.line"
-        case "finished":   return "checkmark.circle"
-        default:           return "eye.slash"
-        }
-    }
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 9.5, weight: .semibold))
-                    .foregroundStyle(mark)
-                Text(tag.label).font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Palette.ink(mark)).lineLimit(1)
-            }
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(Palette.wash(mark))
-                .overlay(Capsule().strokeBorder(Palette.edge(mark), lineWidth: 1)))
-        }
-        .buttonStyle(RowButtonStyle(radius: 12))
-        .help("Show " + tag.label)
     }
 }
 
@@ -432,19 +325,16 @@ struct InsightTag: View {
 struct StatusBar: View {
     @ObservedObject var store: Store
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             if store.unconfigured {
                 // Not "0 worktrees · 0 repos". Nothing has been counted, and
                 // an inventory of zero reads as a finding.
                 Text("no folders being watched yet")
             } else if let env = store.envelope {
-                Text("\(env.worktrees.count) worktrees")
-                Text("· \(Set(env.worktrees.map(\.repo)).count) repos")
+                Text(Store.count(store.folderRows.count, "folder"))
+                Text("· " + Store.count(Set(env.worktrees.map(\.repo)).count, "repo"))
                 if store.filtering {
-                    let shown = store.section == "folders"
-                        ? store.folderRows.filter(store.passes).count
-                        : store.groups.first(where: { $0.id == store.section })?.items.count ?? 0
-                    Text("· \(shown) shown")
+                    Text("· \(store.folderRows.filter { store.inScope($0) && (store.verdictFilter == nil || $0.folder?.verdict == store.verdictFilter) }.count) shown")
                 }
             }
             Spacer()

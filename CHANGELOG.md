@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.0
+
+- **One page for what you came to do: delete caches, delete folders, one or all.** Overview, Repos and Disk are gone. Folders opens with "Clean caches", "Delete N safe" and the unsaved-work count on one line, and the menu says how much you could free.
+- **Finds the space it was missing.** Xcode and SwiftPM build output (DerivedData, `SourcePackages`, `checkouts`, built `.app`/`.framework` bundles) no longer counts as a protected file, and folders marked with a standard `CACHEDIR.TAG` count as caches. On a real Mac, what could be freed went from 70GB to 100GB. Slow measurements get ten minutes and say "not measured" instead of zero.
+- **Sidebar:** Folders, Locations and Mascots, then **Show** to filter by verdict, each in its own colour.
+- **Locations** is its own page: every place your worktree folders live, biggest first, with full path, size, verdicts and caches. Opening one shows only its folders, with a link back.
+- **Empty locations:** deleting a folder's last worktree takes the empty folder with it; empty ones already left behind show as safe to delete.
+- **Mascots** has its own page: the whole cast large and animated, a Look card (coat, your own picture) and a Behaviour card (desktop companion, wandering, merged PRs, celebrations). The character cheers with what a cleanup freed.
+- Faster mascot drawing (frames are cached; about 40× less work) and the animation pauses while the screen sleeps.
+- Wording is one verb throughout: Delete, and folders, in buttons, the confirm sheet and the done banner.
+
 ## 0.12.1
 
 - Disk opens on what can be freed. Reclaim comes first, then By repo, and the Your space history last. Your space leaves Overview, so it appears once, beside the space it counts. It used to fill a narrow window's whole first screen with nothing to act on.
