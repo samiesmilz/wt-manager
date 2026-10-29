@@ -152,13 +152,19 @@ struct FoldersView: View {
         let caches = store.locationFilter == nil && store.query.isEmpty
             ? store.cacheCandidates : rows.map(\.worktree).filter { $0.reclaimKb > 0 }
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center, spacing: 10) {
                 Text(title)
                     .font(.system(size: 19, weight: .semibold, design: .rounded))
                     .lineLimit(1).truncationMode(.head)
+                Text(verbatim: "\(rows.count)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Palette.ink(Palette.reclaim))
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Capsule().fill(Palette.wash(Palette.reclaim)))
+                    .accessibilityLabel(Store.count(rows.count, "folder"))
                 Spacer()
-                freeLine
             }
+            chips(rows)
             if let e = store.error {
                 notice(e, tint: Palette.status("blocked"), mono: true)
             }
@@ -186,19 +192,48 @@ struct FoldersView: View {
         return store.locationLabel(l)
     }
 
-    /// The one number: what deleting and cleaning could give back.
+    /// What the page is about, in colour: what could be freed, and what
+    /// exists only here. Each is a way in: the second opens the folders
+    /// holding that work.
     @ViewBuilder
-    private var freeLine: some View {
-        if let f = store.freeable, f.totalKb > 0 {
-            Text("\(Store.human(f.totalKb)) you could free")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.inkReclaim)
-                .help([f.cachesKb > 0 ? "\(Store.human(f.cachesKb)) of caches" : nil,
-                       f.finishedCount > 0 ? "\(Store.human(f.finishedKb)) in safe folders" : nil]
-                      .compactMap { $0 }.joined(separator: " · "))
-        } else if store.disk == nil, store.envelope != nil {
-            Text(store.phase == "measuring disk" ? "measuring disk…" : "disk not measured yet")
-                .font(.system(size: 11)).foregroundStyle(Palette.muted)
+    private func chips(_ rows: [Row]) -> some View {
+        let commits = rows.reduce(0) { $0 + max($1.worktree.atRisk, 0) }
+        let unsaved = rows.filter { $0.verdict == .unsaved }.count
+        let free = store.freeable.map(\.totalKb) ?? 0
+        if free > 0 || commits > 0 || (store.disk == nil && store.envelope != nil) {
+            HStack(spacing: 7) {
+                if free > 0 {
+                    chip("\(Store.human(free)) you could free", "sparkles", Palette.reclaim)
+                        .help([store.freeable.flatMap { $0.cachesKb > 0 ? "\(Store.human($0.cachesKb)) of caches" : nil },
+                               store.freeable.flatMap { $0.finishedCount > 0 ? "\(Store.human($0.finishedKb)) in safe folders" : nil }]
+                              .compactMap { $0 }.joined(separator: " · "))
+                } else if store.disk == nil, store.envelope != nil {
+                    chip(store.phase == "measuring disk" ? "measuring disk…" : "disk not measured yet",
+                         "internaldrive", Palette.status("empty"))
+                }
+                if commits > 0 {
+                    Button { store.verdictFilter = only == .unsaved ? nil : FoldersView.Verdict.unsaved.rawValue } label: {
+                        chip(Store.count(commits, "commit") + " only here"
+                             + (unsaved > 0 ? " · " + Store.count(unsaved, "folder") : ""),
+                             "arrow.up.circle", Palette.risk)
+                    }
+                    .buttonStyle(RowButtonStyle(radius: 12))
+                    .help("Show the folders holding work that is on no remote")
+                }
+                Spacer(minLength: 0)
+            }
         }
+    }
+
+    private func chip(_ text: String, _ symbol: String, _ tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(tint)
+            Text(text).font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.ink(tint)).lineLimit(1)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(Capsule().fill(Palette.wash(tint))
+            .overlay(Capsule().strokeBorder(Palette.edge(tint), lineWidth: 1)))
     }
 
     private func notice(_ text: String, tint: Color, mono: Bool = false) -> some View {
@@ -523,7 +558,7 @@ private struct FolderRow: View {
                     HStack(spacing: 5) {
                         Circle().fill(v.tint).frame(width: 6, height: 6)
                         Text(v.label).font(.system(size: 10.5, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.ink(v.tint))
                     }
                     .fixedSize()
                 }

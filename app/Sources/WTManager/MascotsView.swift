@@ -64,9 +64,9 @@ struct MascotsView: View {
             }
             .frame(maxWidth: .infinity).padding(.vertical, 14).padding(.horizontal, 8)
             .background(RoundedRectangle(cornerRadius: 12)
-                .fill(selected ? Palette.brand.opacity(0.10) : Palette.surface))
+                .fill(selected ? Palette.mascot.opacity(0.10) : Palette.surface))
             .overlay(RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(selected ? Palette.brand : Color.primary.opacity(0.08),
+                .strokeBorder(selected ? Palette.mascot : Color.primary.opacity(0.08),
                               lineWidth: selected ? 1.5 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -93,9 +93,9 @@ struct MascotsView: View {
             }
             .frame(maxWidth: .infinity).padding(.vertical, 14)
             .background(RoundedRectangle(cornerRadius: 12)
-                .fill(selected ? Palette.brand.opacity(0.10) : Palette.surface))
+                .fill(selected ? Palette.mascot.opacity(0.10) : Palette.surface))
             .overlay(RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(selected ? Palette.brand : Color.primary.opacity(0.08),
+                .strokeBorder(selected ? Palette.mascot : Color.primary.opacity(0.08),
                               lineWidth: selected ? 1.5 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -116,9 +116,9 @@ struct MascotsView: View {
                         Button { store.skin = coat } label: {
                             Text(coat).font(.system(size: 11.5, weight: on ? .semibold : .regular))
                                 .frame(maxWidth: .infinity).padding(.vertical, 5)
-                                .foregroundStyle(on ? Palette.brand : .primary)
-                                .background(Capsule().fill(on ? Palette.brand.opacity(0.12) : Color.primary.opacity(0.05)))
-                                .overlay(Capsule().strokeBorder(on ? Palette.brand : .clear, lineWidth: 1))
+                                .foregroundStyle(on ? Palette.mascot : .primary)
+                                .background(Capsule().fill(on ? Palette.mascot.opacity(0.12) : Color.primary.opacity(0.05)))
+                                .overlay(Capsule().strokeBorder(on ? Palette.mascot : .clear, lineWidth: 1))
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)

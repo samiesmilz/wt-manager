@@ -34,6 +34,9 @@ enum Palette {
         }
     }
 
+    /// The cast's own colour: the wordmark's rust, as the mascots are drawn.
+    static let mascot = Color(red: 0.72, green: 0.36, blue: 0.17)
+
     static let reclaim = Color(red: 0.30, green: 0.70, blue: 0.52)
     static let risk    = Color(red: 0.91, green: 0.55, blue: 0.20)
 

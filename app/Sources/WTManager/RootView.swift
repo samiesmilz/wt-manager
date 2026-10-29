@@ -97,12 +97,14 @@ struct Sidebar: View {
 
             let ready = store.envelope != nil && !store.unconfigured
             entry("Folders", "folder", ready ? "\(store.folderRows.count)" : "–",
-                  on: store.page == .folders && store.verdictFilter == nil && store.locationFilter == nil) {
+                  tint: Palette.reclaim, on: store.page == .folders && store.verdictFilter == nil && store.locationFilter == nil) {
                 store.page = .folders
                 store.verdictFilter = nil
                 store.locationFilter = nil
             }
-            entry("Mascots", "pawprint", nil, on: store.page == .mascots) { store.page = .mascots }
+            entry("Mascots", "pawprint.fill", nil, tint: Palette.mascot, on: store.page == .mascots) {
+                store.page = .mascots
+            }
 
             if ready && !(store.folderRows.isEmpty && store.emptyLocations.isEmpty) {
                 // The list's filters, here rather than as pills over it: a
@@ -117,7 +119,7 @@ struct Sidebar: View {
                                 + (v == .safe && store.locationFilter == nil && store.query.isEmpty
                                    ? store.emptyLocations.count : 0)
                             let on = store.page == .folders && store.verdictFilter == v.rawValue
-                            entry(v.label, nil, "\(n)", dot: v.tint, on: on, dim: n == 0 && !on) {
+                            entry(v == .unsaved ? "Unsaved" : v.label, nil, "\(n)", dot: v.tint, tint: v.tint, on: on, dim: n == 0 && !on) {
                                 store.page = .folders
                                 store.verdictFilter = on ? nil : v.rawValue
                             }
@@ -126,7 +128,8 @@ struct Sidebar: View {
                         ForEach(store.locations, id: \.id) { l in
                             let on = store.page == .folders && store.locationFilter == l.id
                             entry(store.locationLabel(l.id),
-                                  l.id == Store.elsewhere ? "folder" : "folder.fill", "\(l.count)", on: on) {
+                                  l.id == Store.elsewhere ? "folder" : "folder.fill", "\(l.count)",
+                                  tint: Palette.status("trunk"), on: on) {
                                 store.page = .folders
                                 store.locationFilter = on ? nil : l.id
                             }
@@ -168,29 +171,37 @@ struct Sidebar: View {
             .padding(.horizontal, 17).padding(.top, 16).padding(.bottom, 4)
     }
 
-    /// `symbol` or `dot`: an icon for a place, the verdict's colour for a filter.
+    /// `symbol` or `dot`: an icon for a place, the verdict's colour for a
+    /// filter. Each entry carries its own colour on the mark, the count and,
+    /// when selected, the ground; the words stay ink so they read in both
+    /// appearances.
     private func entry(_ title: String, _ symbol: String?, _ badge: String?, dot: Color? = nil,
-                       on: Bool, dim: Bool = false, action: @escaping () -> Void) -> some View {
+                       tint: Color, on: Bool, dim: Bool = false,
+                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 9) {
                 if let symbol {
                     Image(systemName: symbol)
                         .font(.system(size: 13)).frame(width: 18)
-                        .foregroundStyle(on ? Color.accentColor : Palette.muted)
+                        .foregroundStyle(dim ? Palette.faint : tint)
                 } else if let dot {
-                    Circle().fill(dim ? Palette.faint : dot).frame(width: 7, height: 7).frame(width: 18)
+                    Circle().fill(dim ? Palette.faint : dot).frame(width: 8, height: 8).frame(width: 18)
                 }
-                Text(title).font(.system(size: 13))
-                    .foregroundStyle(on ? Color.accentColor : dim ? Palette.muted : .primary)
+                Text(title).font(.system(size: 13, weight: on ? .semibold : .regular))
+                    .foregroundStyle(on ? Palette.ink(tint) : dim ? Palette.muted : .primary)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
                 if let badge {
-                    Text(badge).font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(on ? Color.accentColor : Palette.muted)
+                    Text(badge).font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(dim ? Palette.muted : Palette.ink(tint))
+                        .padding(.horizontal, 6).padding(.vertical, 1.5)
+                        .background(Capsule().fill(dim ? Color.clear : Palette.wash(tint)))
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Palette.selection : .clear))
+            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Palette.wash(tint) : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(on ? Palette.edge(tint) : .clear, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
@@ -219,7 +230,7 @@ struct PixelWordmark: View {
                 for (y, row) in (glyphs[character] ?? []).enumerated() {
                     for (x, pixel) in row.enumerated() where pixel == "1" {
                         let rect = CGRect(x: (i * 6 + x) * 2, y: y * 2, width: 2, height: 2)
-                        context.fill(Path(rect), with: .color(i < 3 ? Color(red: 0.72, green: 0.36, blue: 0.17) : .primary))
+                        context.fill(Path(rect), with: .color(i < 3 ? Palette.mascot : .primary))
                     }
                 }
             }
