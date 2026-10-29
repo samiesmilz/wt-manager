@@ -221,14 +221,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     static func limits(for screen: NSScreen?, contentNeeds: CGFloat) -> Limits {
         let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 850)
         let margin: CGFloat = 48
-        // Half the screen: one list of folders needs no more.
-        let minW: CGFloat = 540
-        let maxW = max(minW, floor(vf.width / 2))
+        // Half the screen for the content, plus the sidebar on top of it: the
+        // rail is chrome and holds none of the data.
+        let minW: CGFloat = 540 + Sidebar.railWidth
+        let maxW = max(minW, floor(vf.width / 2) + Sidebar.railWidth)
         let maxH = max(480, floor(vf.height - margin))
         let minH: CGFloat = 480
         // A ceiling is not a default: comfortably under it, so there is room
         // to drag either way.
-        let idealW = Swift.min(Swift.max(minW, 680), maxW)
+        let idealW = Swift.min(Swift.max(minW, 680 + Sidebar.railWidth), maxW)
         let idealH = Swift.min(Swift.max(minH, ceil(contentNeeds)), maxH)
         return Limits(min: NSSize(width: minW, height: minH),
                       max: NSSize(width: maxW, height: maxH),

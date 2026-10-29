@@ -15,23 +15,11 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // One page. The app does two things, delete folders and clean their
-        // caches, and both live on the folder list; a sidebar of four places
-        // was navigation for summaries of that one list.
-        VStack(spacing: 0) {
-            Header(store: store)
-            UpdateBanner(store: store, updates: store.updates)
-            if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
-                MergeSpeechBanner(store: store, nudge: nudge)
-            }
-            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
-            if let completion = store.completion {
-                CompletionBanner(store: store, plan: completion)
-                    .transition(.opacity)
-            }
-            content
-            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
-            StatusBar(store: store)
+        HStack(spacing: 0) {
+            Sidebar(store: store)
+                .frame(width: Sidebar.railWidth - 1)
+            Rectangle().fill(.primary.opacity(0.07)).frame(width: 1)
+            page
         }
         // The window enforces the minimum via contentMinSize. Declaring it here
         // too makes the hosting view demand a size the window may not have yet,
@@ -47,6 +35,25 @@ struct RootView: View {
         }
     }
 
+    /// The header, banners, the folder list and the inventory strip.
+    private var page: some View {
+        VStack(spacing: 0) {
+            Header(store: store)
+            UpdateBanner(store: store, updates: store.updates)
+            if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
+                MergeSpeechBanner(store: store, nudge: nudge)
+            }
+            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            if let completion = store.completion {
+                CompletionBanner(store: store, plan: completion)
+                    .transition(.opacity)
+            }
+            content
+            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            StatusBar(store: store)
+        }
+    }
+
     @ViewBuilder
     private var content: some View {
         // With no roots there is nothing to list, and the one question in
@@ -56,6 +63,112 @@ struct RootView: View {
         } else {
             FoldersView(store: store, open: openRow ?? store.focusPath)
         }
+    }
+}
+
+// MARK: - sidebar
+
+struct Sidebar: View {
+    /// The rail, hairline included. Named because the window's width ceiling
+    /// is measured against it: half the screen is promised to the content, and
+    /// the rail is added on top of that rather than taken out of it.
+    static let railWidth: CGFloat = 194
+    /// One entry, ground included: 12.5pt text on 5.5pt of padding either side,
+    /// plus the half-point that separates it from its neighbour.
+    static let rowHeight: CGFloat = 28
+
+    @ObservedObject var store: Store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // The traffic lights end 23pt down — measured, not guessed — and
+            // only the sidebar owes them anything, since they sit entirely
+            // within its width. But clearing them by a hair is not the same as
+            // looking clear of them: 24pt puts the first row's tint directly
+            // under the green button. A whole row's height of air above the
+            // first row reads as deliberate, and the header keeps its own
+            // tighter padding because nothing overlaps it.
+            Color.clear.frame(height: 34)
+            PixelWordmark()
+                .padding(.horizontal, 17).padding(.bottom, 18)
+
+            // The app's one page, with what it holds.
+            entry("Folders", "folder",
+                  store.envelope == nil || store.unconfigured ? "–" : "\(store.folderRows.count)")
+
+            Spacer(minLength: 12)
+            VStack(spacing: 7) {
+                Button { store.showingSettings = true } label: {
+                    Label("Watched folders", systemImage: "folder.badge.gearshape")
+                        .font(.system(size: 11))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.muted)
+                .padding(.horizontal, 7)
+            }
+            .padding(.horizontal, 12).padding(.bottom, 15)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    /// One row, in the system's own sidebar idiom.
+    ///
+    /// The selected row used to be a saturated accent slab with white text on
+    /// it, which is a *button*, not a selection — it shouted louder than
+    /// anything in the content it was pointing at, and it made the rail the
+    /// loudest thing on the window. A pale accent ground with accent ink is
+    /// what every sidebar on this machine does, and it reads as selected
+    /// without competing.
+    private func entry(_ title: String, _ symbol: String, _ badge: String?) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: symbol)
+                .font(.system(size: 13)).frame(width: 18)
+                .foregroundStyle(Color.accentColor)
+            Text(title).font(.system(size: 13))
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if let badge {
+                Text(badge).font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.selection))
+        .padding(.horizontal, 9).padding(.vertical, 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isSelected)
+    }
+}
+
+/// A small bitmap alphabet, drawn on whole cells like the app's mascot.
+struct PixelWordmark: View {
+    private let glyphs: [Character: [String]] = [
+        "w": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
+        "t": ["00100", "00100", "11111", "00100", "00100", "00100", "00011"],
+        "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+        "m": ["00000", "00000", "11011", "10101", "10101", "10101", "10101"],
+        "a": ["00000", "00000", "01110", "00001", "01111", "10001", "01111"],
+        "n": ["00000", "00000", "11110", "10001", "10001", "10001", "10001"],
+        "g": ["00000", "01111", "10001", "10001", "01111", "00001", "01110"],
+        "e": ["00000", "00000", "01110", "10001", "11111", "10000", "01111"],
+        "r": ["00000", "00000", "10110", "11001", "10000", "10000", "10000"],
+    ]
+    var body: some View {
+        Canvas { context, _ in
+            for (i, character) in "wt-manager".enumerated() {
+                for (y, row) in (glyphs[character] ?? []).enumerated() {
+                    for (x, pixel) in row.enumerated() where pixel == "1" {
+                        let rect = CGRect(x: (i * 6 + x) * 2, y: y * 2, width: 2, height: 2)
+                        context.fill(Path(rect), with: .color(i < 3 ? Color(red: 0.72, green: 0.36, blue: 0.17) : .primary))
+                    }
+                }
+            }
+        }
+        .frame(width: 118, height: 14)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("wt-manager")
     }
 }
 
@@ -146,7 +259,6 @@ struct Header: View {
                 Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
                 Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()
-                Button("Watched folders…") { store.showingSettings = true }
                 Picker("Theme", selection: $store.theme) {
                     Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
                 }
