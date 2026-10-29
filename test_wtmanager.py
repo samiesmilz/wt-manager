@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import contextlib
 import io
 import sys
@@ -253,6 +254,20 @@ class EmptyParent(unittest.TestCase):
         os.rmdir(os.path.join(self.loc, "feat-b"))
         self.assertFalse(T.drop_empty_parent(self.gone))
         self.assertTrue(os.path.isdir(self.loc))
+
+    def test_a_location_emptied_elsewhere_is_remembered_and_reported(self):
+        isolate_caches(self)
+        orig = T.folder_info
+        T.folder_info = lambda w: {"verdict": "safe"}
+        self.addCleanup(setattr, T, "folder_info", orig)
+        wt = types.SimpleNamespace(path=os.path.join(self.loc, "feat-a"))
+        os.makedirs(wt.path)
+        self.assertEqual(T.empty_locations([wt]), [], "occupied")
+        os.rmdir(wt.path)                      # deleted by Finder, say
+        open(os.path.join(self.loc, ".DS_Store"), "w").close()
+        self.assertEqual(T.empty_locations([]), [self.loc], "remembered, now empty")
+        open(os.path.join(self.loc, "notes.md"), "w").close()
+        self.assertEqual(T.empty_locations([]), [], "holds something")
 
     def test_home_and_shallow_folders_are_never_removed(self):
         self.assertFalse(T.drop_empty_parent(os.path.join(os.path.expanduser("~"), "x")))

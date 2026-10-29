@@ -104,7 +104,7 @@ struct Sidebar: View {
             }
             entry("Mascots", "pawprint", nil, on: store.page == .mascots) { store.page = .mascots }
 
-            if ready && !store.folderRows.isEmpty {
+            if ready && !(store.folderRows.isEmpty && store.emptyLocations.isEmpty) {
                 // The list's filters, here rather than as pills over it: a
                 // filter is where you are, and where you are is the sidebar's.
                 ScrollView {
@@ -112,7 +112,10 @@ struct Sidebar: View {
                         heading("Show")
                         let scoped = store.folderRows.filter(store.inScope)
                         ForEach(FoldersView.Verdict.allCases, id: \.self) { v in
+                            // Empty leftover folders are safe by definition.
                             let n = scoped.filter { $0.folder?.verdict == v.rawValue }.count
+                                + (v == .safe && store.locationFilter == nil && store.query.isEmpty
+                                   ? store.emptyLocations.count : 0)
                             let on = store.page == .folders && store.verdictFilter == v.rawValue
                             entry(v.label, nil, "\(n)", dot: v.tint, on: on, dim: n == 0 && !on) {
                                 store.page = .folders

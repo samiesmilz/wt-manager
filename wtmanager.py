@@ -3238,10 +3238,9 @@ def drop_empty_parent(path: str) -> bool:
     if parent in ("/", os.path.expanduser("~")) or parent.count(os.sep) < 3:
         return False
     try:
-        inside = os.listdir(parent)
-        if any(n != ".DS_Store" for n in inside):
+        if not only_finder_litter(parent):
             return False
-        if ".DS_Store" in inside:
+        if ".DS_Store" in os.listdir(parent):
             os.remove(os.path.join(parent, ".DS_Store"))
         os.rmdir(parent)
         return True
@@ -3605,6 +3604,43 @@ def cmd_unconfigured() -> int:
     return 0
 
 
+def _locations_file() -> Path:
+    return cache_dir() / "locations.json"
+
+
+def only_finder_litter(path: str) -> bool:
+    """A folder with nothing in it but Finder's `.DS_Store`."""
+    try:
+        return all(n == ".DS_Store" for n in os.listdir(path))
+    except OSError:
+        return False
+
+
+def empty_locations(wts: List[Worktree]) -> List[str]:
+    """Folders that held worktrees and now hold nothing.
+
+    A location exists for the list only while a worktree is in it, so one
+    emptied by Finder, another tool or an older version of this one simply
+    vanished: measured, thirteen empty `task-N/` folders under Codex. Every
+    parent of a worktree folder is remembered, and a remembered one that is
+    empty is reported, so it can be offered as safe to delete.
+    """
+    try:
+        seen = set(json.loads(_locations_file().read_text()))
+    except Exception:
+        seen = set()
+    seen |= {os.path.dirname(w.path) for w in wts if folder_info(w) is not None}
+    seen = {p for p in seen if os.path.isdir(p)}
+    try:
+        f = _locations_file()
+        f.write_text(json.dumps(sorted(seen)))
+        os.chmod(f, 0o600)     # private repo layout, as with the size cache
+    except OSError:
+        pass
+    occupied = {os.path.dirname(w.path) for w in wts}
+    return sorted(p for p in seen if p not in occupied and only_finder_litter(p))
+
+
 def cmd_agent(wts: List[Worktree], args) -> int:
     """One envelope with everything an ambient client needs, mood included.
 
@@ -3651,6 +3687,7 @@ def cmd_agent(wts: List[Worktree], args) -> int:
         **({"measured_paths": measured_paths} if partial else {}),
         "notices": notice_lines(),
         "roots": load_config().get("roots", []),
+        "empty_locations": empty_locations(wts),
         # The sentence, decided here beside the mood it is derived from. A
         # client that wrote its own would rank the same facts a second time.
         "headline": mascot.headline(face["mood"], counts, reclaim, len(wts)),

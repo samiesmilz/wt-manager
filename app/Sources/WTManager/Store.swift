@@ -135,6 +135,26 @@ final class Store: ObservableObject {
         return parts.suffix(n).joined(separator: "/")
     }
 
+    /// Folders that held worktrees and are empty now, as the last scan saw
+    /// them, less any removed since.
+    var emptyLocations: [String] { envelope?.emptyLocations ?? [] }
+
+    /// Remove empty folders. Nothing can be lost: each is checked again here,
+    /// and one with anything but Finder's `.DS_Store` in it is left alone.
+    func removeEmptyLocations(_ paths: [String]) {
+        let fm = FileManager.default
+        var gone: Set<String> = []
+        for p in paths {
+            guard let inside = try? fm.contentsOfDirectory(atPath: p),
+                  inside.allSatisfy({ $0 == ".DS_Store" }) else { continue }
+            if inside.contains(".DS_Store") { try? fm.removeItem(atPath: p + "/.DS_Store") }
+            // rmdir, not removeItem: it refuses a folder that is not empty,
+            // so a file arriving between the check and here is never lost.
+            if rmdir(p) == 0 { gone.insert(p) }
+        }
+        envelope?.emptyLocations.removeAll { gone.contains($0) }
+    }
+
     /// Search and location: what a verdict count in the sidebar counts over.
     func inScope(_ w: Worktree) -> Bool {
         passes(w) && (locationFilter == nil || location(of: w) == locationFilter)

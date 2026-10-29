@@ -235,14 +235,20 @@ struct FoldersView: View {
 
     private func content(_ rows: [Row]) -> some View {
         let groups = self.groups(rows)
+        let empties = shownEmpties
         return VStack(alignment: .leading, spacing: 14) {
-            if rows.isEmpty {
+            if !empties.isEmpty { emptyCard(empties) }
+            if rows.isEmpty && !empties.isEmpty {
+                // Only the empty folders: nothing more to say.
+            } else if rows.isEmpty {
                 Text(store.envelope == nil ? "Reading your repos…"
                      : "No worktree folders. Every checkout here is a repo's main one.")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
             } else if groups.isEmpty, let only {
-                Text("No folders are \(only.short).")
-                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                if empties.isEmpty {
+                    Text("No folders are \(only.short).")
+                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                }
             } else if groups.isEmpty {
                 HStack(spacing: 6) {
                     Text("No folders match.").foregroundStyle(Palette.muted)
@@ -251,7 +257,7 @@ struct FoldersView: View {
                 }
                 .font(.system(size: 12))
             } else {
-                if only == nil, !rows.contains(where: { $0.verdict == .safe }) {
+                if only == nil, empties.isEmpty, !rows.contains(where: { $0.verdict == .safe }) {
                     // After a cleanup this is the usual state, and a page with
                     // no sweep button and no word about why looks unfinished.
                     let held = rows.contains { !$0.verdict.lossless }
@@ -271,6 +277,54 @@ struct FoldersView: View {
         // jumping to its new shape.
         .animation(reduceMotion ? nil : .easeOut(duration: 0.28), value: rows.map(\.id))
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: only)
+    }
+
+    /// Empty folders left where worktrees were, when the page is showing
+    /// what is safe: all of it, or the safe filter, with no narrower search.
+    private var shownEmpties: [String] {
+        guard only == nil || only == .safe, store.locationFilter == nil, store.query.isEmpty else { return [] }
+        return store.emptyLocations
+    }
+
+    /// Folders that held worktrees and hold nothing now. Safe by definition,
+    /// so one button, and no preview: there is nothing in them to show.
+    private func emptyCard(_ paths: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "folder").font(.system(size: 18))
+                    .foregroundStyle(Palette.reclaim).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Empty folders").font(.system(size: 13, weight: .semibold))
+                    Text("left where worktrees used to be · nothing inside")
+                        .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                }
+                Spacer(minLength: 8)
+                Button { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                    store.removeEmptyLocations(paths)
+                } } label: {
+                    Label("Remove \(Store.count(paths.count, "empty folder"))", systemImage: "trash")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(Palette.ink(Palette.reclaim))
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Palette.wash(Palette.reclaim)))
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+                .help("Each is checked again first; a folder with anything in it is left alone.")
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(paths, id: \.self) { p in
+                    let home = NSHomeDirectory()
+                    Text(p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                        .lineLimit(1).truncationMode(.head)
+                }
+            }
+            .padding(.leading, 30)
+        }
+        .padding(15)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface)
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08))))
     }
 
     /// What one delete of the ticked folders would do, said on its button.
