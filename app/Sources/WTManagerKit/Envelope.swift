@@ -139,6 +139,19 @@ public struct Face: Decodable {
     public let tint: String
     public let bob: [Int]
     public let gauge: Int
+
+    public init(mood: String, meaning: String, eyes: String, tint: String, bob: [Int], gauge: Int) {
+        self.mood = mood; self.meaning = meaning; self.eyes = eyes
+        self.tint = tint; self.bob = bob; self.gauge = gauge
+    }
+
+    /// The engine's own proud face (mascot.py MOODS), worn for a moment after
+    /// a cleanup the person just confirmed. Every other face is the engine's
+    /// verdict on the disk; this one answers what they did.
+    public static func cheer(freedKb: Int) -> Face {
+        Face(mood: "proud", meaning: "Freed \(DiskSize.human(freedKb))", eyes: "open",
+             tint: "#3fb27f", bob: [0, 0, 1, 1], gauge: 0)
+    }
 }
 
 public struct Envelope: Decodable {

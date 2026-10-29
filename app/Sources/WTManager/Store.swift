@@ -112,7 +112,10 @@ final class Store: ObservableObject {
 
     var counts: [String: Int] { envelope?.counts ?? [:] }
     var attention: Int { (counts["blocked"] ?? 0) + (counts["review"] ?? 0) }
-    var face: Face? { envelope?.face }
+    /// A cleanup just landed: the character wears the proud face for a few
+    /// seconds, in the window, the menu bar and on the desktop alike.
+    @Published private(set) var cheer: Face?
+    var face: Face? { cheer ?? envelope?.face }
 
     func start() {
         // Counts first, disk second. Reading every repo takes about eight
@@ -753,10 +756,14 @@ extension Store {
                     self.saveHistory()
                     if self.celebrationsEnabled && r.failed == 0 {
                         self.celebration = p.id
+                        let cheer = r.freedKb > 0 ? Face.cheer(freedKb: r.freedKb) : nil
+                        self.cheer = cheer
                         let rewardID = p.id
                         Task { @MainActor [weak self] in
                             try? await Task.sleep(nanoseconds: 2_800_000_000)
                             if self?.celebration == rewardID { self?.celebration = nil }
+                            try? await Task.sleep(nanoseconds: 5_200_000_000)
+                            if let cheer, self?.cheer?.meaning == cheer.meaning { self?.cheer = nil }
                         }
                     }
                 }

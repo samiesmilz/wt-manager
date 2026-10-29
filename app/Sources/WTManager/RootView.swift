@@ -122,6 +122,7 @@ struct Header: View {
     /// The engine's sentence, verbatim. Before an envelope exists there is
     /// nothing to derive it from, so the only honest lines are about the wait.
     private var headline: String {
+        if let cheer = store.cheer { return cheer.meaning }
         if store.error != nil { return "Something could not be read" }
         guard let env = store.envelope else {
             return store.phase == "measuring disk" ? "Measuring disk…" : "Reading your repos…"

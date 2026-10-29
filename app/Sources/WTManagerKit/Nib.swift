@@ -130,58 +130,129 @@ extension Mascot {
         "palm": "tropical", "orb": "pearl", "antenna": "cherry", "pup": "snow", "rex": "moss",
     ]
 
+    /// Frames already drawn. The clock asks for a frame about four times a
+    /// second in up to three places (window, floating companion, menu bar),
+    /// and a pose repeats every few seconds: drawing it pixel by pixel each
+    /// time was half a millisecond of work for a picture already made. Keyed
+    /// by the sprite actually chosen, not the frame asked for, because the
+    /// clock's frame counts up forever while the art loops.
+    private static let drawn: NSCache<NSString, NSImage> = {
+        let c = NSCache<NSString, NSImage>()
+        // Every pose of one character in one coat, at the three sizes it is
+        // drawn at, with room for a coat change.
+        c.countLimit = 600
+        return c
+    }()
+
     /// One frame as an image, sized to fit `height` points.
     ///
     /// Drawn at an integral pixel scale and never interpolated: a pixel
     /// character resampled to a fractional size stops being pixel art and
     /// becomes a smudge, which is exactly what it looks like when it goes wrong.
+    /// The image is shared from a cache: callers must not mutate it.
     public func image(figure: String, gauge: Int, eyes: String, frame: Int, skin: String,
                tint: String, fitting height: CGFloat, mood: String? = nil, detailed: Bool = false,
                showSignal: Bool = true, walking: Bool = false, facesLeft: Bool = false) -> NSImage? {
         let dedicatedArt = detailed ? companion : (!showSignal ? menu : nil)
-        if let art = dedicatedArt,
-           let rows = (walking
-                ? art.walkingSprites?["\(figure)/\(eyes)/\(frame % max(art.walkingFrames ?? frames, 1))"]
-                : nil) ?? art.sprites["\(figure)/\(eyes)/\(frame % max(frames, 1))"],
-           let palette = art.palettes["\(figure)/\(skin)"] ?? art.palettes["\(figure)/\(defaultSkin)"] {
-            // Detailed art fits in full. Never crop or fractionally resample it.
-            let rowHeight = rows.count
-            let rowWidth = rows.first?.count ?? art.width
-            let scale = max(1, floor(height / CGFloat(rowHeight)))
-            let size = NSSize(width: CGFloat(rowWidth) * scale, height: CGFloat(rowHeight) * scale)
-            let image = NSImage(size: size)
-            image.lockFocus()
-            NSGraphicsContext.current?.imageInterpolation = .none
-            let context = NSGraphicsContext.current?.cgContext
-            context?.saveGState()
-            if facesLeft {
-                context?.translateBy(x: size.width, y: 0)
-                context?.scaleBy(x: -1, y: 1)
-            }
-            for (y, row) in rows.enumerated() {
-                for (x, ch) in row.enumerated() where ch != "." {
-                    guard let color = Ink.color(palette[String(ch)] ?? "") else { continue }
-                    color.setFill()
-                    NSRect(x: CGFloat(x)*scale, y: CGFloat(rowHeight-1-y)*scale,
-                           width: scale, height: scale).fill()
+        if let art = dedicatedArt {
+            let walkKey = "\(figure)/\(eyes)/\(frame % max(art.walkingFrames ?? frames, 1))"
+            let standKey = "\(figure)/\(eyes)/\(frame % max(frames, 1))"
+            let walkRows = walking ? art.walkingSprites?[walkKey] : nil
+            if let rows = walkRows ?? art.sprites[standKey],
+               let palette = art.palettes["\(figure)/\(skin)"] ?? art.palettes["\(figure)/\(defaultSkin)"] {
+                let key = [detailed ? "companion" : "menu", walkRows == nil ? "stand" : "walk",
+                           walkRows == nil ? standKey : walkKey, skin, tint, mood ?? "-",
+                           "\(height)", "\(showSignal)", "\(facesLeft)"].joined(separator: "|")
+                return Self.cached(key) {
+                    drawDedicated(rows: rows, palette: palette, width: art.width, tint: tint,
+                                  fitting: height, mood: mood, showSignal: showSignal, facesLeft: facesLeft)
                 }
             }
-            context?.restoreGState()
-            if let mood, showSignal {
-                // Keep the badge at menu-bar size so art stays the focus.
-                MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width-9, y: 0), scale: 1)
-            }
-            image.unlockFocus()
-            return image
         }
-        let walkingRows = walking
-            ? (companion?.walkingSprites?["\(figure)/\(eyes)/\(frame % max(frames, 1))"]
-                ?? walkSprites?["\(figure)/\(gauge)/\(eyes)/\(frame % max(frames, 1))"])
-            : nil
-        guard let rows = walkingRows ?? rows(figure: figure, gauge: gauge, eyes: eyes, frame: frame)
-        else { return nil }
+        let f = frame % max(frames, 1)
+        let companionWalkKey = "\(figure)/\(eyes)/\(f)"
+        let walkKey = "\(figure)/\(gauge)/\(eyes)/\(f)"
+        let companionWalk = walking ? companion?.walkingSprites?[companionWalkKey] : nil
+        let plainWalk = walking && companionWalk == nil ? walkSprites?[walkKey] : nil
+        let source: String
+        let found: [String]?
+        if let companionWalk {
+            source = "cwalk|" + companionWalkKey; found = companionWalk
+        } else if let plainWalk {
+            source = "walk|" + walkKey; found = plainWalk
+        } else {
+            // `rows` falls back to the default figure; the key must name what
+            // was drawn, or two figures could share one picture.
+            let own = sprites["\(figure)/\(gauge)/\(eyes)/\(f)"] != nil
+            source = "stand|" + (own ? figure : defaultFigure) + "/\(gauge)/\(eyes)/\(f)"
+            found = rows(figure: figure, gauge: gauge, eyes: eyes, frame: frame)
+        }
+        guard let rows = found else { return nil }
+        let key = [source, skin, tint, mood ?? "-", "\(height)", "\(showSignal)", "\(facesLeft)"]
+            .joined(separator: "|")
+        return Self.cached(key) {
+            drawPlain(rows: rows, skin: skin, tint: tint, fitting: height, mood: mood,
+                      showSignal: showSignal, facesLeft: facesLeft)
+        }
+    }
+
+    private static func cached(_ key: String, draw: () -> NSImage) -> NSImage {
+        if let hit = drawn.object(forKey: key as NSString) { return hit }
+        let image = draw()
+        drawn.setObject(image, forKey: key as NSString)
+        return image
+    }
+
+    /// Detailed companion or menu art: drawn whole, never cropped or
+    /// fractionally resampled.
+    private func drawDedicated(rows: [String], palette: [String: String], width artWidth: Int,
+                               tint: String, fitting height: CGFloat, mood: String?,
+                               showSignal: Bool, facesLeft: Bool) -> NSImage {
+        let rowHeight = rows.count
+        let rowWidth = rows.first?.count ?? artWidth
+        let scale = max(1, floor(height / CGFloat(rowHeight)))
+        let size = NSSize(width: CGFloat(rowWidth) * scale, height: CGFloat(rowHeight) * scale)
+        // One parse per colour, not one per pixel.
+        var inks: [Character: NSColor] = [:]
+        for (k, hex) in palette { if let ch = k.first, let c = Ink.color(hex) { inks[ch] = c } }
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .none
+        let context = NSGraphicsContext.current?.cgContext
+        context?.saveGState()
+        if facesLeft {
+            context?.translateBy(x: size.width, y: 0)
+            context?.scaleBy(x: -1, y: 1)
+        }
+        for (y, row) in rows.enumerated() {
+            for (x, ch) in row.enumerated() where ch != "." {
+                guard let color = inks[ch] else { continue }
+                color.setFill()
+                NSRect(x: CGFloat(x)*scale, y: CGFloat(rowHeight-1-y)*scale,
+                       width: scale, height: scale).fill()
+            }
+        }
+        context?.restoreGState()
+        if let mood, showSignal {
+            // Keep the badge at menu-bar size so art stays the focus.
+            MascotSignal.draw(mood: mood, tint: tint, at: NSPoint(x: size.width-9, y: 0), scale: 1)
+        }
+        image.unlockFocus()
+        return image
+    }
+
+    private func drawPlain(rows: [String], skin: String, tint: String, fitting height: CGFloat,
+                           mood: String?, showSignal: Bool, facesLeft: Bool) -> NSImage {
         let palette = skins[skin] ?? skins[defaultSkin] ?? [:]
         let accent = Ink.color(tint) ?? .systemGreen
+        var inks: [Character: NSColor] = [:]
+        for (ch, slot) in slots {
+            guard let c = ch.first else { continue }
+            let color = slot == "accent"
+                ? (mood == nil ? accent : Ink.color(palette["pale"] ?? ""))
+                : Ink.color(palette[slot] ?? "")
+            if let color { inks[c] = color }
+        }
 
         // Integral scale, then crop to fit rather than shrink to fit. The menu
         // bar is 22pt and the character is 23 rows, so "scale to fit" would
@@ -202,9 +273,7 @@ extension Mascot {
         }
         for (y, row) in rows.enumerated() where y < drawnRows {
             for (x, ch) in row.enumerated() where ch != "." {
-                guard let slot = slots[String(ch)] else { continue }
-                let color = slot == "accent" ? (mood == nil ? accent : Ink.color(palette["pale"] ?? "")) : Ink.color(palette[slot] ?? "")
-                guard let color else { continue }
+                guard let color = inks[ch] else { continue }
                 color.setFill()
                 // Sprite rows run top-down; AppKit's origin is bottom-left.
                 NSRect(x: CGFloat(x) * scale,

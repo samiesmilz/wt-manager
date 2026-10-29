@@ -303,4 +303,32 @@ final class MascotTests: XCTestCase {
         XCTAssertNotNil(m.image(figure: m.defaultFigure, gauge: 0, eyes: "open", frame: 0,
                                 skin: "no-such-skin", tint: "#3fb27f", fitting: 44))
     }
+
+    /// The frame cache must hand back one picture per pose, and never one
+    /// pose's picture for another: the clock's frame counts up forever while
+    /// the art loops, and a key on the frame asked for would miss every time,
+    /// while a key missing the coat would dress every character alike.
+    func testDrawnFramesAreSharedPerPoseAndNeverAcrossPoses() throws {
+        let m = try load()
+        func draw(_ figure: String, frame: Int, skin: String = "acorn", detailed: Bool = true) -> NSImage? {
+            m.image(figure: figure, gauge: 0, eyes: "open", frame: frame, skin: skin,
+                    tint: "#3fb27f", fitting: 64, mood: "calm", detailed: detailed)
+        }
+        // One with detailed art of its own; the cat falls back to its portrait.
+        let robot = "robot"
+        let a = try XCTUnwrap(draw(robot, frame: 1, skin: "graphite"))
+        XCTAssertTrue(a === draw(robot, frame: 1, skin: "graphite"), "one pose, one picture")
+        XCTAssertTrue(a === draw(robot, frame: 1 + m.frames, skin: "graphite"), "the art loops; so does the cache")
+        XCTAssertFalse(a === draw(robot, frame: 2, skin: "graphite"), "another frame")
+        XCTAssertFalse(a === draw(robot, frame: 1, skin: "ash"), "another coat")
+        XCTAssertFalse(a === draw(robot, frame: 1, skin: "graphite", detailed: false), "another size of art")
+        XCTAssertFalse(a === draw("rooster", frame: 1, skin: "graphite"), "another character")
+    }
+
+    func testTheCheerIsTheEnginesProudFace() {
+        let f = Face.cheer(freedKb: 4 * 1_048_576)
+        XCTAssertEqual(f.mood, "proud")
+        XCTAssertTrue(MascotSignal.moods.contains(f.mood))
+        XCTAssertEqual(f.meaning, "Freed " + DiskSize.human(4 * 1_048_576))
+    }
 }
