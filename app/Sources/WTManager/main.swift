@@ -569,6 +569,17 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
             draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                  size: size, appearance: appearance, to: "\(name)-mascots\(suffix).png")
             store.page = .folders
+            // One place picked in the sidebar: the page must show its folders.
+            if let place = store.locations.first(where: { $0.id != Store.elsewhere && $0.count == 2 }) {
+                store.locationFilter = place.id
+                draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                     size: size, appearance: appearance, to: "\(name)-location\(suffix).png")
+                store.verdictFilter = "unsaved"
+                draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                     size: size, appearance: appearance, to: "\(name)-location-unsaved\(suffix).png")
+                store.verdictFilter = nil
+                store.locationFilter = nil
+            }
         }
         draw(PixelCelebration(previewElapsed: 0.9).background(Color(nsColor: .windowBackgroundColor)),
              size: CGSize(width: 500, height: 300), appearance: appearance, to: "\(name)-celebration.png")

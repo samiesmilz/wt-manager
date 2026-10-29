@@ -338,7 +338,7 @@ struct StatusBar: View {
                 Text(Store.count(store.folderRows.count, "folder"))
                 Text("· " + Store.count(Set(env.worktrees.map(\.repo)).count, "repo"))
                 if store.filtering {
-                    Text("· \(store.folderRows.filter(store.passes).count) shown")
+                    Text("· \(store.folderRows.filter { store.inScope($0) && (store.verdictFilter == nil || $0.folder?.verdict == store.verdictFilter) }.count) shown")
                 }
             }
             Spacer()

@@ -77,6 +77,7 @@ struct FoldersView: View {
     }
 
     static let elsewhereID = "Elsewhere"
+    private static let top = "top"
 
     private var allRows: [Row] {
         let home = NSHomeDirectory()
@@ -124,12 +125,21 @@ struct FoldersView: View {
             Divider().opacity(0.35)
             if scrolls {
                 ScrollViewReader { proxy in
-                    ScrollView { content(rows) }
+                    ScrollView {
+                        Color.clear.frame(height: 0).id(Self.top)
+                        content(rows)
+                    }
                         .safeAreaInset(edge: .bottom) { if !selected.isEmpty { selectionBar(rows) } }
                         // Another page asked for this folder: open it and
                         // bring it into view, then let go of the request.
                         .onAppear { reveal(store.focusPath, proxy) }
                         .onChange(of: store.focusPath) { reveal($0, proxy) }
+                        // A filter from the sidebar shortens the list. Left
+                        // where it was scrolled, the page showed the space
+                        // below two folders: blank, as if the place were empty.
+                        .onChange(of: store.locationFilter) { _ in proxy.scrollTo(Self.top, anchor: .top) }
+                        .onChange(of: store.verdictFilter) { _ in proxy.scrollTo(Self.top, anchor: .top) }
+                        .onChange(of: store.query) { _ in proxy.scrollTo(Self.top, anchor: .top) }
                 }
             } else {
                 if !selected.isEmpty { selectionBar(rows) }
@@ -199,7 +209,11 @@ struct FoldersView: View {
     private func chips(_ rows: [Row]) -> some View {
         let commits = rows.reduce(0) { $0 + max($1.worktree.atRisk, 0) }
         let unsaved = rows.filter { $0.verdict == .unsaved }.count
-        let free = store.freeable.map(\.totalKb) ?? 0
+        // The whole machine, or only the place the sidebar narrowed to.
+        let narrowed = store.locationFilter != nil || !store.query.isEmpty
+        let free = narrowed
+            ? rows.reduce(0) { $0 + ($1.verdict == .safe ? max($1.worktree.sizeKb, 0) : max($1.worktree.reclaimKb, 0)) }
+            : store.freeable.map(\.totalKb) ?? 0
         if free > 0 || commits > 0 || (store.disk == nil && store.envelope != nil) {
             HStack(spacing: 7) {
                 if free > 0 {
