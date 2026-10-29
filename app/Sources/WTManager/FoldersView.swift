@@ -162,6 +162,15 @@ struct FoldersView: View {
         let caches = store.locationFilter == nil && store.query.isEmpty
             ? store.cacheCandidates : rows.map(\.worktree).filter { $0.reclaimKb > 0 }
         return VStack(alignment: .leading, spacing: 10) {
+            if store.locationFilter != nil {
+                // The way back to the place list, where this one was opened.
+                Button { store.locationFilter = nil; store.page = .locations } label: {
+                    Label("All locations", systemImage: "chevron.left")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain).foregroundStyle(Palette.ink(Palette.status("trunk")))
+                .padding(.bottom, -4)
+            }
             HStack(alignment: .center, spacing: 10) {
                 Text(title)
                     .font(.system(size: 19, weight: .semibold, design: .rounded))

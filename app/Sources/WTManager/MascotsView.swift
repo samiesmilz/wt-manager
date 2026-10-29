@@ -104,20 +104,23 @@ struct MascotsView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    // MARK: coat
+    // MARK: look
 
+    /// What it wears: the coat, or a picture of your own instead.
     @ViewBuilder
     private func coats(_ mascot: Mascot) -> some View {
-        if !store.usingOwnImage {
-            section("Coat") {
+        divider
+        section("Look") {
+            if !store.usingOwnImage {
+                row("Coat", "The colours the character is drawn in.") { EmptyView() }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 6)], alignment: .leading, spacing: 6) {
                     ForEach(mascot.skins.keys.sorted(), id: \.self) { coat in
                         let on = store.skin == coat
                         Button { store.skin = coat } label: {
                             Text(coat).font(.system(size: 11.5, weight: on ? .semibold : .regular))
                                 .frame(maxWidth: .infinity).padding(.vertical, 5)
-                                .foregroundStyle(on ? Palette.mascot : .primary)
-                                .background(Capsule().fill(on ? Palette.mascot.opacity(0.12) : Color.primary.opacity(0.05)))
+                                .foregroundStyle(on ? Palette.ink(Palette.mascot) : .primary)
+                                .background(Capsule().fill(on ? Palette.wash(Palette.mascot) : Color.primary.opacity(0.05)))
                                 .overlay(Capsule().strokeBorder(on ? Palette.mascot : .clear, lineWidth: 1))
                                 .contentShape(Capsule())
                         }
@@ -125,45 +128,89 @@ struct MascotsView: View {
                         .accessibilityAddTraits(on ? .isSelected : [])
                     }
                 }
+                .padding(.horizontal, 14).padding(.bottom, 12)
+                Hairline().padding(.horizontal, 14)
             }
-        }
-        HStack(spacing: 10) {
-            Button(OwnFace.exists ? "Choose another picture…" : "Use your own picture…") {
-                store.chooseOwnImage()
-            }
-            if OwnFace.exists {
-                Button("Forget that picture") {
-                    OwnFace.forget()
-                    store.figure = mascot.defaultFigure
+            row("Your own picture", OwnFace.exists ? "Shown in place of a character, with the same status badge."
+                                                   : "Any image, drawn as pixels like the cast.") {
+                HStack(spacing: 8) {
+                    if OwnFace.exists {
+                        Button("Forget") {
+                            OwnFace.forget()
+                            store.figure = mascot.defaultFigure
+                        }
+                    }
+                    Button(OwnFace.exists ? "Choose another…" : "Choose…") { store.chooseOwnImage() }
                 }
+                .controlSize(.small)
             }
         }
-        .controlSize(.small)
     }
 
     // MARK: behaviour
 
     private var behaviour: some View {
-        section("On your desktop") {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Show it on the desktop", isOn: $store.floatingMascot)
-                Toggle("Let it wander now and then", isOn: $store.mascotWanders)
+        VStack(alignment: .leading, spacing: 22) {
+            divider
+            section("Behaviour") {
+                toggleRow("Show it on the desktop",
+                          "A small companion that stays when the window is closed. Click it to open wt-manager.",
+                          $store.floatingMascot)
+                Hairline().padding(.horizontal, 14)
+                toggleRow("Let it wander", "Short strolls across the screen now and then. Off with Reduce Motion.",
+                          $store.mascotWanders)
                     .disabled(!store.floatingMascot)
-                    .help("Occasional screen strolls. Respects Reduce Motion.")
-                Toggle("Tell me when a pull request merges", isOn: $store.mergeNudges)
-                Toggle("Celebrate a cleanup", isOn: $store.celebrationsEnabled)
+                    .opacity(store.floatingMascot ? 1 : 0.5)
+                Hairline().padding(.horizontal, 14)
+                toggleRow("Merged pull requests", "It says so when a branch you have checked out lands.",
+                          $store.mergeNudges)
+                Hairline().padding(.horizontal, 14)
+                toggleRow("Celebrate a cleanup", "Pixel sparks and a proud face when space comes back.",
+                          $store.celebrationsEnabled)
             }
-            .toggleStyle(.switch).controlSize(.small)
-            .font(.system(size: 12))
         }
     }
 
+    // MARK: parts
+
+    private var divider: some View {
+        Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+    }
+
+    /// A titled group of rows on one card, the way System Settings does it.
     private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
                 .font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
                 .foregroundStyle(Palette.muted)
-            content()
+                .padding(.leading, 2)
+            VStack(alignment: .leading, spacing: 0) { content() }
+                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+    }
+
+    /// A label with one line of what it means, and its control on the right.
+    private func row<C: View>(_ title: String, _ detail: String, @ViewBuilder _ control: () -> C) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12.5, weight: .medium))
+                Text(detail).font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            control()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+    }
+
+    private func toggleRow(_ title: String, _ detail: String, _ isOn: Binding<Bool>) -> some View {
+        row(title, detail) {
+            Toggle("", isOn: isOn).labelsHidden()
+                .toggleStyle(.switch).controlSize(.small)
+                .tint(Palette.mascot)
+                .accessibilityLabel(title)
         }
     }
 }

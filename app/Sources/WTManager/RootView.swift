@@ -63,6 +63,7 @@ struct RootView: View {
         } else {
             switch store.page {
             case .folders: FoldersView(store: store, open: openRow ?? store.focusPath)
+            case .locations: LocationsView(store: store)
             case .mascots: MascotsView(store: store)
             }
         }
@@ -102,6 +103,12 @@ struct Sidebar: View {
                 store.verdictFilter = nil
                 store.locationFilter = nil
             }
+            entry("Locations", "folder.fill.badge.gearshape", ready ? "\(store.locations.count)" : "–",
+                  tint: Palette.status("trunk"),
+                  on: store.page == .locations || (store.page == .folders && store.locationFilter != nil)) {
+                store.locationFilter = nil
+                store.page = .locations
+            }
             entry("Mascots", "pawprint.fill", nil, tint: Palette.mascot, on: store.page == .mascots) {
                 store.page = .mascots
             }
@@ -123,17 +130,6 @@ struct Sidebar: View {
                                 store.page = .folders
                                 store.verdictFilter = on ? nil : v.rawValue
                             }
-                        }
-                        heading("Locations")
-                        ForEach(store.locations, id: \.id) { l in
-                            let on = store.page == .folders && store.locationFilter == l.id
-                            entry(store.locationLabel(l.id),
-                                  l.id == Store.elsewhere ? "folder" : "folder.fill", "\(l.count)",
-                                  tint: Palette.status("trunk"), on: on) {
-                                store.page = .folders
-                                store.locationFilter = on ? nil : l.id
-                            }
-                            .help(l.id == Store.elsewhere ? "Folders that sit alone in their parent" : l.id)
                         }
                     }
                 }

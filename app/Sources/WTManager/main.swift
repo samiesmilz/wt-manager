@@ -565,9 +565,15 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         for (suffix, size) in sizes {
             draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                  size: size, appearance: appearance, to: "\(name)-folders\(suffix).png")
+            store.page = .locations
+            draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                 size: size, appearance: appearance, to: "\(name)-locations\(suffix).png")
             store.page = .mascots
             draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                  size: size, appearance: appearance, to: "\(name)-mascots\(suffix).png")
+            draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                 size: CGSize(width: size.width, height: 1500), appearance: appearance,
+                 to: "\(name)-mascots-tall\(suffix).png")
             store.page = .folders
             // One place picked in the sidebar: the page must show its folders.
             if let place = store.locations.first(where: { $0.id != Store.elsewhere && $0.count == 2 }) {

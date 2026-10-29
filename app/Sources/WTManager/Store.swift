@@ -85,7 +85,7 @@ final class Store: ObservableObject {
     /// ⌘F. The filter lives on the folder list, so asking for it there.
     func focusTheFilter() { page = .folders; focusFilter += 1 }
 
-    enum Page { case folders, mascots }
+    enum Page { case folders, locations, mascots }
     @Published var page: Page = .folders
     /// The sidebar's filters: one verdict (`safe`, `busy`, `unsaved`, `kept`)
     /// and one location, each nil for all.
