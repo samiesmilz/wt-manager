@@ -506,8 +506,10 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
                            + store.folderRows.filter { $0.folder?.verdict == "unsaved" }.prefix(1).map(\.path))
             draw(FoldersView(store: store, scrolls: false, selected: pick).background(Color(nsColor: .windowBackgroundColor)),
                  size: CGSize(width: 820, height: height + 60), appearance: appearance, to: "\(name)-folders-selected.png")
-            draw(FoldersView(store: store, scrolls: false, only: .unsaved).background(Color(nsColor: .windowBackgroundColor)),
+            store.verdictFilter = "unsaved"
+            draw(FoldersView(store: store, scrolls: false).background(Color(nsColor: .windowBackgroundColor)),
                  size: CGSize(width: 820, height: height), appearance: appearance, to: "\(name)-folders-unsaved.png")
+            store.verdictFilter = nil
         }
         return
     }
@@ -563,6 +565,10 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         for (suffix, size) in sizes {
             draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                  size: size, appearance: appearance, to: "\(name)-folders\(suffix).png")
+            store.page = .mascots
+            draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                 size: size, appearance: appearance, to: "\(name)-mascots\(suffix).png")
+            store.page = .folders
         }
         draw(PixelCelebration(previewElapsed: 0.9).background(Color(nsColor: .windowBackgroundColor)),
              size: CGSize(width: 500, height: 300), appearance: appearance, to: "\(name)-celebration.png")

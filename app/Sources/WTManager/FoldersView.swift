@@ -16,15 +16,15 @@ struct FoldersView: View {
     var scrolls = true
     /// The folders ticked for one delete, by path.
     @State var selected: Set<String> = []
-    /// The tally pressed, if any: the page shows only folders with that verdict.
-    @State var only: Verdict? = nil
+    /// The verdict picked in the sidebar, if any.
+    private var only: Verdict? { store.verdictFilter.flatMap(Verdict.init(rawValue:)) }
     /// The folder opened to its details, as a row of the old list opened.
     @State var open: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Verdict: String, CaseIterable {
         case safe, busy, unsaved, kept
-        /// For the tally, where four of them share one line.
+        /// For the sidebar, where four of them share one list.
         var short: String {
             switch self {
             case .safe: return "safe"
@@ -113,7 +113,8 @@ struct FoldersView: View {
     }
 
     /// The search field and the project filter, by the one rule in Store.
-    private func searched(_ row: Row) -> Bool { store.passes(row.worktree) }
+    /// The search field and the sidebar's location, by the one rule in Store.
+    private func searched(_ row: Row) -> Bool { store.inScope(row.worktree) }
 
     var body: some View {
         let rows = allRows
@@ -146,11 +147,15 @@ struct FoldersView: View {
     /// scroll.
     private func header(_ rows: [Row]) -> some View {
         let safe = rows.filter { $0.verdict == .safe }
-        let caches = store.cacheCandidates
+        // Every checkout's caches, main ones included, unless the sidebar
+        // narrowed the page to one place: then that place's folders.
+        let caches = store.locationFilter == nil && store.query.isEmpty
+            ? store.cacheCandidates : rows.map(\.worktree).filter { $0.reclaimKb > 0 }
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Folders")
+                Text(title)
                     .font(.system(size: 19, weight: .semibold, design: .rounded))
+                    .lineLimit(1).truncationMode(.head)
                 Spacer()
                 freeLine
             }
@@ -160,40 +165,25 @@ struct FoldersView: View {
             if let notices = store.envelope?.notices, !notices.isEmpty {
                 notice(notices.joined(separator: "\n"), tint: Palette.status("stale"))
             }
-            if !rows.isEmpty || !caches.isEmpty {
-                // All four, always, when there are folders: a pill that comes
-                // and goes moves the others under the pointer. With none, four
-                // zeros say nothing the empty list does not.
-                let tallies = HStack(spacing: 7) {
-                    if !rows.isEmpty {
-                        ForEach(Verdict.allCases, id: \.self) { v in tally(v, rows) }
-                    }
-                }
-                let sweeps = HStack(spacing: 8) {
-                    if !caches.isEmpty {
-                        cleanButton(caches)
-                    }
+            if !caches.isEmpty || !safe.isEmpty {
+                HStack(spacing: 8) {
+                    if !caches.isEmpty { cleanButton(caches) }
                     if !safe.isEmpty {
                         clearButton("Delete \(safe.count) safe · "
                                     + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
                                     rows: safe, prominent: true)
                     }
-                }
-                // One line when it fits; the sweeps on their own line when not.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        tallies
-                        Spacer(minLength: 8)
-                        sweeps
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        tallies
-                        sweeps
-                    }
+                    Spacer(minLength: 0)
                 }
             }
         }
         .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
+    }
+
+    /// The place picked in the sidebar, or the page's own name.
+    private var title: String {
+        guard let l = store.locationFilter else { return "Folders" }
+        return store.locationLabel(l)
     }
 
     /// The one number: what deleting and cleaning could give back.
@@ -241,35 +231,6 @@ struct FoldersView: View {
               + "Preview first; an install or build puts them back.")
     }
 
-    /// A filter, since a count that looks like a pill gets clicked. A zero is
-    /// drawn hollow and does nothing: filled, "0 safe" looked as live as
-    /// "12 unsaved" and led to an empty page.
-    private func tally(_ v: Verdict, _ rows: [Row]) -> some View {
-        let on = only == v
-        let n = rows.filter { $0.verdict == v }.count
-        return Button { only = on ? nil : v } label: {
-            HStack(spacing: 5) {
-                Circle().fill(n == 0 ? Palette.faint : v.tint).frame(width: 7, height: 7)
-                Text(verbatim: "\(n)").font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(n == 0 ? Palette.muted : Color.primary)
-                Text(v.short).font(.system(size: 11.5))
-                    .foregroundStyle(on ? Palette.ink(v.tint) : Palette.muted)
-            }
-            .fixedSize()
-            .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(Capsule().fill(n == 0 ? Color.clear : Palette.wash(v.tint)))
-            .overlay(Capsule().strokeBorder(on ? Palette.ink(v.tint)
-                                            : n == 0 ? Color.primary.opacity(0.10) : .clear, lineWidth: 1.2))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(n == 0 && !on)
-        .help(on ? "Show every folder" : "Show only folders that are \(v.short)")
-        .accessibilityLabel("\(n) \(v.short)")
-        .accessibilityHint(on ? "Shows every folder" : "Shows only these folders")
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-
     // MARK: content
 
     private func content(_ rows: [Row]) -> some View {
@@ -285,7 +246,7 @@ struct FoldersView: View {
             } else if groups.isEmpty {
                 HStack(spacing: 6) {
                     Text("No folders match.").foregroundStyle(Palette.muted)
-                    Button("Clear the filter") { store.query = "" }
+                    Button("Clear the filters") { store.query = ""; store.verdictFilter = nil; store.locationFilter = nil }
                         .buttonStyle(.link)
                 }
                 .font(.system(size: 12))
@@ -345,7 +306,6 @@ struct FoldersView: View {
 
     private func reveal(_ path: String?, _ proxy: ScrollViewProxy) {
         guard let path else { return }
-        only = nil
         open = path
         DispatchQueue.main.async {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo(path, anchor: .top) }

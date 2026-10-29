@@ -61,7 +61,10 @@ struct RootView: View {
         if store.unconfigured {
             FirstRun(store: store)
         } else {
-            FoldersView(store: store, open: openRow ?? store.focusPath)
+            switch store.page {
+            case .folders: FoldersView(store: store, open: openRow ?? store.focusPath)
+            case .mascots: MascotsView(store: store)
+            }
         }
     }
 }
@@ -92,9 +95,44 @@ struct Sidebar: View {
             PixelWordmark()
                 .padding(.horizontal, 17).padding(.bottom, 18)
 
-            // The app's one page, with what it holds.
-            entry("Folders", "folder",
-                  store.envelope == nil || store.unconfigured ? "–" : "\(store.folderRows.count)")
+            let ready = store.envelope != nil && !store.unconfigured
+            entry("Folders", "folder", ready ? "\(store.folderRows.count)" : "–",
+                  on: store.page == .folders && store.verdictFilter == nil && store.locationFilter == nil) {
+                store.page = .folders
+                store.verdictFilter = nil
+                store.locationFilter = nil
+            }
+            entry("Mascots", "pawprint", nil, on: store.page == .mascots) { store.page = .mascots }
+
+            if ready && !store.folderRows.isEmpty {
+                // The list's filters, here rather than as pills over it: a
+                // filter is where you are, and where you are is the sidebar's.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        heading("Show")
+                        let scoped = store.folderRows.filter(store.inScope)
+                        ForEach(FoldersView.Verdict.allCases, id: \.self) { v in
+                            let n = scoped.filter { $0.folder?.verdict == v.rawValue }.count
+                            let on = store.page == .folders && store.verdictFilter == v.rawValue
+                            entry(v.label, nil, "\(n)", dot: v.tint, on: on, dim: n == 0 && !on) {
+                                store.page = .folders
+                                store.verdictFilter = on ? nil : v.rawValue
+                            }
+                        }
+                        heading("Locations")
+                        ForEach(store.locations, id: \.id) { l in
+                            let on = store.page == .folders && store.locationFilter == l.id
+                            entry(store.locationLabel(l.id),
+                                  l.id == Store.elsewhere ? "folder" : "folder.fill", "\(l.count)", on: on) {
+                                store.page = .folders
+                                store.locationFilter = on ? nil : l.id
+                            }
+                            .help(l.id == Store.elsewhere ? "Folders that sit alone in their parent" : l.id)
+                        }
+                    }
+                }
+                .scrollIndicators(.never)
+            }
 
             Spacer(minLength: 12)
             VStack(spacing: 7) {
@@ -120,25 +158,42 @@ struct Sidebar: View {
     /// loudest thing on the window. A pale accent ground with accent ink is
     /// what every sidebar on this machine does, and it reads as selected
     /// without competing.
-    private func entry(_ title: String, _ symbol: String, _ badge: String?) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: symbol)
-                .font(.system(size: 13)).frame(width: 18)
-                .foregroundStyle(Color.accentColor)
-            Text(title).font(.system(size: 13))
-                .foregroundStyle(Color.accentColor)
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            if let badge {
-                Text(badge).font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.accentColor)
+    private func heading(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
+            .foregroundStyle(Palette.muted)
+            .padding(.horizontal, 17).padding(.top, 16).padding(.bottom, 4)
+    }
+
+    /// `symbol` or `dot`: an icon for a place, the verdict's colour for a filter.
+    private func entry(_ title: String, _ symbol: String?, _ badge: String?, dot: Color? = nil,
+                       on: Bool, dim: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 13)).frame(width: 18)
+                        .foregroundStyle(on ? Color.accentColor : Palette.muted)
+                } else if let dot {
+                    Circle().fill(dim ? Palette.faint : dot).frame(width: 7, height: 7).frame(width: 18)
+                }
+                Text(title).font(.system(size: 13))
+                    .foregroundStyle(on ? Color.accentColor : dim ? Palette.muted : .primary)
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 4)
+                if let badge {
+                    Text(badge).font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(on ? Color.accentColor : Palette.muted)
+                }
             }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Palette.selection : .clear))
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.selection))
+        .buttonStyle(RowButtonStyle())
+        .disabled(dim)
+        .accessibilityAddTraits(on ? .isSelected : [])
         .padding(.horizontal, 9).padding(.vertical, 1)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isSelected)
     }
 }
 
@@ -176,10 +231,6 @@ struct PixelWordmark: View {
 
 struct Header: View {
     @ObservedObject var store: Store
-    /// The character picker, open only while choosing. All eleven portraits
-    /// on every page took a quarter of the window for a setting changed once
-    /// in a while.
-    @State private var choosing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Keep status and direct character selection available above the scrolling content.
@@ -187,14 +238,12 @@ struct Header: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 13) {
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { choosing.toggle() }
-                } label: {
+                Button { store.page = .mascots } label: {
                     WityView(store: store, height: 44).frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(choosing ? "Close the character picker" : "Choose a character")
-                .help(choosing ? "Close the character picker" : "Choose a character")
+                .accessibilityLabel("Choose a character")
+                .help("Choose a character")
                 .contextMenu {
                     Button("Next character") { store.nextCharacter() }
                     Button("Change coat") { store.nextSkin() }.disabled(store.usingOwnImage)
@@ -224,10 +273,6 @@ struct Header: View {
                 Spacer(minLength: 8)
                 controls
             }
-            if choosing {
-                MascotSwitcher(store: store)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
         .padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 11)
     }
@@ -253,85 +298,14 @@ struct Header: View {
             Menu {
                 Button("Check for updates…") { store.updates.check(manual: true) }
                 Toggle("Check updates automatically", isOn: $store.automaticUpdates)
-                Toggle("Mascot merge messages", isOn: $store.mergeNudges)
-                Toggle("Let the mascot wander", isOn: $store.mascotWanders)
-                    .help("Occasional screen strolls. Respects Reduce Motion.")
-                Toggle("Cleanup celebrations", isOn: $store.celebrationsEnabled)
-                Toggle("Show floating mascot", isOn: $store.floatingMascot)
                 Divider()
                 Picker("Theme", selection: $store.theme) {
                     Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
                 }
-                if let mascot = store.mascot {
-                    Picker("Coat", selection: $store.skin) {
-                        ForEach(mascot.skins.keys.sorted(), id: \.self) { Text($0).tag($0) }
-                    }
-                    .disabled(store.usingOwnImage)
-                    Button(OwnFace.exists ? "Choose another picture…" : "Use your own picture…") {
-                        store.chooseOwnImage()
-                    }
-                    if OwnFace.exists {
-                        Button("Forget that picture") {
-                            OwnFace.forget()
-                            store.figure = mascot.defaultFigure
-                        }
-                    }
-                }
             } label: { Image(systemName: "slider.horizontal.3") }
-            .menuStyle(.borderlessButton).fixedSize().help("Appearance")
+            .menuStyle(.borderlessButton).fixedSize().help("Theme and updates")
         }
         .buttonStyle(.borderless).font(.system(size: 12))
-    }
-}
-
-/// Always-visible portraits: one press selects the exact character, with no menu or confirmation.
-struct MascotSwitcher: View {
-    @ObservedObject var store: Store
-    private let coats = Mascot.drawnCoats
-
-    var body: some View {
-        if let mascot = store.mascot {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 40), spacing: 4)], spacing: 4) {
-                ForEach(mascot.figures) { figure in
-                    portrait(id: figure.id, name: figure.name, help: figure.tell) {
-                        if let image = mascot.image(figure: figure.id, gauge: 0, eyes: "open", frame: 0,
-                            skin: coats[figure.id] ?? "acorn", tint: "#3fb27f", fitting: 26, showSignal: false) {
-                            Image(nsImage: image).interpolation(.none)
-                        }
-                    }
-                }
-                if OwnFace.exists {
-                    portrait(id: Store.ownFigure, name: "Yours", help: "Your own picture") {
-                        if let image = OwnFace.image(fitting: 26, tint: nil) {
-                            Image(nsImage: image).interpolation(.none)
-                        }
-                    }
-                }
-            }
-            .accessibilityLabel("Choose a mascot")
-        }
-    }
-
-    private func portrait<Content: View>(id: String, name: String, help: String,
-                                         @ViewBuilder image: () -> Content) -> some View {
-        let selected = store.figure == id
-        return Button { store.figure = id } label: {
-            VStack(spacing: 2) {
-                image().frame(height: 26)
-                Text(name).font(.system(size: 10, weight: selected ? .semibold : .regular))
-                    .lineLimit(1).minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 5)
-            .background(selected ? Palette.brand.opacity(0.12) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7)
-                .stroke(selected ? Palette.brand : Color.clear, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .help("\(name) — \(help)")
-        .accessibilityLabel("Choose \(name)")
-        .accessibilityValue(selected ? "Selected" : "")
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

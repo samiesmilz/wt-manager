@@ -82,11 +82,63 @@ final class Store: ObservableObject {
     /// already true is silently ignored.
     @Published private(set) var focusFilter = 0
 
-    /// ⌘F.
-    func focusTheFilter() { focusFilter += 1 }
+    /// ⌘F. The filter lives on the folder list, so asking for it there.
+    func focusTheFilter() { page = .folders; focusFilter += 1 }
+
+    enum Page { case folders, mascots }
+    @Published var page: Page = .folders
+    /// The sidebar's filters: one verdict (`safe`, `busy`, `unsaved`, `kept`)
+    /// and one location, each nil for all.
+    @Published var verdictFilter: String?
+    @Published var locationFilter: String?
 
     /// Every worktree folder the engine judged, main checkouts excluded.
     var folderRows: [Worktree] { (envelope?.worktrees ?? []).filter { $0.folder != nil } }
+
+    static let elsewhere = "Elsewhere"
+
+    /// Where a folder sits, as the list groups it: its parent, home as `~`,
+    /// or "Elsewhere" for a folder alone in its parent, so a long tail of
+    /// one-folder places does not bury the full ones.
+    func location(of w: Worktree) -> String {
+        let parent = Self.parent(w)
+        return folderRows.filter { Self.parent($0) == parent }.count > 1 ? parent : Self.elsewhere
+    }
+
+    static func parent(_ w: Worktree) -> String {
+        let home = NSHomeDirectory()
+        let p = (w.path as NSString).deletingLastPathComponent
+        return p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p
+    }
+
+    /// The places folders live, fullest first, "Elsewhere" last.
+    var locations: [(id: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        let byParent = Dictionary(grouping: folderRows, by: Self.parent)
+        for (parent, ws) in byParent { counts[ws.count > 1 ? parent : Self.elsewhere, default: 0] += ws.count }
+        return counts.map { (id: $0.key, count: $0.value) }
+            .sorted { a, b in
+                if (a.id == Self.elsewhere) != (b.id == Self.elsewhere) { return b.id == Self.elsewhere }
+                return a.count != b.count ? a.count > b.count : a.id < b.id
+            }
+    }
+
+    /// A location's short name: its folder, with as much of the way to it as
+    /// it takes to tell it apart from another of the same name.
+    func locationLabel(_ id: String) -> String {
+        guard id != Self.elsewhere else { return id }
+        let parts = id.split(separator: "/").map(String.init)
+        let others = locations.map(\.id).filter { $0 != id && $0 != Self.elsewhere }
+            .map { $0.split(separator: "/").map(String.init) }
+        var n = 1
+        while n < parts.count, others.contains(where: { Array($0.suffix(n)) == Array(parts.suffix(n)) }) { n += 1 }
+        return parts.suffix(n).joined(separator: "/")
+    }
+
+    /// Search and location: what a verdict count in the sidebar counts over.
+    func inScope(_ w: Worktree) -> Bool {
+        passes(w) && (locationFilter == nil || location(of: w) == locationFilter)
+    }
 
     let mascot: Mascot?
     private let engine = Engine()
@@ -420,10 +472,13 @@ final class Store: ObservableObject {
     /// scrolled into view.
     func show(_ w: Worktree) {
         query = ""
+        verdictFilter = nil
+        locationFilter = nil
+        page = .folders
         focusPath = w.path
     }
 
-    var filtering: Bool { !query.isEmpty }
+    var filtering: Bool { !query.isEmpty || verdictFilter != nil || locationFilter != nil }
 
     /// The search field: one rule for the page and the status bar's "N shown".
     func passes(_ w: Worktree) -> Bool {

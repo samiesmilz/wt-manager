@@ -64,7 +64,7 @@ The app and CLI share the engine inside the installed bundle, so they use the sa
 4. **Review cleanup.** Read the exact paths and preservation details. Nothing is deleted during the preview.
 5. **Confirm deliberately.** Only confirmed completions earn reclaimed-space credit. Results remain available after the modal closes.
 
-The window is one page. Search by folder, branch or repo name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder.
+The sidebar holds the filters: **Show** narrows the list to one verdict, and **Locations** to one worktrees folder. Search by folder, branch or repo name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder. **Mascots** shows the whole cast, large and animated, with the coat, your own picture and the desktop companion's settings; clicking the character in the header opens it too.
 
 Folders answers what can go. It replaced the old status lists (All worktrees, Needs you, In flight, With others, Forgotten, Finished), which sorted the same worktrees by branch history and left "is it safe to delete?" to you.
 
@@ -88,20 +88,20 @@ The preview and confirmation are bound to the same reviewed set. If that set cha
 
 ## A little celebration
 
-A successful cleanup in the app triggers a short burst of pixel sparks, and the result banner shows how much you have freed in all. Turn effects off in **Appearance → Cleanup celebrations**. macOS **Reduce Motion** disables the particle burst and mascot motion; readable completion feedback stays.
+A successful cleanup in the app triggers a short burst of pixel sparks, and the result banner shows how much you have freed in all. Turn effects off in **Mascots → Celebrate a cleanup**. macOS **Reduce Motion** disables the particle burst and mascot motion; readable completion feedback stays.
 
 ## Merge messages
 
 After wt-manager has observed a PR open, a later verified merge produces a mascot speech message. It appears in the window, or beside the floating companion when the window is closed. **Review checkout** opens the engine's safety preview; merging a PR never automatically deletes files. New local commits, protected files, locked worktrees and unreadable folders can still prevent removal. Occupied disk space is labelled separately from safely reclaimable space.
 
-The first scan quietly establishes a baseline. Messages and dismissals persist locally, partial scans preserve known state, and duplicate checkouts do not duplicate alerts. Turn them off using **Appearance → Mascot merge messages**. PR reads use your existing `gh` session and short local caches; detection follows periodic refreshes, rather than real-time GitHub push events.
+The first scan quietly establishes a baseline. Messages and dismissals persist locally, partial scans preserve known state, and duplicate checkouts do not duplicate alerts. Turn them off using **Mascots → Tell me when a pull request merges**. PR reads use your existing `gh` session and short local caches; detection follows periodic refreshes, rather than real-time GitHub push events.
 
 
 ## Meet the pixel crew
 
 Detailed companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions use separate 22px portraits with larger facial features and no framed badge. Wity retains its original front portrait when resting. Cooper has a slim neck, longer legs and alternating toe lifts; Pip has a softer face and simpler muzzle. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
 
-You can also let the floating companion take slow, short screen strolls from **Appearance → Let the mascot wander**. This is off by default. Moving companions use separate side profiles, facing their direction of travel, then turn back to their front portraits when resting. Their gaits suit their shapes: the rabbit hops with a planted back foot, the crab scuttles, Bork trots on diagonal pairs, Chomp stomps on thick legs with its head landing a beat late, and the little machines lift each foot ahead before landing. Mallow rolls. Walking keeps each character’s portrait scale and foot baseline, with a brief blend when turning into or out of its profile. Coco stays rooted: a gust sways its fronds and trunk while its base and sand never move. The companion pauses between mostly horizontal walks, then returns to the position you chose at the same gentle pace. Clicking or dragging stops it at once. The first stroll starts a few seconds after enabling wandering, whether the wt-manager window is open or closed. Wandering pauses during cleanup and while macOS Reduce Motion is enabled. Unread PR messages stay still and readable without stopping the mascot. The body advances with each alternating walking pose and hides its status arrow while walking. The pose clock runs only during travel.
+You can also let the floating companion take slow, short screen strolls from **Mascots → Let it wander now and then**. This is off by default. Moving companions use separate side profiles, facing their direction of travel, then turn back to their front portraits when resting. Their gaits suit their shapes: the rabbit hops with a planted back foot, the crab scuttles, Bork trots on diagonal pairs, Chomp stomps on thick legs with its head landing a beat late, and the little machines lift each foot ahead before landing. Mallow rolls. Walking keeps each character’s portrait scale and foot baseline, with a brief blend when turning into or out of its profile. Coco stays rooted: a gust sways its fronds and trunk while its base and sand never move. The companion pauses between mostly horizontal walks, then returns to the position you chose at the same gentle pace. Clicking or dragging stops it at once. The first stroll starts a few seconds after enabling wandering, whether the wt-manager window is open or closed. Wandering pauses during cleanup and while macOS Reduce Motion is enabled. Unread PR messages stay still and readable without stopping the mascot. The body advances with each alternating walking pose and hides its status arrow while walking. The pose clock runs only during travel.
 
 ![Side-profile walking poses: Wity, Nipper, Byte, Cooper, Pip, Flurry, Mallow, Bop, Bork and Chomp](docs/images/walking.gif)
 
