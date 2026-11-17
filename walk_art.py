@@ -333,3 +333,47 @@ def walking(figure, eyes, frame, sprite):
     if figure == 'pup': return pup4(f, eyes)
     if figure in BIPED: return biped(figure, f, eyes)
     raise ValueError(figure)
+
+
+# ── Wity and Nipper, on their own 22x23 grid ────────────────────────────────
+# Their portraits are the original small sprites, and the app draws them at a
+# larger pixel, so they keep that grid. The method is the same: the walk is
+# the portrait itself, with the face turned and the feet redrawn.
+OW, OH = 22, 23
+
+def _set(g, x, y, ch):
+    if 0 <= x < OW and 0 <= y < OH: g[y][x] = ch
+
+def original(figure, eyes, frame, rows):
+    """`rows` is the figure's own front portrait for this expression."""
+    f = frame % 8
+    # The portrait's accent slot is tinted live by the app; the companion
+    # palettes have no such slot, so it takes a fixed colour that is in them.
+    accent = 'p' if figure == 'cat' else 'a'
+    g = [[accent if ch == '*' else ch for ch in r] for r in rows]
+    for y in (21, 22): g[y] = ['.'] * OW
+    if figure == 'cat':
+        shift_box(g, (5, 10, 16, 14), 1)                    # the face turns
+        sway = (0, 0, 1, 1, 0, 0, -1, -1)[f]                 # the plume follows
+        if sway:
+            for y in range(0, 6):
+                row = g[y]
+                g[y] = (['.'] + row[:-1]) if sway > 0 else (row[1:] + ['.'])
+        for hip, ph in ((13, (f + 4) % 8), (4, f)):          # far foot, then near
+            x = hip + FOOT_X[ph]; up = FOOT_UP[ph]
+            for k, ch in enumerate('#fff#'): _set(g, x + k, 21 - up, ch)
+            for k in range(1, 5): _set(g, x + k, 22 - up, '#')
+            if up:                                            # the leg reaches down to it
+                for k in range(1, 4): _set(g, x + k, 20, 'f')
+        return [''.join(r) for r in g]
+    if figure == 'crab':
+        snap = (0, 0, 0, 1, 1, 0, 0, 0)[f]
+        if snap:                                              # claws open a pixel
+            for x in (3, 4, 17, 18): _set(g, x, 5, '#')
+        for i, hip in enumerate((5, 8, 13, 16)):
+            ph = f if i % 2 == 0 else (f + 4) % 8
+            x = hip + FOOT_X[ph]; up = FOOT_UP[ph]
+            _set(g, x - 1, 21 - up, '#'); _set(g, x, 21 - up, accent); _set(g, x + 1, 21 - up, '#')
+            _set(g, x - 1, 22 - up, accent); _set(g, x, 22 - up, accent)
+        return [''.join(r) for r in g]
+    raise ValueError(figure)

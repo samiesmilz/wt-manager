@@ -64,7 +64,7 @@ The app and CLI share the engine inside the installed bundle, so they use the sa
 4. **Review cleanup.** Read the exact paths and preservation details. Nothing is deleted during the preview.
 5. **Confirm deliberately.** Only confirmed completions earn reclaimed-space credit. Results remain available after the modal closes.
 
-The sidebar holds the filters: **Show** narrows the list to one verdict. **Locations** lists every place your worktree folders live, biggest first, with its size, verdicts and caches; open one to see only its folders. Empty locations left behind count as safe to delete. Search by folder, branch or repo name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder. **Mascots** shows the whole cast, large and animated, with the coat, your own picture and the desktop companion's settings; clicking the character in the header opens it too.
+The sidebar holds the filters: **Show** narrows the list to one verdict, and **Made by** to the tool that created the folder (Claude Code, Codex, or by hand). A folder a coding agent has locked reads **Agent running** and is left alone until the session ends. **Kept files** lists what was set aside before deletions, with restore, reveal and an optional expiry. **Locations** lists every place your worktree folders live, biggest first, with its size, verdicts and caches; open one to see only its folders. Empty locations left behind count as safe to delete. Search by folder, branch or repo name, click a row to open its details (the commits that exist only here, its base and pull request), and hand work off to Terminal or Finder. **Mascots** shows the whole cast, large and animated, with the coat, your own picture and the desktop companion's settings; clicking the character in the header opens it too.
 
 Folders answers what can go. It replaced the old status lists (All worktrees, Needs you, In flight, With others, Forgotten, Finished), which sorted the same worktrees by branch history and left "is it safe to delete?" to you.
 
@@ -200,7 +200,7 @@ wt-manager config --clear-cache
 
 ## What is read, stored, and sent
 
-- **Git repositories:** local refs, status, worktree metadata, and directory sizes. wt-manager never performs `git fetch` or changes a branch's history.
+- **Git repositories:** local refs, status, worktree metadata, and directory sizes. wt-manager performs `git fetch` only when you turn on **Check the remote first** in Settings (or pass `reap --fetch`), and then once per repo, capped at a few seconds, before a delete review. It changes no branch's history; with **Delete its branch too** on, a branch that merged or has no commit of its own is deleted with its folder, and the review names it first.
 - **GitHub PRs:** optional queries through `gh`. Multiple signed-in accounts are tried per repository without changing your active CLI account. Without `gh`, local Git inventory still works.
 - **Update checks:** the public release endpoint for this project. No scanned paths, branch names, disk measurements, reward data, or PR data are included in update requests.
 - **Local settings:** watched folders/base pins under `~/.config/wt-manager/`; caches under `~/.cache/wt-manager/`; preserved files under `~/.local/share/wt-manager/kept/`; native appearance, rewards, and measurements in app preferences. Custom images live in Application Support.
@@ -213,7 +213,7 @@ Counts refresh about every five minutes, disk measurements about hourly. Opening
 |---|---|
 | `⌘R` | Refresh and measure disk |
 | `⌘F` | Find a checkout |
-| `⌘,` | Watched folders |
+| `⌘,` | Settings |
 
 From a source checkout:
 

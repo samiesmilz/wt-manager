@@ -309,9 +309,36 @@ struct PlanSheet: View {
                     }
                 }.padding(.top, 5)
             }
+            // During the last pass, each folder in the plan: done, in hand,
+            // or still to come. The count above says how far; this says which.
+            if plan.stage == .committing, let p = plan.progress, p.step == p.steps,
+               let reviewed = preview, reviewed.paths.count > 1 {
+                folderSteps(Array(reviewed.paths.prefix(8)), at: p.done, more: max(0, reviewed.paths.count - 8))
+                    .padding(.top, 8)
+            }
         }
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private func folderSteps(_ paths: [String], at done: Int, more: Int) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(Array(paths.enumerated()), id: \.offset) { i, path in
+                HStack(spacing: 8) {
+                    Image(systemName: i < done ? "checkmark.circle.fill" : i == done ? "circle.inset.filled" : "circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(i < done ? Palette.inkReclaim : i == done ? Color.primary : Palette.faint)
+                    Text(URL(fileURLWithPath: path).lastPathComponent)
+                        .font(.system(size: 12, weight: i == done ? .semibold : .regular))
+                        .foregroundStyle(i <= done ? Color.primary : Palette.muted)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+            }
+            if more > 0 {
+                Text("and \(more) more").font(.system(size: 11)).foregroundStyle(Palette.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func phaseNames(_ p: Engine.Progress) -> [String] {
@@ -352,6 +379,21 @@ struct PlanSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     itemList(p)
+                    if !p.branches.isEmpty {
+                        section("Branches deleted too, finished", ink: Palette.muted) {
+                            ForEach(p.branches.keys.sorted(), id: \.self) { path in
+                                line(URL(fileURLWithPath: path).lastPathComponent, p.branches[path] ?? "")
+                            }
+                        }
+                    }
+                    if !p.duplicates.isEmpty {
+                        section("Not set aside, same as the main checkout", ink: Palette.muted) {
+                            ForEach(p.duplicates.keys.sorted(), id: \.self) { path in
+                                line(URL(fileURLWithPath: path).lastPathComponent,
+                                     (p.duplicates[path] ?? []).joined(separator: ", "))
+                            }
+                        }
+                    }
                     if !p.skipped.isEmpty {
                         section("Kept out", ink: Palette.ink(status: "stale")) { skippedList(p.skipped) }
                     }

@@ -309,7 +309,10 @@ def walking_sprite(figure,eyes,frame):
     Idle/menu art stays unchanged. Far limbs precede the body; near limbs follow
     it. Feet stop before the lower-right badge so the signal cannot hide a step.
     """
-    if figure in ('cat','crab'): return _original_profile(figure,eyes,frame)
+    if figure in ('cat','crab'):
+        # Wity and Nipper walk as their own portraits too, on their own grid.
+        import walk_art, mascot
+        return walk_art.original(figure,eyes,frame,mascot.sprite(0,eyes,0,mascot.FIGURES[figure]))
     # Every other walker but the rooted palm is drawn from its own portrait.
     # The drawings below this line are the earlier side profiles, kept only
     # for the palm and as a reference; see walk_art.py.

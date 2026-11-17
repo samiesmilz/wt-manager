@@ -1,6 +1,13 @@
 import SwiftUI
 import WTManagerKit
 
+/// Keys read both by the store and by the plain structs that build engine
+/// arguments, so they live outside the main-actor class.
+enum SettingKey {
+    static let fetch = "wtmanager.fetchBeforeReview"
+    static let branch = "wtmanager.deleteFinishedBranch"
+}
+
 /// Everything the UI reads, in one place.
 ///
 /// Both surfaces — the window and the menu bar item — observe this object, so
@@ -70,6 +77,16 @@ final class Store: ObservableObject {
     @AppStorage("wtmanager.figure") var figure: String = "cat"
     @AppStorage("wtmanager.theme") var theme: String = "system"     // system | light | dark
     /// Bundle identifiers. An empty editor means "the first one installed".
+    /// The last line a one-sentence engine command printed, and whether one
+    /// is running. Stored here: an extension cannot hold them.
+    @Published var commandNote: String?
+    @Published var commandRunning = false
+    /// Opt-in: a banner in Notification Center when a pull request merges
+    /// while the window is not in front.
+    @AppStorage("wtmanager.systemNotifications") var systemNotifications = false
+    /// Two choices about a delete review, read where its arguments are built.
+    @AppStorage(SettingKey.fetch) var fetchBeforeReview = false
+    @AppStorage(SettingKey.branch) var deleteFinishedBranch = false
     @AppStorage("wtmanager.terminal") var terminalApp: String = "com.apple.Terminal"
     @AppStorage("wtmanager.editor") var editorApp: String = ""
     /// Free text, applied to the rows. Kept out of the engine on purpose:
@@ -317,6 +334,7 @@ final class Store: ObservableObject {
                 self.envelope = env
                 self.error = nil
                 self.countedAt = Date()
+                self.announceMerges()
             case .failure(let e):
                 self.error = e.localizedDescription
             }
@@ -537,7 +555,13 @@ final class Store: ObservableObject {
     /// means. `MB` cannot be read as anything else, and costs one character.
     /// Kept in step with `human()` in the engine, which formats the same
     /// numbers for the table.
-    static func human(_ kb: Int) -> String { DiskSize.human(kb) }
+    /// "27 GB", with a space that cannot break: the number and its unit are
+    /// two words. The engine's own text keeps its compact form.
+    static func human(_ kb: Int) -> String {
+        let compact: String = DiskSize.human(kb)
+        guard let unit = compact.firstIndex(where: { $0.isLetter }), unit != compact.startIndex else { return compact }
+        return String(compact[..<unit]) + "\u{00A0}" + String(compact[unit...])
+    }
 }
 
 // MARK: - reclaim
@@ -650,6 +674,12 @@ extension Store {
             if kind == .reap && discardChanges { a += ["--discard-changes"] }
             if kind == .reap && folders { a += ["--folders"] }
             if kind == .reap && discardWork { a += ["--discard-work"] }
+            // The preview asks the remote, so what you review is current. The
+            // commit does not ask again: it acts on exactly what was reviewed.
+            if kind == .reap && !paths.isEmpty && UserDefaults.standard.bool(forKey: SettingKey.fetch) {
+                a += ["--fetch"]
+            }
+            if kind == .reap && UserDefaults.standard.bool(forKey: SettingKey.branch) { a += ["--delete-branch"] }
             for p in paths { a += ["--path", p] }
             return a
         }
@@ -665,6 +695,10 @@ extension Store {
             if kind == .reap && discardChanges { a += ["--discard-changes"] }
             if kind == .reap && folders { a += ["--folders"] }
             if kind == .reap && discardWork { a += ["--discard-work"] }
+            // Whether branches go is part of the plan's hash. It is read from
+            // the reviewed plan, not the switch, so flipping the switch after
+            // a review cannot change what that review approved.
+            if kind == .reap && !preview.branches.isEmpty { a += ["--delete-branch"] }
             for p in preview.paths { a += ["--path", p] }
             return a + ["--plan", preview.plan, "--yes"]
         }
@@ -700,6 +734,10 @@ extension Store {
         var changesKeptIn: String = ""
         /// Commits on no remote, and where each set ends up.
         var commits: [String: String] = [:]
+        /// Finished branches that go with their folders, by folder path.
+        var branches: [String: String] = [:]
+        /// Protected files that are the main checkout's own copy: not set aside.
+        var duplicates: [String: [String]] = [:]
         /// Unrecognised files too large to set aside, deleted with the folder.
         var droppedUnknown: [String: [String]] = [:]
         var done: Bool = false
@@ -710,6 +748,7 @@ extension Store {
         var rc: Int = 0
         enum CodingKeys: String, CodingKey {
             case kind, text, paths, plan, count, kb, skipped, precious, unknown, entries, changes, commits
+            case branches, duplicates
             case done, removed, failed, rc
             case changesKeptIn = "changes_kept_in"
             case droppedUnknown = "dropped_unknown"
@@ -733,6 +772,8 @@ extension Store {
             unknown = try c.decodeIfPresent([String: [String]].self, forKey: .unknown) ?? [:]
             entries = try c.decodeIfPresent([String: [String]].self, forKey: .entries) ?? [:]
             changes = try c.decodeIfPresent([String: [String]].self, forKey: .changes) ?? [:]
+            branches = try c.decodeIfPresent([String: String].self, forKey: .branches) ?? [:]
+            duplicates = try c.decodeIfPresent([String: [String]].self, forKey: .duplicates) ?? [:]
             changesKeptIn = try c.decodeIfPresent(String.self, forKey: .changesKeptIn) ?? ""
             commits = try c.decodeIfPresent([String: String].self, forKey: .commits) ?? [:]
             droppedUnknown = try c.decodeIfPresent([String: [String]].self, forKey: .droppedUnknown) ?? [:]
@@ -998,6 +1039,27 @@ extension Store {
         } catch {
             NSSound.beep()
         }
+    }
+
+    /// A one-sentence engine command: unlock, prune, push. Its last line is
+    /// shown as a note, and the list is read again so the result is on screen.
+    func runCommand(_ args: [String]) {
+        guard !commandRunning else { return }
+        commandRunning = true
+        engine.run(args) { [weak self] result in
+            guard let self else { return }
+            self.commandRunning = false
+            switch result {
+            case .success(let text): self.commandNote = Store.lastLine(text)
+            case .failure(let e): self.commandNote = Store.lastLine(e.localizedDescription)
+            }
+            self.refresh(measureDisk: false)
+        }
+    }
+
+    static func lastLine(_ text: String) -> String {
+        let lines: [String] = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        return lines.last { !$0.isEmpty } ?? "Done"
     }
 
     func openPR(_ w: Worktree) {

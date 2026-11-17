@@ -11,6 +11,11 @@
 - **A protected file that is only the main checkout's copy is not set aside.** A `.env` that is byte for byte the main checkout's is named in the preview and skipped; one that differs is kept as before.
 - **`wt-manager unlock` and `wt-manager prune`.** Unlock releases a worktree lock, refusing one whose named process is still running unless forced. Prune previews, then forgets, worktrees git lists whose folders are gone.
 - **Leftovers:** the envelope lists folders under `.claude/worktrees` that git has no worktree for, and registrations whose folder is gone.
+- **Settings** gains "Before deleting a folder": check the remote first, and delete a finished branch with its folder. The review sheet lists branches that go and protected files skipped as the main checkout's own copy.
+- **Unlock** and **Prune entry** are buttons (a stale lock, a registration whose folder is gone), and a row with commits only on this Mac can **Push branch** after a confirmation.
+- **Kept files:** restore a set to a folder you choose, and optionally move sets older than 30 or 90 days to the Trash.
+- The working sheet lists each folder as done, in hand or to come. Sizes read "27 GB". An opt-in Notification Center banner when a pull request merges while the app is not in front.
+- **Wity and Nipper** now walk as their own portraits as well, so all ten walkers keep their shape.
 - The engine's envelope gains `locked`, `origin` (`claude`, `codex` or empty, from where the folder lives), `in_use`, `created` and `head_moved` per worktree, and `folder.lock` where there is one. An app that does not know the `agent` verdict shows it as kept.
 
 ## 0.13.0

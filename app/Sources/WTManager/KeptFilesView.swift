@@ -17,6 +17,9 @@ struct KeptFilesView: View {
     @State private var sets: [KeptSet] = []
     @State private var loaded = false
     @State private var pending: KeptSet? = nil
+    @State private var note: String? = nil
+    /// 0 keeps everything. Expired sets go to the Trash, never straight out.
+    @AppStorage("wtmanager.keptDays") private var keptDays = 0
 
     static var root: URL {
         if let data = ProcessInfo.processInfo.environment["XDG_DATA_HOME"], !data.isEmpty {
@@ -35,6 +38,14 @@ struct KeptFilesView: View {
                     Text("Files git could not give back, copied and verified before a folder was deleted. They stay until you remove them.")
                         .font(.system(size: 11)).foregroundStyle(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                Picker("Keep them for", selection: $keptDays) {
+                    Text("Forever").tag(0); Text("90 days").tag(90); Text("30 days").tag(30)
+                }
+                .pickerStyle(.menu).fixedSize().font(.system(size: 12))
+                .onChange(of: keptDays) { _ in load() }
+                if let note {
+                    Text(note).font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
                 if !loaded {
                     Text("Reading…").font(.system(size: 12)).foregroundStyle(Palette.muted)
@@ -102,6 +113,7 @@ struct KeptFilesView: View {
             Spacer(minLength: 8)
             Text(Store.human(set.kb))
                 .font(.system(size: 13, design: .rounded)).monospacedDigit()
+            Button("Restore…") { restore(set) }
             Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([set.url]) }
             Button { pending = set } label: { Image(systemName: "trash") }
                 .accessibilityLabel("Move \(set.name) to the Trash")
@@ -112,12 +124,41 @@ struct KeptFilesView: View {
 
     private func load() {
         let root: URL = Self.root
+        let days: Int = keptDays
         DispatchQueue.global(qos: .userInitiated).async {
-            let found: [KeptSet] = Self.scan(root)
+            var found: [KeptSet] = Self.scan(root)
+            var expired: Int = 0
+            if days > 0 {
+                let cutoff: Date = Date().addingTimeInterval(-Double(days) * 86400)
+                for set in found where set.date < cutoff && set.date != Date.distantPast {
+                    if (try? FileManager.default.trashItem(at: set.url, resultingItemURL: nil)) != nil { expired += 1 }
+                }
+                if expired > 0 { found = Self.scan(root) }
+            }
             DispatchQueue.main.async {
                 sets = found
                 loaded = true
+                if expired > 0 { note = "Moved \(expired) expired set\(expired == 1 ? "" : "s") to the Trash." }
             }
+        }
+    }
+
+    /// Copies a set into a folder you choose. The kept copy stays where it is.
+    private func restore(_ set: KeptSet) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Restore here"
+        panel.message = "Choose where to put a copy of “\(set.name)”."
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let target: URL = folder.appendingPathComponent(set.name)
+        do {
+            try FileManager.default.copyItem(at: set.url, to: target)
+            note = "Copied to " + target.path
+            NSWorkspace.shared.activateFileViewerSelecting([target])
+        } catch {
+            note = "Could not restore: " + error.localizedDescription
         }
     }
 

@@ -5,8 +5,8 @@ import WTManagerKit
 /// way to look at each; nothing here is deleted by the app, because an orphan
 /// is exactly the thing it has no evidence about.
 struct LeftoversCard: View {
+    @ObservedObject var store: Store
     let items: [Leftover]
-    @State private var copied: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -50,11 +50,10 @@ struct LeftoversCard: View {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
                 }
             } else {
-                Button(copied == item.id ? "Copied" : "Copy prune command") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(command, forType: .string)
-                    copied = item.id
+                Button(store.commandRunning ? "Pruning…" : "Prune entry") {
+                    store.runCommand(["prune", "--path", item.main, "--yes"])
                 }
+                .disabled(store.commandRunning)
                 .help(command)
             }
         }

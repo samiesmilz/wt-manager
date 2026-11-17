@@ -65,7 +65,11 @@ struct LocationsView: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
                 }
-                if !store.leftovers.isEmpty { LeftoversCard(items: store.leftovers) }
+                if !store.leftovers.isEmpty { LeftoversCard(store: store, items: store.leftovers) }
+                if let note = store.commandNote {
+                    Text(note).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                        .textSelection(.enabled)
+                }
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)

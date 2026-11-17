@@ -183,7 +183,10 @@ final class MascotTests: XCTestCase {
             }
             let right = try render(walking: true)
             let left = try render(walking: true, left: true)
-            let latterHalf = try XCTUnwrap(m.image(figure: figure, gauge: 0, eyes: "open", frame: 10,
+            // A step is eight poses, played twice in the sixteen-frame cycle,
+            // so frame 10 is frame 2 again. The other leg's half of the step
+            // is four poses on: that is the pose that must differ.
+            let latterHalf = try XCTUnwrap(m.image(figure: figure, gauge: 0, eyes: "open", frame: 6,
                 skin: "acorn", tint: "#3fb27f", fitting: 69, detailed: true,
                 showSignal: false, walking: true))
             XCTAssertNotEqual(right.tiffRepresentation, latterHalf.tiffRepresentation, figure)

@@ -6,6 +6,7 @@ import WTManagerKit
 struct WorktreeDetail: View {
     @ObservedObject var store: Store
     let worktree: Worktree
+    @State private var confirmingPush = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -46,6 +47,9 @@ struct WorktreeDetail: View {
                 if let editor = store.editorChoice {
                     small(editor.name, "chevron.left.forwardslash.chevron.right") { store.openInEditor(worktree) }
                 }
+                if worktree.atRisk > 0, worktree.branch != nil {
+                    small("Push branch", "arrow.up.circle", tint: Palette.risk) { confirmingPush = true }
+                }
                 small("Reveal", "folder") { store.reveal(worktree) }
                 small("Terminal", "terminal") { store.openInTerminal(worktree) }
                 if worktree.linkedPR?.url.isEmpty == false {
@@ -58,6 +62,13 @@ struct WorktreeDetail: View {
                     }
                 }
             }
+        }
+        .confirmationDialog("Push \(worktree.branch ?? "this branch") to its remote?",
+                            isPresented: $confirmingPush, titleVisibility: .visible) {
+            Button("Push") { store.runCommand(["push", "--path", worktree.path, "--yes"]) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Sends the commits that exist only on this Mac. Uncommitted edits stay here.")
         }
     }
 
@@ -109,7 +120,7 @@ struct WorktreeDetail: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text(stale ? "The session that locked this has ended" : "An agent session is working here")
                 .font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.ink(tint))
-            Text(stale ? "Nothing is deleted by unlocking. Run this in a terminal, then refresh."
+            Text(stale ? "Nothing is deleted by unlocking. It runs this for you:"
                        : "Deleting and cleaning are off while it runs. The lock is released when the session ends.")
                 .font(.system(size: 11)).foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -117,11 +128,10 @@ struct WorktreeDetail: View {
                 HStack(spacing: 8) {
                     Text(command).font(.system(size: 11, design: .monospaced))
                         .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
-                    Button("Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(command, forType: .string)
+                    Button(store.commandRunning ? "Unlocking…" : "Unlock") {
+                        store.runCommand(["unlock", "--path", worktree.path])
                     }
-                    .controlSize(.small)
+                    .controlSize(.small).disabled(store.commandRunning)
                 }
             }
         }

@@ -7,7 +7,7 @@ struct SettingsSheet: View {
     @ObservedObject var store: Store
     @Environment(\.dismiss) private var dismiss
     @State private var roots: [String]
-    private var sheetHeight: CGFloat { min(760, 600 + CGFloat(min(roots.count, 4)) * 44) }
+    private var sheetHeight: CGFloat { min(840, 720 + CGFloat(min(roots.count, 3)) * 44) }
 
     init(store: Store) {
         self.store = store
@@ -82,8 +82,15 @@ struct SettingsSheet: View {
                     ForEach(OpenWith.installed(OpenWith.editors)) { app in Text(app.name).tag(app.id) }
                 }
                 Hairline()
+                groupLabel("Before deleting a folder")
+                Toggle("Check the remote first, so “merged” is current (a few seconds)", isOn: $store.fetchBeforeReview)
+                Toggle("Delete its branch too, when it merged or has nothing of its own", isOn: $store.deleteFinishedBranch)
+                Hairline()
                 groupLabel("Tell me")
                 Toggle("When a pull request merges and its folder can go", isOn: $store.mergeNudges)
+                Toggle("Also in Notification Center, when the window is closed", isOn: $store.systemNotifications)
+                    .onChange(of: store.systemNotifications) { on in if on { Notifier.requestPermission() } }
+                    .disabled(!store.mergeNudges)
                 Toggle("Celebrate a cleanup", isOn: $store.celebrationsEnabled)
                 Toggle("Check for updates automatically", isOn: $store.automaticUpdates)
                 Picker("Theme", selection: $store.theme) {

@@ -208,6 +208,18 @@ struct FoldersView: View {
             }
             hero(caches: caches, safe: safe)
             if let e = store.error { errorCard(e) }
+            if let note = store.commandNote {
+                HStack(spacing: 8) {
+                    Text(note).font(.system(size: 11)).foregroundStyle(Palette.ink(Palette.brand))
+                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button { store.commandNote = nil } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain).foregroundStyle(Palette.muted)
+                        .accessibilityLabel("Dismiss")
+                }
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Palette.wash(Palette.brand)))
+            }
             if let notices = store.envelope?.notices, !notices.isEmpty {
                 notice(notices.joined(separator: "\n"), tint: Palette.status("stale"))
             }
