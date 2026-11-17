@@ -31,11 +31,21 @@ struct WorktreeDetail: View {
                 }
             }
 
+            if let folder = worktree.folder, folder.verdict == "agent" || folder.reason.contains("git worktree unlock") {
+                lockPanel(stale: folder.verdict != "agent", reason: folder.reason)
+            }
+
             if !worktree.soloLog.isEmpty { soloCommits }
 
             if let pr = worktree.linkedPR { prProof(pr) }
 
             HStack(spacing: 7) {
+                if worktree.path.contains("/.claude/worktrees/") {
+                    small("Resume in Claude", "play.circle", tint: Palette.brand) { store.resumeInClaude(worktree) }
+                }
+                if let editor = store.editorChoice {
+                    small(editor.name, "chevron.left.forwardslash.chevron.right") { store.openInEditor(worktree) }
+                }
                 small("Reveal", "folder") { store.reveal(worktree) }
                 small("Terminal", "terminal") { store.openInTerminal(worktree) }
                 if worktree.linkedPR?.url.isEmpty == false {
@@ -61,7 +71,7 @@ struct WorktreeDetail: View {
     private var soloCommits: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("On this machine only")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Palette.inkRisk)
             ForEach(Array(worktree.soloLog.enumerated()), id: \.offset) { _, subject in
                 HStack(alignment: .top, spacing: 6) {
@@ -74,7 +84,7 @@ struct WorktreeDetail: View {
             }
             if worktree.unpushed > worktree.soloLog.count {
                 Text("…and \(worktree.unpushed - worktree.soloLog.count) more")
-                    .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    .font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
             if worktree.dirty > 0 {
                 // Said next to the commits, because "push" reads as "safe" and
@@ -82,13 +92,42 @@ struct WorktreeDetail: View {
                 // uncommitted half is the larger one.
                 Text("\(worktree.dirty) uncommitted file\(worktree.dirty == 1 ? "" : "s") "
                      + "would stay here even after a push")
-                    .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    .font(.system(size: 11)).foregroundStyle(Palette.muted)
                     .padding(.top, 1)
             }
         }
         .padding(.horizontal, 11).padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Palette.wash(Palette.inkRisk)))
+    }
+
+    /// A locked folder: held by a running agent, or by one that has gone.
+    /// The first is left alone; the second gets the command that frees it.
+    private func lockPanel(stale: Bool, reason: String) -> some View {
+        let tint: Color = stale ? Palette.risk : Palette.brand
+        let command: String = "git worktree unlock '" + worktree.path + "'"
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(stale ? "The session that locked this has ended" : "An agent session is working here")
+                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.ink(tint))
+            Text(stale ? "Nothing is deleted by unlocking. Run this in a terminal, then refresh."
+                       : "Deleting and cleaning are off while it runs. The lock is released when the session ends.")
+                .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if stale {
+                HStack(spacing: 8) {
+                    Text(command).font(.system(size: 11, design: .monospaced))
+                        .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    Button("Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(command, forType: .string)
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.wash(tint)))
     }
 
     /// "Merged" is a claim. This is the evidence behind it, with a link to check.
@@ -100,13 +139,13 @@ struct WorktreeDetail: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: "#\(pr.number) \(pr.state.lowercased())"
                      + (pr.draft ? " · draft" : ""))
-                    .font(.system(size: 11.5, weight: .medium))
-                Text(proofLine(pr)).font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    .font(.system(size: 11, weight: .medium))
+                Text(proofLine(pr)).font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
             Spacer(minLength: 0)
             if !pr.url.isEmpty {
                 Button("Open PR") { store.openPR(worktree) }
-                    .buttonStyle(.link).font(.system(size: 10.5))
+                    .buttonStyle(.link).font(.system(size: 11))
             }
         }
         .padding(10)
@@ -132,9 +171,9 @@ struct WorktreeDetail: View {
     @ViewBuilder
     private func field(_ label: String, _ value: String,
                        mono: Bool = false, tint: Color? = nil) -> some View {
-            Text(label).font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+            Text(label).font(.system(size: 11)).foregroundStyle(Palette.muted)
             Text(value)
-                .font(.system(size: 10.5, design: mono ? .monospaced : .default))
+                .font(.system(size: 11, design: mono ? .monospaced : .default))
                 .foregroundStyle(tint ?? .primary)
                 .textSelection(.enabled)
                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -143,28 +182,30 @@ struct WorktreeDetail: View {
     private func small(_ title: String, _ icon: String, tint: Color? = nil,
                        action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon).font(.system(size: 10.5, weight: .medium))
+            Label(title, systemImage: icon).font(.system(size: 11, weight: .medium))
                 .padding(.horizontal, 9).padding(.vertical, 5)
                 .foregroundStyle(tint.map(Palette.ink) ?? .primary)
-                .background(RoundedRectangle(cornerRadius: 6)
+                .background(RoundedRectangle(cornerRadius: 8)
                     .fill(tint.map(Palette.wash) ?? Color.primary.opacity(0.06))
-                    .overlay(RoundedRectangle(cornerRadius: 6)
+                    .overlay(RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(tint.map(Palette.edge) ?? Color.primary.opacity(0.10), lineWidth: 1)))
         }
-        .buttonStyle(RowButtonStyle(radius: 6))
+        .buttonStyle(RowButtonStyle(radius: 8))
     }
 }
 
 /// The page's one filter: a folder, branch or repo name.
 struct FilterBar: View {
     @ObservedObject var store: Store
+    /// In the header: no margins of its own.
+    var compact = false
     @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").font(.system(size: 11))
                 .foregroundStyle(Palette.muted)
-            TextField("filter by folder, branch or repo", text: $store.query)
+            TextField("Folder, branch or repo", text: $store.query)
                 .textFieldStyle(.plain).font(.system(size: 12))
                 .focused($focused)
             if !store.query.isEmpty {
@@ -175,8 +216,8 @@ struct FilterBar: View {
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 7).fill(.primary.opacity(0.06)))
-        .padding(.horizontal, 20).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(.primary.opacity(0.06)))
+        .padding(.horizontal, compact ? 0 : 20).padding(.vertical, compact ? 0 : 10)
         // ⌘F. The counter is the request and this is the only thing that
         // answers it: a shortcut that silently does nothing is worse than one
         // that does not exist.

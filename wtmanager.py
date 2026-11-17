@@ -5,7 +5,7 @@ A read-only census of every git worktree on this machine: which are alive,
 which are finished, which you forgot, and how much disk each one is holding.
 
 Zero config, zero dependencies, no network unless `gh` is present and useful.
-Never fetches. Never deletes anything it cannot justify.
+Never fetches unless you ask it to. Never deletes anything it cannot justify.
 """
 from __future__ import annotations
 
@@ -293,6 +293,13 @@ DEFAULT_CONFIG = {
     "base": {},             # repo name -> base branch override (resolution rule 1)
     "stale_days": 14,
     "min_base_votes": 5,    # rule-3 confidence floor; an ABSOLUTE count, not a share
+    # Before a delete review, ask each repo's remote what it has now (capped at
+    # a few seconds), so "merged" and "on GitHub" are today's answer and not
+    # the last fetch's. Off by default: the tool otherwise never fetches.
+    "fetch_before_review": False,
+    # When a folder is deleted and its branch merged or has nothing of its
+    # own, delete the branch too. Off by default: a kept branch loses nothing.
+    "delete_finished_branch": False,
     "regenerable": [],      # extra dir names treated as safe to delete
     "precious": [],         # extra regexes never deleted
 }
@@ -404,7 +411,16 @@ def git(args: Sequence[str], cwd: Optional[str] = None, gitdir: Optional[str] = 
     pre = ["git"]
     if gitdir:
         pre += ["--git-dir", gitdir]
-    return sh(pre + list(args), cwd=cwd, timeout=timeout)
+    return sh(pre + list(args), cwd=cwd, timeout=timeout, env=GIT_ENV)
+
+
+# Every git call here is a background read of someone else's checkout, and a
+# coding agent may be committing in it at that moment. `git status` takes
+# index.lock to write back refreshed stat data unless told not to; the agent's
+# own `git add` then fails with "index.lock: File exists". This is git's own
+# switch for exactly this caller: locks a command needs are still taken, the
+# opportunistic ones are not.
+GIT_ENV = {"GIT_OPTIONAL_LOCKS": "0"}
 
 
 def have(tool: str) -> bool:
@@ -508,6 +524,16 @@ class Worktree:
     unknown_kb: int = -1
     locked: str = ""
     has_submodules: bool = False
+    # When the folder was made and when its HEAD last moved, from git's own
+    # bookkeeping for the worktree. The last commit says nothing about either:
+    # a worktree cut a minute ago from a base whose tip is a month old has a
+    # month-old "last commit" and is the newest thing on the machine.
+    created: int = 0
+    head_moved: int = 0
+    # A process has its working directory inside the folder right now.
+    in_use: bool = False
+    # Which tool's convention the folder follows: "claude", "codex" or "".
+    origin: str = ""
     # Why the ignored files here could not all be inspected, if they could not.
     # Removal is refused outright: no override, since what was not read cannot
     # have been set aside.
@@ -1476,6 +1502,122 @@ def quiet_days(w: Worktree) -> int:
     return min(w.age_days, int((time.time() - when) / 86400))
 
 
+def worktree_times(path: str, gitdir: str) -> Tuple[int, int]:
+    """(created, head_moved) for a linked worktree, as epoch seconds; 0 = unknown.
+
+    Both come from the worktree's own directory under `.git/worktrees/`.
+    `commondir` is written once, when `git worktree add` makes the folder, so
+    its mtime is the creation time on every filesystem, with no need for a
+    birth time. HEAD's reflog gains a line on every commit, checkout, pull,
+    rebase or reset, so its mtime is the last time anyone did git work here.
+    The index is deliberately not consulted: any editor's background
+    `git status` rewrites it, which would make every open project "active".
+    """
+    admin = _worktree_gitdir(path, gitdir)
+    if not admin or os.path.realpath(admin) == os.path.realpath(gitdir):
+        return 0, 0
+    def mtime(*parts: str) -> int:
+        try:
+            return int(os.stat(os.path.join(admin, *parts)).st_mtime)
+        except OSError:
+            return 0
+    return mtime("commondir"), max(mtime("logs", "HEAD"), mtime("HEAD"))
+
+
+def idle_days(w: Worktree) -> Tuple[int, str]:
+    """Days since anything happened to this folder, and what that was.
+
+    `quiet_days` knows commits and merges. A folder is also not idle if it
+    was made recently or its HEAD moved recently. Measured: a worktree
+    created seconds earlier on a base last committed to seven weeks before
+    read "safe to delete, nothing of its own", and a sweep would have taken
+    it from under the session that had just opened it.
+    """
+    best, what = quiet_days(w), "worked on"
+    now = time.time()
+    for when, label in ((w.head_moved, "worked on"), (w.created, "created")):
+        if when > 0:
+            d = max(0, int((now - when) / 86400))
+            if d < best or (d == best and label == "created" and w.ahead == 0):
+                best, what = d, label
+    return best, what
+
+
+_process_dirs: Optional[set] = None
+_process_dirs_lock = threading.Lock()
+
+
+def process_dirs() -> set:
+    """The working directory of every process this user is running.
+
+    One `lsof` per run, shared by every probe. A shell, an editor's language
+    server or a coding agent sitting in a worktree is the plainest evidence
+    that it is in use, and no amount of reading git can see it. Absent or
+    slow `lsof` yields nothing, which only means this signal is not there.
+    """
+    global _process_dirs
+    with _process_dirs_lock:
+        if _process_dirs is None:
+            _, out, _ = sh(["lsof", "-a", "-d", "cwd", "-Fn"], timeout=8)
+            _process_dirs = {os.path.realpath(l[1:]) for l in out.splitlines()
+                             if l.startswith("n/") and len(l) > 2}
+        return _process_dirs
+
+
+def path_in_use(path: str) -> bool:
+    root = os.path.realpath(path)
+    return any(d == root or d.startswith(root + os.sep) for d in process_dirs())
+
+
+def folder_origin(path: str) -> str:
+    """Whose convention put the folder here. A label, never a safety input."""
+    parts = os.path.realpath(path).split(os.sep)
+    for i in range(len(parts) - 1):
+        if parts[i] == ".claude" and parts[i + 1] == "worktrees":
+            return "claude"
+    return "codex" if ".codex" in parts else ""
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        return True
+    return True
+
+
+def lock_info(w: Worktree) -> Optional[dict]:
+    """What a `git worktree lock` on this folder most likely means.
+
+    Coding agents lock a worktree for as long as a session runs in it, so
+    "unlock it in Terminal first" is advice to pull a folder from under a
+    live agent. A lock is read as an agent's when its reason says so or the
+    folder sits where an agent puts its worktrees. `stale` is claimed only
+    when the reason names a process id and that process is gone; without
+    one, nobody here can tell, and it is left alone.
+    """
+    if not w.locked:
+        return None
+    low = w.locked.lower()
+    agent = bool(w.origin) or any(k in low for k in ("claude", "codex", "agent", "session"))
+    m = re.search(r"\bpid\D{0,3}(\d+)", low)
+    pid = int(m.group(1)) if m else None
+    return {"reason": w.locked, "agent": agent, "pid": pid,
+            "stale": bool(pid) and not pid_alive(pid)}
+
+
+def lock_reason(w: Worktree) -> str:
+    info = lock_info(w) or {}
+    if info.get("stale"):
+        return (f"locked by a session that has ended ({w.locked}) — "
+                f"`git worktree unlock` releases it")
+    if info.get("agent"):
+        return f"an agent session is running here ({w.locked}) — it unlocks when the session ends"
+    return f"worktree is locked: {w.locked} — unlock it in Terminal first"
+
+
 def derive_status(w: Worktree, stale_days: int) -> str:
     pr = w.pr
     # Every "finished" verdict is a claim about a base. With no base resolved,
@@ -2152,6 +2294,10 @@ def probe_worktree(gitdir: str, repo: str, main_wt: str, path: str,
 
     w.pr_activity = w.pr or merged_activity(w, merged, gitdir)
     w.status = derive_status(w, int(cfg.get("stale_days", 14)))
+    if not w.primary:
+        w.created, w.head_moved = worktree_times(path, gitdir)
+        w.in_use = path_in_use(path)
+        w.origin = folder_origin(path)
     return w
 
 
@@ -2766,7 +2912,8 @@ def changed_files(w: Worktree) -> Optional[List[str]]:
     # with a space (" M path"), so the first path came out one letter short.
     try:
         r = subprocess.run(["git", "-C", w.path, "status", "--porcelain=v1", "-z",
-                            "--untracked-files=all"], capture_output=True, timeout=60)
+                            "--untracked-files=all"], capture_output=True, timeout=60,
+                           env={**os.environ, **GIT_ENV})
     except (OSError, subprocess.TimeoutExpired):
         return None
     if r.returncode != 0:
@@ -2870,6 +3017,68 @@ def save_changes(w: Worktree, files: Sequence[str], bundle: bool = False) -> Tup
     return dest, ""
 
 
+def fetch_quietly(gitdir: str, timeout: int = 8) -> bool:
+    """One capped, promptless `git fetch --prune`. False when it did not finish;
+    the review then runs on what was already known, and says so."""
+    rc, _, err = sh(["git", "--git-dir", gitdir, "fetch", "--prune", "--quiet", "--no-tags"],
+                    timeout=timeout, env={**GIT_ENV, "GIT_TERMINAL_PROMPT": "0"})
+    if rc != 0:
+        why = "timed out" if rc == 124 else (err.splitlines()[0][:120] if err else f"git exited {rc}")
+        NOTICES.append(("other", Path(gitdir).parent.name,
+                        f"could not check the remote before the review ({why}); using what was last fetched"))
+    return rc == 0
+
+
+def main_checkout(w: Worktree) -> Optional[str]:
+    """The repo's main checkout, or None for a bare repo."""
+    if not w.repo_id or os.path.basename(w.repo_id) != ".git":
+        return None
+    return os.path.dirname(w.repo_id)
+
+
+def same_in_main(w: Worktree, entry: str) -> bool:
+    """Whether a protected file here is byte for byte the main checkout's.
+
+    Agents copy `.env` and its kin from the main checkout into each worktree
+    they make. Setting such a copy aside before deleting the folder saves
+    nothing that is not already one directory up, and fills the kept folder
+    with duplicates of one file. Only plain files are compared; a directory
+    or a link is always set aside.
+    """
+    main = main_checkout(w)
+    if not main or os.path.realpath(main) == os.path.realpath(w.path):
+        return False
+    here, there = os.path.join(w.path, entry), os.path.join(main, entry)
+    for p in (here, there):
+        if os.path.islink(p) or not os.path.isfile(p):
+            return False
+    try:
+        import filecmp
+        return filecmp.cmp(here, there, shallow=False)
+    except OSError:
+        return False
+
+
+def branch_is_done(w: Worktree) -> bool:
+    """Whether deleting this branch with its folder loses nothing.
+
+    True when its pull request merged with every commit inside what merged,
+    or when it has no commit of its own at all. Never the base branch, and
+    never anything with a commit that exists only here.
+    """
+    if not w.branch or w.is_base or w.primary:
+        return False
+    if w.unpushed > 0 and not w.landed:
+        return False
+    merged = w.pr is not None and w.pr.state == "MERGED"
+    return merged or (w.base_source != "unresolved" and w.ahead == 0)
+
+
+# How long a folder with nothing of its own is left alone before it is called
+# abandoned. The same week `_folder_verdict` gives any folder you touched.
+FRESH_DAYS = 7
+
+
 def finished(w: Worktree) -> bool:
     return w.status in (MERGED, EMPTY) or (w.pr is not None and w.pr.state == "MERGED")
 
@@ -2915,7 +3124,7 @@ def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False
     if w.is_base:
         return f"the checkout of {w.base} itself", ""
     if w.locked:
-        return f"worktree is locked: {w.locked} — unlock it in Terminal first", ""
+        return lock_reason(w), ""
     # As a folder, the question is not whether the work finished but whether
     # deleting it loses anything. A branch on GitHub survives its folder.
     as_folder = folders and (on_a_remote(w) or discard_work)
@@ -2923,6 +3132,21 @@ def reap_blocker(w: Worktree, force: bool = False, discard_unknown: bool = False
         return f"{w.status} — only finished work is removed", ""
     if (w.base_source == "unresolved" or w.base == "(none)") and not as_folder:
         return "no base resolved — cannot confirm it landed", ""
+    # The sweep takes "finished" on git's word, and git cannot see a session.
+    # A folder you point at by name is yours to judge; its row already says
+    # it is in use, and it still goes through the preview.
+    if not folders and not force:
+        if w.in_use:
+            return "a terminal, editor or agent is open in it right now", "--force"
+        # Only the folder's own clock. An empty branch's last commit is the
+        # base's, which says when the base moved and nothing about this folder.
+        newest = max(w.created, w.head_moved)
+        if w.status == EMPTY and newest > 0:
+            days = max(0, int((time.time() - newest) / 86400))
+            if days <= FRESH_DAYS:
+                what = "created" if w.created >= w.head_moved else "worked on"
+                when = "today" if days == 0 else f"{days} day{'s' if days != 1 else ''} ago"
+                return f"{what} {when} — too new to call abandoned", "--force"
     if w.unpushed > 0 and not w.landed and not force and not as_folder:
         return f"{w.unpushed} unpushed", "--force"
     if (w.would_lose > 0 and not force and not discard_work
@@ -2983,6 +3207,18 @@ def _folder_verdict(w: Worktree) -> Optional[dict]:
         commits = w.unpushed if not w.branch else max(w.unpushed_mine, 0)
     # Whether "delete anyway" can act on it: everything but what git refuses.
     anyway = reap_blocker(w, folders=True, discard_changes=True, discard_work=True) is None
+    lock = lock_info(w)
+    if lock and lock["agent"] and not lock["stale"]:
+        # Before "unsaved": a running session's uncommitted edits are work in
+        # progress, not work forgotten, and the row should say who has it.
+        doing = []
+        if commits:
+            doing.append(f"{commits} commit{'s' if commits != 1 else ''}")
+        if edits:
+            doing.append(f"{edits} edit{'s' if edits != 1 else ''}")
+        return {"verdict": "agent", "anyway": False, "lock": lock,
+                "reason": "an agent session holds this folder"
+                          + (" · " + " and ".join(doing) + " so far" if doing else "")}
     if commits or edits:
         bits = ([f"{commits} commit{'s' if commits != 1 else ''}"] if commits else []) + \
                ([f"{edits} edit{'s' if edits != 1 else ''}"] if edits else [])
@@ -2992,7 +3228,10 @@ def _folder_verdict(w: Worktree) -> Optional[dict]:
         reason = blocker[0]
         if blocker[1] == "--discard-unknown" and w.unknown_kb > 0:
             reason = f"{human(w.unknown_kb)} of unrecognised files inside"
-        return {"verdict": "kept", "reason": reason, "anyway": anyway}
+        return {"verdict": "kept", "reason": reason, "anyway": anyway,
+                **({"lock": lock} if lock else {})}
+    if w.in_use:
+        return {"verdict": "busy", "reason": "open in a terminal, editor or agent right now"}
     pr = w.pr
     if pr and pr.state == "OPEN":
         return {"verdict": "busy", "reason": f"PR #{pr.number} open"}
@@ -3002,10 +3241,10 @@ def _folder_verdict(w: Worktree) -> Optional[dict]:
                 "reason": f"PR #{pr.number} merged · {n} edit{'s' if n != 1 else ''} saved first"}
     if pr and pr.state == "MERGED":
         return {"verdict": "safe", "reason": f"PR #{pr.number} merged"}
-    if quiet_days(w) <= 7:
-        d = quiet_days(w)
+    d, what = idle_days(w)
+    if d <= FRESH_DAYS:
         return {"verdict": "busy",
-                "reason": "worked on today" if d == 0 else f"worked on {d} day{'s' if d != 1 else ''} ago"}
+                "reason": f"{what} today" if d == 0 else f"{what} {d} day{'s' if d != 1 else ''} ago"}
     if w.status in (MERGED, EMPTY) or w.ahead == 0:
         return {"verdict": "safe", "reason": "nothing of its own" if w.status != MERGED else "merged"}
     if w.unpushed > 0:
@@ -3046,6 +3285,8 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     discard_changes = bool(getattr(args, "discard_changes", False))
     discard_work = bool(getattr(args, "discard_work", False))
     folders = bool(getattr(args, "folders", False)) or discard_work
+    drop_branch = bool(getattr(args, "delete_branch", False)) \
+        or bool(load_config().get("delete_finished_branch"))
     if folders and not named:
         # Measured: with no --path, --discard-work matched all 31 worktrees
         # on one machine, open PRs included, and --folders 15. Both widen what
@@ -3101,6 +3342,15 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
                and (w.unknown_kb < 0 or w.unknown_kb > KEEP_UNKNOWN_KB)}
     plan["dropped_unknown"] = {w.path: list(w.unknown_paths) for w in cands if w.path in dropped}
     plan["changes_kept_in"] = str(kept_root()) if changes or bundled else ""
+    # Branches that go with their folders, and protected files that are the
+    # main checkout's own and so need no copy. Both are in the hash: a plan
+    # that kept a branch must not approve a run that deletes it.
+    branches = {w.path: w.branch for w in cands if drop_branch and branch_is_done(w)}
+    plan["branches"] = branches
+    duplicates = {w.path: [e for e in w.precious_hits if same_in_main(w, e)]
+                  for w in cands if not discard and w.precious_hits}
+    duplicates = {p: es for p, es in duplicates.items() if es}
+    plan["duplicates"] = duplicates
     # An override approves the ignored files too. If one appears after the
     # preview, the same worktree path must no longer authorise its removal.
     # Keeping and discarding are different plans over the same set, so the
@@ -3111,6 +3361,7 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
         f"\t{'discard' if discard else 'keep'}\t{'discard' if discard_unknown else 'keep'}"
         f"\t{','.join(changes.get(w.path, []))}\t{'folder' if folders else 'finished'}"
         f"\t{'anyway' if discard_work else ''}\t{plan['commits'].get(w.path, '')}"
+        f"\t{branches.get(w.path, '')}\t{','.join(duplicates.get(w.path, []))}"
         for w in cands])
     plan["precious"] = {w.path: list(w.precious_hits) for w in cands if w.precious_hits}
     plan["unknown"] = {w.path: list(w.unknown_paths) for w in cands
@@ -3136,6 +3387,13 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
                   f"{'s' if w.deleted != 1 else ''} — git still has "
                   f"{'them' if w.deleted != 1 else 'it'}, nothing to lose{C.off}")
         precious, unknown = ignored_by_kind(w)
+        if w.path in branches:
+            print(f"           {C.cyan}branch{C.off} {C.dim}{branches[w.path]} is finished and goes too{C.off}")
+        same = duplicates.get(w.path, [])
+        if same:
+            shown = ", ".join(same[:3]) + ("…" if len(same) > 3 else "")
+            print(f"           {C.dim}{shown} — the same as the main checkout's, nothing to save{C.off}")
+            precious = [e for e in precious if e not in same]
         if precious and discard:
             # Said once more, right above the number, because this is the line
             # that is about to go.
@@ -3174,7 +3432,8 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     completed = []
     for i, w in enumerate(cands):
         progress(i, len(cands), f"removing {w.repo}/{w.name}")
-        keep = (([] if discard else w.precious_hits)
+        same = set(duplicates.get(w.path, []))
+        keep = (([] if discard else [e for e in w.precious_hits if e not in same])
                 + ([] if discard_unknown or w.path in dropped else w.unknown_paths))
         archived_kb = 0
         if changes.get(w.path) or w.path in bundled or w.path in plan["commits"]:
@@ -3215,6 +3474,14 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
             freed += max(w.size_kb - archived_kb, 0)
             forget_size(w.path)
             print(f"{C.green}removed{C.off} {w.repo}/{w.name}")
+            if w.path in branches and cd:
+                # -D, not -d: a squash-merged branch is not an ancestor of
+                # anything, and "finished" was established above, not by git.
+                brc, _, berr = git(["branch", "-D", branches[w.path]], gitdir=cd)
+                if brc == 0:
+                    print(f"{C.green}removed{C.off} branch {branches[w.path]}")
+                else:
+                    print(f"{C.yellow}kept{C.off}    branch {branches[w.path]} {C.dim}{berr[:90]}{C.off}")
             if drop_empty_parent(w.path):
                 print(f"{C.green}removed{C.off} {os.path.dirname(w.path)} {C.dim}(now empty){C.off}")
         else:
@@ -3497,6 +3764,78 @@ def _push(wts: List[Worktree], args, plan: dict) -> int:
     return 1 if failed else 0
 
 
+def _locks(gitdir: str) -> Dict[str, str]:
+    rc, out, _ = git(["worktree", "list", "--porcelain"], gitdir=gitdir)
+    found: Dict[str, str] = {}
+    for block in (out.strip().split("\n\n") if rc == 0 else []):
+        lines = block.splitlines()
+        path = next((l[9:] for l in lines if l.startswith("worktree ")), "")
+        reason = next((l[6:].strip() or "locked" for l in lines
+                       if l == "locked" or l.startswith("locked ")), "")
+        if path and reason:
+            found[os.path.realpath(path)] = reason
+    return found
+
+
+def cmd_unlock(args) -> int:
+    """Release a lock, but not one a running process still holds."""
+    failed = 0
+    for p in args.path:
+        path = os.path.realpath(os.path.expanduser(p))
+        cd = common_dir(path)
+        if not cd:
+            print(f"{C.red}failed{C.off}  {p} {C.dim}(not inside a git repository){C.off}")
+            failed += 1
+            continue
+        reason = _locks(cd).get(path, "")
+        if not reason:
+            print(f"{C.dim}{p} is not locked.{C.off}")
+            continue
+        probe = Worktree(repo="", path=path, branch=None, primary=False, base="", base_source="",
+                         locked=reason, origin=folder_origin(path))
+        info = lock_info(probe) or {}
+        if info.get("pid") and not info.get("stale") and not args.force:
+            print(f"{C.yellow}skip{C.off} {p} {C.dim}(process {info['pid']} is still running — "
+                  f"--force overrides){C.off}")
+            failed += 1
+            continue
+        rc, _, err = git(["worktree", "unlock", path], gitdir=cd)
+        if rc == 0:
+            print(f"{C.green}unlocked{C.off} {p}")
+        else:
+            failed += 1
+            print(f"{C.red}failed{C.off}  {p} {C.dim}{err[:90]}{C.off}")
+    return 1 if failed else 0
+
+
+def cmd_prune(args) -> int:
+    """`git worktree prune`, previewed first like every other change here."""
+    failed = 0
+    seen: List[str] = []
+    for p in args.path:
+        cd = common_dir(os.path.expanduser(p))
+        if not cd:
+            print(f"{C.red}failed{C.off}  {p} {C.dim}(not inside a git repository){C.off}")
+            failed += 1
+            continue
+        if cd in seen:
+            continue
+        seen.append(cd)
+        cmd = ["worktree", "prune", "-v"] + ([] if args.yes else ["--dry-run"])
+        rc, out, err = git(cmd, gitdir=cd)
+        text = (out + "\n" + err).strip()
+        if rc != 0:
+            failed += 1
+            print(f"{C.red}failed{C.off}  {p} {C.dim}{err[:90]}{C.off}")
+        elif not text:
+            print(f"{C.dim}{Path(cd).parent.name}: nothing to prune.{C.off}")
+        else:
+            print(text)
+    if not args.yes and not failed:
+        print(f"{C.dim}dry run — add --yes to prune{C.off}")
+    return 1 if failed else 0
+
+
 def cmd_doctor(wts: List[Worktree]) -> int:
     """Show how each repo's base was resolved. A base you can see is correctable."""
     by_repo: Dict[str, List[Worktree]] = {}
@@ -3641,6 +3980,49 @@ def empty_locations(wts: List[Worktree]) -> List[str]:
     return sorted(p for p in seen if p not in occupied and only_finder_litter(p))
 
 
+def leftovers(wts: List[Worktree]) -> List[dict]:
+    """What a repo's worktree bookkeeping and its folders disagree about.
+
+    `prunable`: git still lists a worktree whose folder is gone, usually one
+    deleted in Finder; `git worktree prune` forgets it. `orphan`: a folder
+    sitting where an agent keeps its worktrees that git has no worktree for,
+    so it is on no list here and still holds disk. Reported, never removed:
+    an orphan is by definition something this tool cannot reason about.
+    """
+    found: List[dict] = []
+    for gitdir in sorted({w.repo_id for w in wts if w.repo_id}):
+        rc, out, _ = git(["worktree", "list", "--porcelain"], gitdir=gitdir)
+        if rc != 0:
+            continue
+        repo = Path(gitdir).parent.name
+        listed = set()
+        for block in out.strip().split("\n\n"):
+            lines = block.splitlines()
+            path = next((l[9:] for l in lines if l.startswith("worktree ")), "")
+            if not path:
+                continue
+            listed.add(os.path.realpath(path))
+            if any(l == "prunable" or l.startswith("prunable ") for l in lines) and not os.path.isdir(path):
+                found.append({"kind": "prunable", "repo": repo, "path": path, "kb": 0,
+                              "main": str(Path(gitdir).parent),
+                              "reason": "git lists it, but the folder is gone"})
+        home = os.path.join(str(Path(gitdir).parent), ".claude", "worktrees")
+        try:
+            names = sorted(os.listdir(home))
+        except OSError:
+            names = []
+        for name in names:
+            full = os.path.join(home, name)
+            if name.startswith(".") or os.path.islink(full) or not os.path.isdir(full):
+                continue
+            if os.path.realpath(full) in listed or only_finder_litter(full):
+                continue
+            found.append({"kind": "orphan", "repo": repo, "path": full, "kb": max(du_kb(full), 0),
+                          "main": str(Path(gitdir).parent),
+                          "reason": "a folder with files in it that git has no worktree for"})
+    return found
+
+
 def cmd_agent(wts: List[Worktree], args) -> int:
     """One envelope with everything an ambient client needs, mood included.
 
@@ -3688,6 +4070,7 @@ def cmd_agent(wts: List[Worktree], args) -> int:
         "notices": notice_lines(),
         "roots": load_config().get("roots", []),
         "empty_locations": empty_locations(wts),
+        "leftovers": leftovers(wts),
         # The sentence, decided here beside the mood it is derived from. A
         # client that wrote its own would rank the same facts a second time.
         "headline": mascot.headline(face["mood"], counts, reclaim, len(wts)),
@@ -3714,6 +4097,8 @@ def cmd_agent(wts: List[Worktree], args) -> int:
              # A client that does not know them offers a button that cannot
              # work and reports "nothing to do" when it is pressed.
              "is_base": w.is_base,
+             "locked": w.locked, "origin": w.origin, "in_use": w.in_use,
+             "created": w.created, "head_moved": w.head_moved,
              "size_kb": w.size_kb, "reclaim_kb": w.reclaim_kb,
              "pr": (asdict(w.pr) if w.pr else None),
              "pr_activity": (asdict(w.pr_activity) if w.pr_activity else None)}
@@ -3857,6 +4242,12 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--discard-unknown", action="store_true",
                     help="delete ignored files that cannot be classified as regenerable "
                          "with the worktree, instead of setting them aside first")
+    rp.add_argument("--fetch", action="store_true",
+                    help="ask each repo's remote what it has now before reviewing "
+                         "(a few seconds at most); needs --path")
+    rp.add_argument("--delete-branch", action="store_true",
+                    help="also delete a removed worktree's branch when it merged "
+                         "or has nothing of its own")
     rp.add_argument("--plan", metavar="HASH",
                     help="the plan hash from a --json dry run; --yes refuses to run if "
                          "what it would remove no longer matches")
@@ -3891,6 +4282,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="the plan hash from a --json dry run; --yes refuses to run "
                          "if what it would push no longer matches")
 
+    ul = sub.add_parser("unlock", parents=[after],
+                        help="release a worktree lock left by a session that has ended")
+    ul.add_argument("--path", metavar="P", action="append", required=True)
+    ul.add_argument("--force", action="store_true",
+                    help="unlock even when the lock names a process that is still running")
+    pr = sub.add_parser("prune", parents=[after],
+                        help="forget worktrees git lists whose folders are gone")
+    pr.add_argument("--path", metavar="P", action="append", required=True,
+                    help="any checkout of the repo")
+    pr.add_argument("--yes", action="store_true", help="actually prune; default is a dry run")
     sub.add_parser("doctor", parents=[after],
                    help="explain base-branch resolution per repo")
 
@@ -3938,6 +4339,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.stale_days is not None:
         cfg["stale_days"] = args.stale_days
     sweep_cache()
+
+    if args.cmd == "unlock":
+        return cmd_unlock(args)
+    if args.cmd == "prune":
+        return cmd_prune(args)
+    # Only for folders you named: a sweep that fetched every repo it knows
+    # would turn a five-second question into a minute of network.
+    if args.cmd == "reap" and getattr(args, "path", None) \
+            and (getattr(args, "fetch", False) or cfg.get("fetch_before_review")):
+        seen = []
+        for p in args.path:
+            cd = common_dir(os.path.expanduser(p))
+            if cd and cd not in seen:
+                seen.append(cd)
+                fetch_quietly(cd)
 
     roots = [] if args.here else (cfg.get("roots") or [])
     # `push` moves commits, not bytes: measuring a hundred gigabytes to send

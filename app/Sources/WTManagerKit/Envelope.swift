@@ -187,6 +187,8 @@ public struct Envelope: Decodable {
     public var roots: [String] = []
     /// Folders that held worktrees and now hold nothing but `.DS_Store`.
     public var emptyLocations: [String] = []
+    /// Where git's worktree list and the folders on disk disagree.
+    public var leftovers: [Leftover] = []
     public var configPath: String = ""
     /// Set only by a partial pass: the worktrees whose sizes are new. Every
     /// other size in it is unmeasured, not zero.
@@ -195,6 +197,7 @@ public struct Envelope: Decodable {
         case counts, notices, face, worktrees, headline, insights
         case unconfigured, candidates, roots
         case emptyLocations = "empty_locations"
+        case leftovers
         case configPath = "config_path"
         case measuredPaths = "measured_paths"
         case reclaimKb = "reclaim_kb"
@@ -216,9 +219,22 @@ public struct Envelope: Decodable {
         candidates = try c.decodeIfPresent([RootCandidate].self, forKey: .candidates) ?? []
         roots = try c.decodeIfPresent([String].self, forKey: .roots) ?? []
         emptyLocations = try c.decodeIfPresent([String].self, forKey: .emptyLocations) ?? []
+        leftovers = try c.decodeIfPresent([Leftover].self, forKey: .leftovers) ?? []
         configPath = try c.decodeIfPresent(String.self, forKey: .configPath) ?? ""
         measuredPaths = try c.decodeIfPresent([String].self, forKey: .measuredPaths)
     }
+}
+
+/// A worktree git lists with no folder (`prunable`), or a folder where an
+/// agent keeps worktrees that git has no worktree for (`orphan`).
+public struct Leftover: Codable, Hashable, Identifiable {
+    public let kind: String
+    public let repo: String
+    public let path: String
+    public let kb: Int
+    public let main: String
+    public let reason: String
+    public var id: String { kind + ":" + path }
 }
 
 /// A folder the engine found repositories in, and how many.

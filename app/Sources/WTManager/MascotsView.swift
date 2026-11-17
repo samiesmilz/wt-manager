@@ -17,9 +17,9 @@ struct MascotsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Mascots")
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
                     Text("Pick the one that keeps you company. Its face tells you how your disk is doing.")
-                        .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
                 if let mascot = store.mascot {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 12)], spacing: 12) {
@@ -55,9 +55,9 @@ struct MascotsView: View {
                 }
                 .frame(height: 72)
                 VStack(spacing: 2) {
-                    Text(figure.name).font(.system(size: 12.5, weight: .semibold))
+                    Text(figure.name).font(.system(size: 12, weight: .semibold))
                     // Two lines' room for every tell, so the cards stay one height.
-                    Text(figure.tell).font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    Text(figure.tell).font(.system(size: 11)).foregroundStyle(Palette.muted)
                         .multilineTextAlignment(.center).lineLimit(2)
                         .frame(height: 28, alignment: .top)
                 }
@@ -86,8 +86,8 @@ struct MascotsView: View {
                 }
                 .frame(height: 72)
                 VStack(spacing: 2) {
-                    Text("Yours").font(.system(size: 12.5, weight: .semibold))
-                    Text("your own picture").font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    Text("Yours").font(.system(size: 12, weight: .semibold))
+                    Text("your own picture").font(.system(size: 11)).foregroundStyle(Palette.muted)
                         .frame(height: 28, alignment: .top)
                 }
             }
@@ -117,7 +117,7 @@ struct MascotsView: View {
                     ForEach(mascot.skins.keys.sorted(), id: \.self) { coat in
                         let on = store.skin == coat
                         Button { store.skin = coat } label: {
-                            Text(coat).font(.system(size: 11.5, weight: on ? .semibold : .regular))
+                            Text(coat).font(.system(size: 11, weight: on ? .semibold : .regular))
                                 .frame(maxWidth: .infinity).padding(.vertical, 5)
                                 .foregroundStyle(on ? Palette.ink(Palette.mascot) : .primary)
                                 .background(Capsule().fill(on ? Palette.wash(Palette.mascot) : Color.primary.opacity(0.05)))
@@ -181,7 +181,7 @@ struct MascotsView: View {
     private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
+                .font(.system(size: 11, weight: .semibold)).tracking(0.6)
                 .foregroundStyle(Palette.muted)
                 .padding(.leading, 2)
             VStack(alignment: .leading, spacing: 0) { content() }
@@ -195,8 +195,8 @@ struct MascotsView: View {
     private func row<C: View>(_ title: String, _ detail: String, @ViewBuilder _ control: () -> C) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12.5, weight: .medium))
-                Text(detail).font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                Text(title).font(.system(size: 12, weight: .medium))
+                Text(detail).font(.system(size: 11)).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)

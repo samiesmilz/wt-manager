@@ -76,8 +76,6 @@ public struct MascotWander {
     private static func increments(figure: String) -> [Double] {
         switch figure {
         case "cat", "crab": return Array(repeating: 3, count: 16)
-        case "rabbit": return [1,1,2,2,3,3,3,3,3,3,2,2,1,1,1,1]
-        case "snowman": return [1,2,3,2,1,2,3,2,1,2,3,2,1,2,3,2]
         // Every walker on the shared leg gait moves one art pixel (2 points)
         // a pose, because its planted foot slides back one pixel a pose to
         // stay put on screen. Bork and Chomp once lunged and lurched at their

@@ -139,12 +139,29 @@ enum Palette {
     }
 }
 
+/// The type scale. Five sizes; a sixth is a sign the hierarchy is being asked
+/// to do a layout's job. Body copy never goes below `caption`, which is the
+/// system's own small-text size.
+enum TypeScale {
+    static let caption: CGFloat = 11
+    static let secondary: CGFloat = 12
+    static let body: CGFloat = 13
+    static let section: CGFloat = 15
+    static let title: CGFloat = 20
+}
+
+/// Two radii: controls and rows, then cards and sheets.
+enum Radius {
+    static let control: CGFloat = 8
+    static let card: CGFloat = 12
+}
+
 /// Hover and press for a row or a list entry. A plain button gives neither, and
 /// a row that does not answer the pointer reads as a label; one that does not
 /// answer a press reads as broken for the fraction of a second it takes to act.
 struct RowButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var radius: CGFloat = 7
+    var radius: CGFloat = 8
     var inset: CGFloat = 0
     @State private var hover = false
 

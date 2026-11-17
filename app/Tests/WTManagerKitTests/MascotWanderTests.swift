@@ -90,16 +90,13 @@ final class MascotWanderTests: XCTestCase {
         }
         // Walkers on the shared leg gait advance exactly one art pixel per
         // pose; any other rhythm makes their planted foot skate.
-        for figure in ["pup", "rex", "robot", "antenna"] {
+        for figure in ["pup", "rex", "robot", "antenna", "rabbit", "snowman"] {
             for tick in 1...16 {
                 let sample = MascotWander.stepSample(distance: 1000,
                     elapsed: Double(tick) * MascotWander.poseInterval(figure: figure), figure: figure)
                 XCTAssertEqual(sample.travelled, Double(2 * tick), accuracy: 0.001, "\(figure) \(tick)")
             }
         }
-        let crouched = MascotWander.stepSample(distance: 100, elapsed: 2 * MascotWander.poseInterval, figure: "rabbit")
-        let airborne = MascotWander.stepSample(distance: 100, elapsed: 8 * MascotWander.poseInterval, figure: "rabbit")
-        XCTAssertGreaterThan((airborne.travelled-crouched.travelled)/6, crouched.travelled/2)
     }
 
     func testFirstStrollStartsSoonAfterEnabling() {

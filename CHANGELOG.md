@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **A folder made a moment ago is no longer "safe to delete".** Activity was read from the last commit alone, so a worktree cut seconds earlier from a quiet base looked abandoned and "Delete N safe" could take it from under the session that had just opened it. A folder now counts as in progress for a week after it was created or its HEAD last moved (git's own record for the worktree), and whenever a terminal, editor or agent has its working directory inside it. `wt-manager reap` skips both unless you pass `--force`; a folder you name with `--folders --path` is still yours to judge.
+- **Background reads no longer collide with a running agent.** Every git call sets `GIT_OPTIONAL_LOCKS=0`, so the five-minute refresh cannot hold `index.lock` while an agent is committing.
+- **A lock held by an agent says so.** Coding agents lock a worktree while a session runs in it. Such a folder now has the verdict `agent` ("an agent session holds this folder") in place of "Kept · unlock it in Terminal first", and a lock whose named process has exited is called out as stale with the command that releases it. Your own locks read as before.
+- **App:** "Agent running" is its own verdict and sidebar filter, in the brand blue; "In progress" moves to grey-blue so the two stay apart. A `.claude/worktrees` card is titled by its repo, not "worktrees". Sidebar counts hide at zero. Deleted folders are listed with a checkmark, not a cross. Text snaps to five sizes (11, 12, 13, 15, 20) and corners to two radii (8, 12), named in `TypeScale` and `Radius`.
+- **Ask the remote before a delete review.** `reap --path … --fetch`, or `"fetch_before_review": true` in the config, runs one capped `git fetch --prune` per repo first, so "merged" and "on GitHub" are current. Off by default; if the fetch cannot finish, the review says so and uses what was last fetched.
+- **A finished branch can go with its folder.** `reap --delete-branch`, or `"delete_finished_branch": true`, deletes the branch of a removed worktree when its pull request merged or it has no commit of its own. The preview names each branch, and it is part of the plan you confirm.
+- **A protected file that is only the main checkout's copy is not set aside.** A `.env` that is byte for byte the main checkout's is named in the preview and skipped; one that differs is kept as before.
+- **`wt-manager unlock` and `wt-manager prune`.** Unlock releases a worktree lock, refusing one whose named process is still running unless forced. Prune previews, then forgets, worktrees git lists whose folders are gone.
+- **Leftovers:** the envelope lists folders under `.claude/worktrees` that git has no worktree for, and registrations whose folder is gone.
+- The engine's envelope gains `locked`, `origin` (`claude`, `codex` or empty, from where the folder lives), `in_use`, `created` and `head_moved` per worktree, and `folder.lock` where there is one. An app that does not know the `agent` verdict shows it as kept.
+
 ## 0.13.0
 
 - **One page for what you came to do: delete caches, delete folders, one or all.** Overview, Repos and Disk are gone. Folders opens with "Clean caches", "Delete N safe" and the unsaved-work count on one line, and the menu says how much you could free.

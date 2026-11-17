@@ -79,10 +79,12 @@ struct FirstRun: View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 3) {
+                WityView(store: store, height: 56).frame(width: 56, height: 56)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
                     Text(found.isEmpty ? "Where do you keep your repositories?"
-                                       : "Found your repositories.")
-                        .font(.system(size: 15, weight: .semibold))
+                                       : "Found your repositories")
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
                     Text(found.isEmpty
                          ? "Nothing turned up in the usual folders, so point me at yours."
                          : "Scanned the usual folders. Pick the ones to watch.")
@@ -96,8 +98,8 @@ struct FirstRun: View {
                             row(c)
                         }
                     }
-                    .background(RoundedRectangle(cornerRadius: 9).fill(.primary.opacity(0.04)))
-                    .overlay(RoundedRectangle(cornerRadius: 9)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(.primary.opacity(0.08), lineWidth: 1))
                 }
 
@@ -107,6 +109,7 @@ struct FirstRun: View {
                             store.adopt(roots: found.map(\.root).filter(chosen.contains))
                         }
                         .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent).tint(Color.primary.opacity(0.85))
                         .disabled(chosen.isEmpty || store.adopting)
                     }
                     Button(found.isEmpty ? "Choose a folder…" : "Choose another…") {
@@ -145,7 +148,7 @@ struct FirstRun: View {
                 Image(systemName: chosen.contains(c.root) ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 13))
                     .foregroundStyle(chosen.contains(c.root) ? Color.accentColor : Palette.muted)
-                Text(c.display).font(.system(size: 12.5))
+                Text(c.display).font(.system(size: 12))
                 Spacer(minLength: 8)
                 Text("\(c.repos) repo\(c.repos == 1 ? "" : "s")")
                     .font(.system(size: 11, design: .rounded)).foregroundStyle(Palette.muted)
@@ -157,6 +160,20 @@ struct FirstRun: View {
     }
 }
 
+
+/// One shape for everything the window tells you between pages: a cleanup's
+/// result, a merged pull request, an update. A tinted card, never a strip.
+struct BannerCard: ViewModifier {
+    var tint: Color
+    var outer: CGFloat = 20
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Palette.wash(tint))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.edge(tint), lineWidth: 1)))
+            .padding(.horizontal, outer).padding(.vertical, 8)
+    }
+}
 
 /// A settled result stays visible after its modal closes.
 struct CompletionBanner: View {
@@ -182,7 +199,7 @@ struct CompletionBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: issues ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                .font(.system(size: 19)).foregroundStyle(Palette.ink(tint))
+                .font(.system(size: 20)).foregroundStyle(Palette.ink(tint))
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 12, weight: .semibold))
                 Text(issues ? "Some work could not finish. Review the result for details."
@@ -195,7 +212,7 @@ struct CompletionBanner: View {
                     Text("✦ \(store.history.rank) · \(Store.human(store.history.reclaimedKb)) freed in all"
                          + (store.history.nextMilestoneKb.map { next in
                              " · \(Store.human(next - store.history.reclaimedKb)) to \(store.history.nextRank ?? "")" } ?? ""))
-                        .font(.system(size: 10.5, weight: .medium)).foregroundStyle(Palette.inkReclaim)
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.inkReclaim)
                 }
             }
             Spacer(minLength: 4)
@@ -208,8 +225,7 @@ struct CompletionBanner: View {
             Button { store.completion = nil } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain).accessibilityLabel("Dismiss operation result")
         }
-        .padding(.horizontal, 20).padding(.vertical, 12)
-        .background(tint.opacity(0.09))
+        .modifier(BannerCard(tint: tint))
         .accessibilityElement(children: .contain)
     }
 }
@@ -223,7 +239,7 @@ struct MergeSpeechBanner: View {
         HStack(alignment: .top, spacing: 10) {
             if !compact { WityView(store: store, height: 32).accessibilityHidden(true) }
             VStack(alignment: .leading, spacing: 4) {
-                Text(verbatim: "PR #\(nudge.number) merged!").font(.system(size: 12, weight: .bold, design: .monospaced))
+                Text(verbatim: "PR #\(nudge.number) merged").font(.system(size: 12, weight: .semibold))
                 Text(message).font(.system(size: 11)).lineLimit(compact ? 3 : nil).help(message).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button("Review checkout") { store.preview(Store.Action(kind: .reap, paths: nudge.paths)); onReview?() }
@@ -237,9 +253,7 @@ struct MergeSpeechBanner: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12).background(Color.green.opacity(0.09))
-        .overlay(Rectangle().stroke(Color.green.opacity(0.4), lineWidth: 2))
-        .padding(.horizontal, 14).padding(.vertical, 8)
+        .modifier(BannerCard(tint: Palette.brand, outer: compact ? 0 : 20))
         .accessibilityElement(children: .contain)
     }
     private var message: String {

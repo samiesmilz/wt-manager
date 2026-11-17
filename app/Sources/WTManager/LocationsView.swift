@@ -28,6 +28,11 @@ struct LocationsView: View {
             }
     }
 
+    private func share(of place: Place) -> Double {
+        let top: Int = places.map { max($0.kb, 0) }.max() ?? 0
+        return top > 0 ? Double(max(place.kb, 0)) / Double(top) : 0
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -35,15 +40,17 @@ struct LocationsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .center, spacing: 10) {
                         Text("Locations")
-                            .font(.system(size: 19, weight: .semibold, design: .rounded))
-                        Text(verbatim: "\(places.count)")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Palette.ink(Palette.status("trunk")))
-                            .padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(Capsule().fill(Palette.wash(Palette.status("trunk"))))
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        if !places.isEmpty {
+                            Text(verbatim: "\(places.count)")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Palette.muted)
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.primary.opacity(0.06)))
+                        }
                     }
                     Text("Where your worktree folders live, biggest first. Open one to see them.")
-                        .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
                 if places.isEmpty {
                     Text(store.envelope == nil ? "Reading your repos…" : "No worktree folders yet.")
@@ -52,12 +59,13 @@ struct LocationsView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(places.enumerated()), id: \.element.id) { i, place in
                             if i > 0 { Hairline().padding(.horizontal, 14) }
-                            PlaceRow(store: store, place: place)
+                            PlaceRow(store: store, place: place, share: share(of: place))
                         }
                     }
                     .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
                 }
+                if !store.leftovers.isEmpty { LeftoversCard(items: store.leftovers) }
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -68,6 +76,19 @@ struct LocationsView: View {
 private struct PlaceRow: View {
     @ObservedObject var store: Store
     let place: LocationsView.Place
+    /// This place's size against the biggest one, 0...1, for the bar.
+    var share: Double = 0
+
+    /// "5 folders · 3 safe · 2 unsaved · 4.1GB caches", only the parts there are.
+    private var summary: String {
+        var parts: [String] = [Store.count(place.folders.count, "folder")]
+        let safe: Int = place.count("safe")
+        let unsaved: Int = place.count("unsaved")
+        if safe > 0 { parts.append("\(safe) safe") }
+        if unsaved > 0 { parts.append("\(unsaved) unsaved") }
+        if place.cachesKb > 0 { parts.append(Store.human(place.cachesKb) + " caches") }
+        return parts.joined(separator: " · ")
+    }
     @State private var hovering = false
 
     private var elsewhere: Bool { place.id == Store.elsewhere }
@@ -80,27 +101,29 @@ private struct PlaceRow: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: elsewhere ? "folder" : "folder.fill")
-                    .font(.system(size: 18)).foregroundStyle(Palette.status("trunk"))
+                    .font(.system(size: 17)).foregroundStyle(Palette.muted)
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(store.locationLabel(place.id))
                         .font(.system(size: 13, weight: .semibold)).lineLimit(1)
                     Text(elsewhere ? "folders that sit alone in their parent" : place.id)
-                        .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
                         .lineLimit(1).truncationMode(.head)
-                    HStack(spacing: 6) {
-                        tag(Store.count(place.folders.count, "folder"), Palette.status("trunk"))
-                        if place.count("safe") > 0 { tag("\(place.count("safe")) safe", Palette.reclaim) }
-                        if place.count("unsaved") > 0 { tag("\(place.count("unsaved")) unsaved", Palette.risk) }
-                        if place.cachesKb > 0 { tag(Store.human(place.cachesKb) + " caches", Palette.reclaim) }
+                    Text(summary)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(1)
+                    // How big this place is beside the biggest: the list is
+                    // sorted by size, and the bar is that order made visible.
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08)).frame(width: 180, height: 5)
+                        Capsule().fill(Palette.status("draft"))
+                            .frame(width: max(4, 180 * CGFloat(share)), height: 5)
                     }
-                    .padding(.top, 2)
+                    .padding(.top, 3).accessibilityHidden(true)
                 }
                 Spacer(minLength: 8)
                 Text(place.kb > 0 ? Store.human(place.kb) : "—")
-                    .font(.system(size: 12, weight: .medium, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(Palette.muted)
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded)).monospacedDigit()
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Palette.faint)
             }
             .padding(.horizontal, 14).padding(.vertical, 11)
@@ -114,7 +137,7 @@ private struct PlaceRow: View {
     }
 
     private func tag(_ text: String, _ tint: Color) -> some View {
-        Text(text).font(.system(size: 10, weight: .semibold))
+        Text(text).font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Palette.ink(tint))
             .padding(.horizontal, 6).padding(.vertical, 1.5)
             .background(Capsule().fill(Palette.wash(tint)))

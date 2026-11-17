@@ -226,9 +226,9 @@ REX_DIP = (1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0)
 HAND_FRONT = {'cat':(18,19),'crab':(17,8),'robot':(27,24),'rooster':(28,21),
               'rabbit':(27,20),'snowman':(28,13),'palm':(23,24),'orb':(29,19),
               'antenna':(31,18),'pup':(28,18),'rex':(29,20)}
-HAND_WALK = {'cat':(16,15),'crab':(20,7),'robot':(23,25),'rooster':(30,12),
-             'rabbit':(24,19),'snowman':(30,16),'palm':(23,24),'orb':(27,17),
-             'antenna':(28,20),'pup':(16,17),'rex':(23,20)}
+HAND_WALK = {'cat':(16,15),'crab':(20,7),'robot':(25,22),'rooster':(10,17),
+             'rabbit':(26,19),'snowman':(29,15),'palm':(23,24),'orb':(27,17),
+             'antenna':(30,18),'pup':(20,18),'rex':(29,19)}
 
 def hand_point(figure, frame, walking=False):
     """The string's root on this frame. Parts that swing carry it with them."""
@@ -238,10 +238,10 @@ def hand_point(figure, frame, walking=False):
         return x, y
     g = frame % WALK_FRAMES; p = g // 2
     x, y = HAND_WALK[figure]
-    if figure in ('robot', 'antenna'): x += SWING[p]
-    elif figure == 'snowman': y += SNOW_WAVE[p]
-    elif figure == 'rabbit': y -= RABBIT_HOP[g]
-    elif figure == 'rex': y += REX_DIP[g]
+    # The redrawn walkers hold the string on a part that is under the same
+    # point in every pose (an arm, a twig, Bork's bandana), so nothing swings
+    # out from under it. Pip carries it up with each hop.
+    if figure == 'rabbit': y -= (0,0,0,0,0,2,3,2)[g % 8]
     return x, y
 LIFT = (0,0,0,0,0,0,0,0,1,2,3,4,4,3,2,1)
 
@@ -310,6 +310,11 @@ def walking_sprite(figure,eyes,frame):
     it. Feet stop before the lower-right badge so the signal cannot hide a step.
     """
     if figure in ('cat','crab'): return _original_profile(figure,eyes,frame)
+    # Every other walker but the rooted palm is drawn from its own portrait.
+    # The drawings below this line are the earlier side profiles, kept only
+    # for the palm and as a reference; see walk_art.py.
+    import walk_art
+    if figure in walk_art.REDRAWN: return walk_art.walking(figure,eyes,frame,sprite)
     c=Canvas();g=frame%WALK_FRAMES;p=g//2;bob=(0,0,-1,0,0,0,-1,0)[p]
     swing=SWING[p]
     if figure=='palm':

@@ -7,7 +7,7 @@ struct SettingsSheet: View {
     @ObservedObject var store: Store
     @Environment(\.dismiss) private var dismiss
     @State private var roots: [String]
-    private var sheetHeight: CGFloat { min(620, 360 + CGFloat(min(roots.count, 5)) * 50) }
+    private var sheetHeight: CGFloat { min(760, 600 + CGFloat(min(roots.count, 4)) * 44) }
 
     init(store: Store) {
         self.store = store
@@ -17,12 +17,12 @@ struct SettingsSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "folder.badge.gearshape")
-                    .font(.system(size: 23)).foregroundStyle(Color.accentColor)
+                Image(systemName: "gearshape")
+                    .font(.system(size: 20)).foregroundStyle(Palette.muted)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Watched folders")
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
-                    Text("Find repositories inside these folders, up to three levels deep.")
+                    Text("Settings")
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    Text("Watched folders, what opens your work, and what the app tells you.")
                         .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
@@ -30,6 +30,7 @@ struct SettingsSheet: View {
             .padding(22)
             Hairline()
             VStack(alignment: .leading, spacing: 12) {
+                groupLabel("Watched folders · searched up to three levels deep")
                 if roots.isEmpty {
                     Label("No folders selected. Add one to start watching your work.",
                           systemImage: "folder.badge.plus")
@@ -57,7 +58,7 @@ struct SettingsSheet: View {
                         }
                         }
                     }
-                    .frame(minHeight: 130, maxHeight: 300)
+                    .frame(minHeight: 60, maxHeight: 180)
                 }
                 Button {
                     chooseFolders()
@@ -71,8 +72,26 @@ struct SettingsSheet: View {
                 if let error = store.settingsError, !error.isEmpty {
                     Text(error).font(.system(size: 11)).foregroundStyle(Palette.inkRisk)
                 }
+                Hairline()
+                groupLabel("Open with")
+                Picker("Terminal", selection: $store.terminalApp) {
+                    ForEach(OpenWith.installed(OpenWith.terminals)) { app in Text(app.name).tag(app.id) }
+                }
+                Picker("Editor", selection: $store.editorApp) {
+                    Text("First one installed").tag("")
+                    ForEach(OpenWith.installed(OpenWith.editors)) { app in Text(app.name).tag(app.id) }
+                }
+                Hairline()
+                groupLabel("Tell me")
+                Toggle("When a pull request merges and its folder can go", isOn: $store.mergeNudges)
+                Toggle("Celebrate a cleanup", isOn: $store.celebrationsEnabled)
+                Toggle("Check for updates automatically", isOn: $store.automaticUpdates)
+                Picker("Theme", selection: $store.theme) {
+                    Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
+                }
                 Spacer(minLength: 0)
             }
+            .font(.system(size: 12))
             .padding(22)
             Hairline()
             HStack {
@@ -88,6 +107,12 @@ struct SettingsSheet: View {
         }
         .frame(width: 525, height: sheetHeight)
         .background(.background)
+    }
+
+    private func groupLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .semibold)).tracking(0.5)
+            .foregroundStyle(Palette.muted)
     }
 
     private func display(_ path: String) -> String {

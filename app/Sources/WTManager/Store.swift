@@ -69,6 +69,9 @@ final class Store: ObservableObject {
     /// Which character, or `Store.ownFigure` for a picture the person chose.
     @AppStorage("wtmanager.figure") var figure: String = "cat"
     @AppStorage("wtmanager.theme") var theme: String = "system"     // system | light | dark
+    /// Bundle identifiers. An empty editor means "the first one installed".
+    @AppStorage("wtmanager.terminal") var terminalApp: String = "com.apple.Terminal"
+    @AppStorage("wtmanager.editor") var editorApp: String = ""
     /// Free text, applied to the rows. Kept out of the engine on purpose:
     /// filtering is a question about what you want to look at, not about what
     /// is true, and the counts and the mood must not move when you narrow it.
@@ -85,7 +88,17 @@ final class Store: ObservableObject {
     /// ⌘F. The filter lives on the folder list, so asking for it there.
     func focusTheFilter() { page = .folders; focusFilter += 1 }
 
-    enum Page { case folders, locations, mascots }
+    enum Page { case folders, locations, kept, mascots }
+    /// The sidebar's third filter: who made the folder, nil for all.
+    @Published var madeByFilter: String?
+    static let makers: [String] = ["Claude Code", "Codex", "By hand"]
+    /// Whose convention put a folder where it is, read from its path.
+    static func madeBy(_ path: String) -> String {
+        if path.contains("/.claude/worktrees/") { return "Claude Code" }
+        if path.contains("/.codex/") { return "Codex" }
+        return "By hand"
+    }
+    var leftovers: [Leftover] { envelope?.leftovers ?? [] }
     @Published var page: Page = .folders
     /// The sidebar's filters: one verdict (`safe`, `busy`, `unsaved`, `kept`)
     /// and one location, each nil for all.
@@ -128,6 +141,10 @@ final class Store: ObservableObject {
     func locationLabel(_ id: String) -> String {
         guard id != Self.elsewhere else { return id }
         let parts = id.split(separator: "/").map(String.init)
+        // Claude Code's `<repo>/.claude/worktrees`: the repo is the name.
+        if parts.count >= 3, parts[parts.count - 1] == "worktrees", parts[parts.count - 2] == ".claude" {
+            return parts[parts.count - 3]
+        }
         let others = locations.map(\.id).filter { $0 != id && $0 != Self.elsewhere }
             .map { $0.split(separator: "/").map(String.init) }
         var n = 1
@@ -498,7 +515,7 @@ final class Store: ObservableObject {
         focusPath = w.path
     }
 
-    var filtering: Bool { !query.isEmpty || verdictFilter != nil || locationFilter != nil }
+    var filtering: Bool { !query.isEmpty || verdictFilter != nil || locationFilter != nil || madeByFilter != nil }
 
     /// The search field: one rule for the page and the status bar's "N shown".
     func passes(_ w: Worktree) -> Bool {
@@ -945,9 +962,42 @@ extension Store {
     }
 
     func openInTerminal(_ w: Worktree) {
-        NSWorkspace.shared.open([URL(fileURLWithPath: w.path)],
-            withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"),
-            configuration: NSWorkspace.OpenConfiguration())
+        if !OpenWith.open(w.path, with: terminalApp) {
+            OpenWith.open(w.path, with: "com.apple.Terminal")
+        }
+    }
+
+    /// The editor chosen in Settings, or the first one installed; nil if none.
+    var editorChoice: OpenWith.App? {
+        let found: [OpenWith.App] = OpenWith.installed(OpenWith.editors)
+        return found.first { $0.id == editorApp } ?? found.first
+    }
+
+    func openInEditor(_ w: Worktree) {
+        guard let editor = editorChoice else { NSSound.beep(); return }
+        OpenWith.open(w.path, with: editor.id)
+    }
+
+    /// Pick a Claude Code session back up where it left off. Claude resumes a
+    /// worktree session from the repo's main checkout, by the worktree's name,
+    /// so that is the command; Terminal runs it from a one-line script.
+    func resumeInClaude(_ w: Worktree) {
+        let folder = URL(fileURLWithPath: w.path)
+        let name = folder.lastPathComponent
+        // `<repo>/.claude/worktrees/<name>`: three steps up is the repo.
+        let repo = folder.deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().path
+        func quoted(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let script = "#!/bin/zsh -l\ncd \(quoted(repo)) && exec claude --worktree \(quoted(name)) --resume\n"
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wt-manager-resume-\(UUID().uuidString).command")
+        do {
+            try script.write(to: file, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+            NSWorkspace.shared.open(file)
+        } catch {
+            NSSound.beep()
+        }
     }
 
     func openPR(_ w: Worktree) {

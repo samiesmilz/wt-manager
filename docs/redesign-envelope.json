@@ -1,0 +1,436 @@
+{
+ "version": "0.3.2",
+ "generated_at": 1791334447,
+ "counts": {
+  "active": 5,
+  "merged": 2,
+  "empty": 2,
+  "trunk": 2
+ },
+ "total_kb": 34781262,
+ "reclaim_kb": 23802673,
+ "measured_disk": true,
+ "notices": [],
+ "roots": [
+  "/Users/me/dev"
+ ],
+ "headline": "6 folders are safe to delete",
+ "insights": [
+  {
+   "id": "reclaim",
+   "label": "18GB rebuildable",
+   "tint": "reclaim",
+   "target": "disk",
+   "value": 18874368,
+   "solo": true
+  }
+ ],
+ "face": {
+  "mood": "content",
+  "meaning": "ready for your next idea",
+  "eyes": "open",
+  "tint": "#3fb27f",
+  "bob": [
+   0,
+   0,
+   1,
+   1
+  ],
+  "gauge": 2
+ },
+ "worktrees": [
+  {
+   "repo": "storefront-web",
+   "repo_id": "/Users/me/dev/storefront-web/.git",
+   "branch": "main",
+   "status": "trunk",
+   "meaning": "",
+   "path": "/Users/me/dev/storefront-web",
+   "ahead": 0,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 20,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": true,
+   "removal": {
+    "state": "blocked",
+    "reason": "Main checkouts stay in place."
+   },
+   "is_base": true,
+   "size_kb": 9437184,
+   "reclaim_kb": 7864320,
+   "pr": null
+  },
+  {
+   "repo": "mobile-app",
+   "repo_id": "/Users/me/dev/mobile-app/.git",
+   "branch": "main",
+   "status": "trunk",
+   "meaning": "",
+   "path": "/Users/me/dev/mobile-app",
+   "ahead": 0,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 20,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": true,
+   "removal": {
+    "state": "blocked",
+    "reason": "Main checkouts stay in place."
+   },
+   "is_base": true,
+   "size_kb": 6291456,
+   "reclaim_kb": 4613734,
+   "pr": null
+  },
+  {
+   "repo": "storefront-web",
+   "repo_id": "/Users/me/dev/storefront-web/.git",
+   "branch": "worktree-cart-drawer",
+   "status": "active",
+   "meaning": "",
+   "path": "/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 3,
+   "deleted": 0,
+   "unpushed": 2,
+   "unpushed_mine": 2,
+   "solo_log": [
+    "Drawer keeps scroll position after quantity change",
+    "Extract CartLine component"
+   ],
+   "age_days": 1,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 6815744,
+   "reclaim_kb": 6081740,
+   "pr": null,
+   "folder": {
+    "verdict": "unsaved",
+    "reason": "2 commits and 3 edits only here",
+    "checked": true,
+    "anyway": true
+   }
+  },
+  {
+   "repo": "storefront-web",
+   "repo_id": "/Users/me/dev/storefront-web/.git",
+   "branch": "worktree-bright-running-fox",
+   "status": "active",
+   "meaning": "",
+   "path": "/Users/me/dev/storefront-web/.claude/worktrees/bright-running-fox",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 0,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 1258291,
+   "reclaim_kb": 943718,
+   "pr": null,
+   "folder": {
+    "verdict": "agent",
+    "reason": "an agent session holds this folder",
+    "checked": true,
+    "anyway": false
+   }
+  },
+  {
+   "repo": "storefront-web",
+   "repo_id": "/Users/me/dev/storefront-web/.git",
+   "branch": "pr-1234",
+   "status": "merged",
+   "meaning": "",
+   "path": "/Users/me/dev/storefront-web/.claude/worktrees/pr-1234",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 20,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 859832,
+   "reclaim_kb": 0,
+   "pr": null,
+   "folder": {
+    "verdict": "safe",
+    "reason": "PR #1234 merged",
+    "checked": true
+   }
+  },
+  {
+   "repo": "storefront-web",
+   "repo_id": "/Users/me/dev/storefront-web/.git",
+   "branch": "worktree-checkout-tax-fix",
+   "status": "merged",
+   "meaning": "",
+   "path": "/Users/me/dev/storefront-web/.claude/worktrees/checkout-tax-fix",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 20,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 775946,
+   "reclaim_kb": 0,
+   "pr": null,
+   "folder": {
+    "verdict": "safe",
+    "reason": "PR #1198 merged",
+    "checked": true
+   }
+  },
+  {
+   "repo": "storefront-web",
+   "repo_id": "/Users/me/dev/storefront-web/.git",
+   "branch": "worktree-quiet-amber-owl",
+   "status": "empty",
+   "meaning": "",
+   "path": "/Users/me/dev/storefront-web/.claude/worktrees/quiet-amber-owl",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 20,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 534773,
+   "reclaim_kb": 0,
+   "pr": null,
+   "folder": {
+    "verdict": "safe",
+    "reason": "nothing of its own",
+    "checked": true
+   }
+  },
+  {
+   "repo": "mobile-app",
+   "repo_id": "/Users/me/dev/mobile-app/.git",
+   "branch": "feat/offline-sync",
+   "status": "active",
+   "meaning": "",
+   "path": "/Users/me/worktrees/mobile-app/feat-offline-sync",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 2,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 5138022,
+   "reclaim_kb": 4299161,
+   "pr": null,
+   "folder": {
+    "verdict": "busy",
+    "reason": "PR #88 open",
+    "checked": true
+   }
+  },
+  {
+   "repo": "mobile-app",
+   "repo_id": "/Users/me/dev/mobile-app/.git",
+   "branch": "docs/release-notes",
+   "status": "empty",
+   "meaning": "",
+   "path": "/Users/me/worktrees/mobile-app/release-notes",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 35,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 1258291,
+   "reclaim_kb": 0,
+   "pr": null,
+   "folder": {
+    "verdict": "safe",
+    "reason": "nothing of its own",
+    "checked": true
+   }
+  },
+  {
+   "repo": "mobile-app",
+   "repo_id": "/Users/me/dev/mobile-app/.git",
+   "branch": "fix/badge-count",
+   "status": "active",
+   "meaning": "",
+   "path": "/Users/me/worktrees/mobile-app/fix-badge-count",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 20,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 629145,
+   "reclaim_kb": 0,
+   "pr": null,
+   "folder": {
+    "verdict": "kept",
+    "reason": "contains submodules \u2014 review and remove explicitly in Terminal",
+    "checked": true,
+    "anyway": false
+   }
+  },
+  {
+   "repo": "api-gateway",
+   "repo_id": "/Users/me/dev/api-gateway/.git",
+   "branch": "codex/task-7",
+   "status": "active",
+   "meaning": "",
+   "path": "/Users/me/.codex/worktrees/api-gateway/task-7",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 30,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 1363148,
+   "reclaim_kb": 0,
+   "pr": null,
+   "folder": {
+    "verdict": "safe",
+    "reason": "on GitHub, never merged",
+    "checked": true
+   }
+  },
+  {
+   "repo": "api-gateway",
+   "repo_id": "/Users/me/dev/api-gateway/.git",
+   "branch": "codex/task-9",
+   "status": "active",
+   "meaning": "",
+   "path": "/Users/me/.codex/worktrees/api-gateway/task-9",
+   "ahead": 2,
+   "behind": 0,
+   "dirty": 0,
+   "deleted": 0,
+   "unpushed": 0,
+   "unpushed_mine": 0,
+   "solo_log": [],
+   "age_days": 0,
+   "last_commit": 1791248047,
+   "base": "origin/main",
+   "base_source": "remote default",
+   "primary": false,
+   "removal": {
+    "state": "check",
+    "reason": "Local files need checking before removal"
+   },
+   "is_base": false,
+   "size_kb": 419430,
+   "reclaim_kb": 0,
+   "pr": null,
+   "folder": {
+    "verdict": "busy",
+    "reason": "created today",
+    "checked": true
+   }
+  }
+ ],
+ "empty_locations": []
+}

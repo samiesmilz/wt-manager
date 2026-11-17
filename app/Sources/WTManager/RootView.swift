@@ -18,6 +18,7 @@ struct RootView: View {
         HStack(spacing: 0) {
             Sidebar(store: store)
                 .frame(width: Sidebar.railWidth - 1)
+                .background(Color.primary.opacity(0.035))
             Rectangle().fill(.primary.opacity(0.07)).frame(width: 1)
             page
         }
@@ -64,6 +65,7 @@ struct RootView: View {
             switch store.page {
             case .folders: FoldersView(store: store, open: openRow ?? store.focusPath)
             case .locations: LocationsView(store: store)
+            case .kept: KeptFilesView()
             case .mascots: MascotsView(store: store)
             }
         }
@@ -97,17 +99,20 @@ struct Sidebar: View {
                 .padding(.horizontal, 17).padding(.bottom, 18)
 
             let ready = store.envelope != nil && !store.unconfigured
-            entry("Folders", "folder", ready ? "\(store.folderRows.count)" : nil,
+            entry("Folders", "folder", ready && !store.folderRows.isEmpty ? "\(store.folderRows.count)" : nil,
                   tint: Palette.reclaim, on: store.page == .folders && store.verdictFilter == nil && store.locationFilter == nil) {
                 store.page = .folders
                 store.verdictFilter = nil
                 store.locationFilter = nil
             }
-            entry("Locations", "folder.fill.badge.gearshape", ready ? "\(store.locations.count)" : nil,
+            entry("Locations", "folder.fill.badge.gearshape", ready && !store.locations.isEmpty ? "\(store.locations.count)" : nil,
                   tint: Palette.status("trunk"),
                   on: store.page == .locations || (store.page == .folders && store.locationFilter != nil)) {
                 store.locationFilter = nil
                 store.page = .locations
+            }
+            entry("Kept files", "archivebox", nil, tint: Palette.muted, on: store.page == .kept) {
+                store.page = .kept
             }
             entry("Mascots", "pawprint.fill", nil, tint: Palette.mascot, on: store.page == .mascots) {
                 store.page = .mascots
@@ -126,9 +131,18 @@ struct Sidebar: View {
                                 + (v == .safe && store.locationFilter == nil && store.query.isEmpty
                                    ? store.emptyLocations.count : 0)
                             let on = store.page == .folders && store.verdictFilter == v.rawValue
-                            entry(v == .unsaved ? "Unsaved" : v.label, nil, "\(n)", dot: v.tint, tint: v.tint, on: on, dim: n == 0 && !on) {
+                            entry(v == .unsaved ? "Unsaved" : v.label, nil, n == 0 ? nil : "\(n)", dot: v.tint, tint: v.tint, on: on, dim: n == 0 && !on, alert: v == .unsaved && n > 0) {
                                 store.page = .folders
                                 store.verdictFilter = on ? nil : v.rawValue
+                            }
+                        }
+                        heading("Made by")
+                        ForEach(Store.makers, id: \.self) { maker in
+                            let n: Int = store.folderRows.filter { Store.madeBy($0.path) == maker }.count
+                            let on: Bool = store.page == .folders && store.madeByFilter == maker
+                            entry(maker, nil, n == 0 ? nil : "\(n)", tint: Palette.muted, on: on, dim: n == 0 && !on) {
+                                store.page = .folders
+                                store.madeByFilter = on ? nil : maker
                             }
                         }
                     }
@@ -139,7 +153,7 @@ struct Sidebar: View {
             Spacer(minLength: 12)
             VStack(spacing: 7) {
                 Button { store.showingSettings = true } label: {
-                    Label("Watched folders", systemImage: "folder.badge.gearshape")
+                    Label("Settings", systemImage: "gearshape")
                         .font(.system(size: 11))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -162,7 +176,7 @@ struct Sidebar: View {
     /// without competing.
     private func heading(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
+            .font(.system(size: 11, weight: .semibold)).tracking(0.6)
             .foregroundStyle(Palette.muted)
             .padding(.horizontal, 17).padding(.top, 16).padding(.bottom, 4)
     }
@@ -172,32 +186,35 @@ struct Sidebar: View {
     /// when selected, the ground; the words stay ink so they read in both
     /// appearances.
     private func entry(_ title: String, _ symbol: String?, _ badge: String?, dot: Color? = nil,
-                       tint: Color, on: Bool, dim: Bool = false,
+                       tint: Color, on: Bool, dim: Bool = false, alert: Bool = false,
                        action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 9) {
                 if let symbol {
                     Image(systemName: symbol)
                         .font(.system(size: 13)).frame(width: 18)
-                        .foregroundStyle(dim ? Palette.faint : tint)
+                        .foregroundStyle(dim ? Palette.faint : on ? Color.primary : Palette.muted)
                 } else if let dot {
                     Circle().fill(dim ? Palette.faint : dot).frame(width: 8, height: 8).frame(width: 18)
                 }
                 Text(title).font(.system(size: 13, weight: on ? .semibold : .regular))
-                    .foregroundStyle(on ? Palette.ink(tint) : dim ? Palette.muted : .primary)
+                    .foregroundStyle(dim ? Palette.muted : Color.primary)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
                 if let badge {
                     Text(badge).font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(dim ? Palette.muted : Palette.ink(tint))
+                        // Filled means "needs you"; a plain number means "exists".
+                        .foregroundStyle(alert ? Color.white : Palette.muted).monospacedDigit()
                         .padding(.horizontal, 6).padding(.vertical, 1.5)
-                        .background(Capsule().fill(dim ? Color.clear : Palette.wash(tint)))
+                        .background(Capsule().fill(alert ? Palette.badge : Color.clear))
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Palette.wash(tint) : .clear))
-            .overlay(RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(on ? Palette.edge(tint) : .clear, lineWidth: 1))
+            // Selected is a raised neutral card, the same for every entry. It
+            // was each entry's own colour, which made the rail three accents.
+            .background(RoundedRectangle(cornerRadius: 8).fill(on ? Palette.surface : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(on ? Color.primary.opacity(0.12) : Color.clear, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
@@ -249,7 +266,7 @@ struct Header: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 13) {
                 Button { store.page = .mascots } label: {
-                    WityView(store: store, height: 44).frame(width: 44, height: 44)
+                    WityView(store: store, height: 32).frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Choose a character")
@@ -264,7 +281,7 @@ struct Header: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(headline)
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .lineLimit(1).truncationMode(.tail)
                         .help(store.face?.meaning ?? "")
                     if let phase = store.phase {
@@ -281,10 +298,13 @@ struct Header: View {
                     }
                 }
                 Spacer(minLength: 8)
+                if store.page == .folders && !store.unconfigured && store.envelope != nil {
+                    FilterBar(store: store, compact: true).frame(width: 220)
+                }
                 controls
             }
         }
-        .padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 11)
+        .padding(.horizontal, 20).padding(.top, 9).padding(.bottom, 9)
     }
 
     /// The engine's sentence, verbatim. Before an envelope exists there is
@@ -342,7 +362,7 @@ struct StatusBar: View {
                 Text("measured \(Store.human(d.total))")
             }
         }
-        .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+        .font(.system(size: 11)).foregroundStyle(Palette.muted)
         .padding(.horizontal, 20).padding(.vertical, 7)
     }
 }

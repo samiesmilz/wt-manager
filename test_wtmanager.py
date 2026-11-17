@@ -96,6 +96,13 @@ def isolate_caches(case):
     T._ref_cache.clear()
     T._repo_facts.clear()
     T._identity.clear()
+    # Fixture worktrees are made the instant a test starts, and the test
+    # runner's own shell may sit anywhere. Freshness and "in use" are tested
+    # on purpose in FolderActivity, and are unknown everywhere else.
+    T._process_dirs = set()
+    times = mock.patch.object(T, "worktree_times", return_value=(0, 0))
+    times.start()
+    case.addCleanup(times.stop)
 
     def restore():
         for k, v in old.items():
@@ -2589,3 +2596,325 @@ class Rollup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class FolderActivity(unittest.TestCase):
+    """A folder is in use when it was just made, when its HEAD just moved, or
+    when a process is sitting in it. The last commit knows none of these."""
+
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+        # The base's only commit, a long time ago: every "last commit" below
+        # is old, as on a quiet repo.
+        self.old = mock.patch.object(T, "quiet_days", return_value=50)
+        self.old.start()
+        self.addCleanup(self.old.stop)
+        self.wt = self.fx.worktree("fresh", "worktree-fresh")
+
+    def probe(self, created=None, head=None):
+        w = self.fx.probe(self.wt, "worktree-fresh")
+        now = int(time.time())
+        w.created = now if created is None else created
+        w.head_moved = now if head is None else head
+        return w
+
+    def test_git_records_when_a_worktree_was_made(self):
+        mock.patch.stopall()
+        created, head = T.worktree_times(self.wt, self.fx.gitdir)
+        self.assertLess(abs(created - time.time()), 120)
+        self.assertLess(abs(head - time.time()), 120)
+        self.assertEqual(T.worktree_times(self.fx.main, self.fx.gitdir), (0, 0), "not for a main checkout")
+
+    def test_a_worktree_made_a_moment_ago_is_not_safe_to_delete(self):
+        w = self.probe()
+        self.assertEqual(w.status, T.EMPTY)
+        self.assertEqual(T.folder_info(w)["verdict"], "busy")
+        self.assertEqual(T.folder_info(w)["reason"], "created today")
+
+    def test_the_finished_sweep_leaves_a_new_empty_worktree(self):
+        w = self.probe()
+        blocker = T.reap_blocker(w)
+        self.assertIn("too new", blocker[0])
+        self.assertEqual(blocker[1], "--force")
+        self.assertIsNone(T.reap_blocker(w, force=True))
+
+    def test_an_old_untouched_worktree_is_still_safe(self):
+        month = int(time.time()) - 30 * 86400
+        w = self.probe(created=month, head=month)
+        self.assertEqual(T.folder_info(w)["verdict"], "safe")
+        self.assertIsNone(T.reap_blocker(w))
+
+    def test_a_recent_checkout_counts_as_work(self):
+        month = int(time.time()) - 30 * 86400
+        w = self.probe(created=month, head=int(time.time()) - 2 * 86400)
+        self.assertEqual(T.folder_info(w), {"verdict": "busy", "reason": "worked on 2 days ago", "checked": False})
+
+    def test_a_process_sitting_in_the_folder_keeps_it_out_of_every_sweep(self):
+        month = int(time.time()) - 30 * 86400
+        T._process_dirs = {os.path.realpath(os.path.join(self.wt, "src"))}
+        self.assertTrue(T.path_in_use(self.wt))
+        self.assertFalse(T.path_in_use(self.wt + "-other"), "a sibling whose name starts the same")
+        w = self.probe(created=month, head=month)
+        w.in_use = True
+        self.assertEqual(T.folder_info(w)["verdict"], "busy")
+        self.assertIn("right now", T.reap_blocker(w)[0])
+        self.assertIsNone(T.reap_blocker(w, folders=True), "named by hand, it is yours to judge")
+
+    def test_the_probe_fills_origin_and_use(self):
+        claude = os.path.join(self.fx.main, ".claude", "worktrees", "bright-fox")
+        git("worktree", "add", "-q", claude, "-b", "worktree-bright-fox", "origin/main", cwd=self.fx.main)
+        T._process_dirs = {os.path.realpath(claude)}
+        w = self.fx.probe(claude, "worktree-bright-fox")
+        self.assertEqual((w.origin, w.in_use), ("claude", True))
+        self.assertEqual(self.fx.probe(self.wt, "worktree-fresh").origin, "")
+
+
+class AgentLocks(unittest.TestCase):
+    """A lock held by a running agent is not a lock to talk someone out of."""
+
+    def test_an_agents_lock_says_wait_not_unlock(self):
+        w = wt(status=T.EMPTY, locked="claude agent a1 (pid %d)" % os.getpid(), origin="claude")
+        info = T.folder_info(w)
+        self.assertEqual(info["verdict"], "agent")
+        self.assertFalse(info["anyway"])
+        self.assertEqual(info["lock"]["stale"], False)
+        self.assertNotIn("Terminal", T.reap_blocker(w)[0])
+        self.assertIn("session is running", T.reap_blocker(w)[0])
+        self.assertIsNotNone(T.reap_blocker(w, force=True, folders=True, discard_work=True))
+
+    def test_a_running_agents_edits_are_in_progress_not_forgotten(self):
+        w = wt(status=T.ACTIVE, locked="session", untracked=2, origin="claude")
+        info = T.folder_info(w)
+        self.assertEqual(info["verdict"], "agent")
+        self.assertIn("2 edits so far", info["reason"])
+
+    def test_a_lock_whose_process_is_gone_is_called_stale(self):
+        gone = subprocess.Popen([sys.executable, "-c", "pass"])
+        gone.wait()
+        w = wt(status=T.EMPTY, locked="claude session (pid %d)" % gone.pid, origin="claude")
+        info = T.folder_info(w)
+        self.assertEqual(info["verdict"], "kept")
+        self.assertTrue(info["lock"]["stale"])
+        self.assertIn("git worktree unlock", info["reason"])
+
+    def test_your_own_lock_reads_as_before(self):
+        w = wt(status=T.EMPTY, locked="keep this")
+        self.assertEqual(T.folder_info(w)["verdict"], "kept")
+        self.assertIn("unlock it in Terminal first", T.reap_blocker(w)[0])
+        self.assertFalse(T.lock_info(w)["agent"])
+
+    def test_a_lock_with_no_process_named_is_never_called_stale(self):
+        w = wt(status=T.EMPTY, locked="locked", origin="claude")
+        self.assertFalse(T.lock_info(w)["stale"])
+        self.assertEqual(T.folder_info(w)["verdict"], "agent")
+
+
+class QuietReads(unittest.TestCase):
+    def test_no_git_call_takes_an_optional_lock(self):
+        seen = {}
+        def fake(args, cwd=None, timeout=30, env=None):
+            seen["env"] = env
+            return 0, "", ""
+        with mock.patch.object(T, "sh", side_effect=fake):
+            T.git(["status"], cwd="/tmp")
+        self.assertEqual(seen["env"], {"GIT_OPTIONAL_LOCKS": "0"})
+
+    def test_status_leaves_a_locked_index_alone(self):
+        isolate_caches(self)
+        fx = Fixture()
+        self.addCleanup(fx.close)
+        path = fx.worktree("a", "feat/a")
+        admin = T._worktree_gitdir(path, fx.gitdir)
+        lock = os.path.join(admin, "index.lock")
+        open(lock, "w").close()             # an agent is mid-commit
+        w = fx.probe(path, "feat/a")
+        self.assertEqual(w.uncertain, "", "the read does not need the lock")
+        self.assertTrue(os.path.exists(lock), "and never removes someone else's")
+
+
+class Leftovers(unittest.TestCase):
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+
+    def rows(self):
+        with mock.patch.object(T, "have", return_value=False):
+            return T.scan_repo(self.fx.gitdir, dict(T.DEFAULT_CONFIG))
+
+    def test_a_folder_git_has_no_worktree_for_is_an_orphan(self):
+        home = os.path.join(self.fx.main, ".claude", "worktrees")
+        git("worktree", "add", "-q", os.path.join(home, "real"), "-b", "worktree-real", "origin/main", cwd=self.fx.main)
+        os.makedirs(os.path.join(home, "stray"))
+        with open(os.path.join(home, "stray", "big"), "w") as fh:
+            fh.write("x" * 4096)
+        os.makedirs(os.path.join(home, "empty"))
+        found = T.leftovers(self.rows())
+        self.assertEqual([(f["kind"], os.path.basename(f["path"])) for f in found], [("orphan", "stray")])
+
+    def test_a_registration_whose_folder_is_gone_is_prunable(self):
+        path = self.fx.worktree("gone", "feat/gone")
+        rows = self.rows()
+        shutil.move(path, path + "-moved")
+        found = T.leftovers(rows)
+        self.assertEqual([(f["kind"], f["repo"]) for f in found], [("prunable", "repo")])
+        self.assertEqual(found[0]["main"], self.fx.main)
+
+
+class ReviewExtras(unittest.TestCase):
+    """Fetch before a review, a finished branch going with its folder, and
+    protected files that are only the main checkout's copy."""
+
+    class Args(DiscardChanges.Args):
+        folders = False
+        discard_work = False
+        delete_branch = False
+        fetch = False
+
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+
+    def reap(self, w, **flags):
+        args = self.Args()
+        args.path = [w.path]
+        for k, v in flags.items():
+            setattr(args, k, v)
+        plan = {}
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = T._reap([w], args, plan)
+        return rc, plan, out.getvalue()
+
+    def test_a_branch_with_nothing_of_its_own_goes_with_its_folder_when_asked(self):
+        path = self.fx.worktree("e", "worktree-e")
+        w = self.fx.probe(path, "worktree-e")
+        self.assertTrue(T.branch_is_done(w))
+        _, plan, _ = self.reap(w)
+        self.assertEqual(plan["branches"], {}, "never without being asked")
+        rc, plan, out = self.reap(w, delete_branch=True, yes=True)
+        self.assertEqual((rc, plan["branches"]), (0, {path: "worktree-e"}))
+        self.assertIn("removed branch worktree-e", out)
+        self.assertEqual(git("branch", "--list", "worktree-e", cwd=self.fx.main), "")
+
+    def test_a_branch_with_its_own_commit_stays(self):
+        path = self.fx.worktree("k", "feat/k")
+        self.fx.commit(path, "k.txt", "mine")
+        git("push", "-q", "-u", "origin", "feat/k", cwd=path)
+        w = self.fx.probe(path, "feat/k")
+        self.assertFalse(T.branch_is_done(w), "pushed, but never merged")
+        rc, plan, _ = self.reap(w, folders=True, delete_branch=True, yes=True)
+        self.assertEqual(plan["branches"], {})
+        self.assertTrue(git("rev-parse", "--verify", "feat/k", cwd=self.fx.main))
+
+    def test_deleting_the_branch_is_a_different_plan(self):
+        path = self.fx.worktree("h", "worktree-h")
+        w = self.fx.probe(path, "worktree-h")
+        _, keep, _ = self.reap(w)
+        _, drop, _ = self.reap(w, delete_branch=True)
+        self.assertNotEqual(keep["plan"], drop["plan"])
+
+    def test_a_protected_file_identical_to_the_main_checkouts_is_not_set_aside(self):
+        with open(os.path.join(self.fx.main, ".gitignore"), "w") as fh:
+            fh.write(".env\n.env.local\n")
+        git("add", ".gitignore", cwd=self.fx.main)
+        git("commit", "-qm", "ignore env", cwd=self.fx.main)
+        git("push", "-q", "origin", "main", cwd=self.fx.main)
+        path = self.fx.worktree("d", "worktree-d")
+        for root, text in ((self.fx.main, "KEY=1\n"), (path, "KEY=1\n")):
+            with open(os.path.join(root, ".env"), "w") as fh:
+                fh.write(text)
+        with open(os.path.join(path, ".env.local"), "w") as fh:
+            fh.write("ONLY=here\n")
+        w = self.fx.probe(path, "worktree-d")
+        T.measure(w)
+        self.assertTrue(T.same_in_main(w, ".env"))
+        self.assertFalse(T.same_in_main(w, ".env.local"))
+        rc, plan, out = self.reap(w, yes=True)
+        self.assertEqual(plan["duplicates"], {path: [".env"]})
+        self.assertIn("nothing to save", out)
+        kept = [os.path.join(r, f) for r, _, fs in os.walk(str(T.kept_root())) for f in fs]
+        self.assertTrue(any(k.endswith(".env.local") for k in kept), "the one that is only here is kept")
+        self.assertFalse(any(k.endswith(os.sep + ".env") for k in kept), "the copy is not")
+
+    def test_a_changed_copy_is_still_set_aside(self):
+        path = self.fx.worktree("c", "worktree-c")
+        with open(os.path.join(self.fx.main, ".env"), "w") as fh:
+            fh.write("KEY=1\n")
+        with open(os.path.join(path, ".env"), "w") as fh:
+            fh.write("KEY=2\n")
+        w = self.fx.probe(path, "worktree-c")
+        self.assertFalse(T.same_in_main(w, ".env"))
+
+    def test_fetch_learns_that_the_remote_branch_is_gone(self):
+        path = self.fx.worktree("f", "feat/f")
+        self.fx.commit(path, "f.txt", "work")
+        git("push", "-q", "-u", "origin", "feat/f", cwd=path)
+        git("--git-dir", self.fx.origin, "branch", "-D", "feat/f", cwd=self.fx.root)
+        self.assertEqual(self.fx.probe(path, "feat/f").unpushed, 0, "stale: still believed pushed")
+        T._state.clear()
+        self.assertTrue(T.fetch_quietly(self.fx.gitdir))
+        self.assertEqual(self.fx.probe(path, "feat/f").unpushed, 1, "after asking, it is only here")
+
+    def test_a_fetch_that_fails_says_so_and_does_not_stop_the_review(self):
+        git("remote", "set-url", "origin", os.path.join(self.fx.root, "nowhere.git"), cwd=self.fx.main)
+        before = len(T.NOTICES)
+        self.assertFalse(T.fetch_quietly(self.fx.gitdir))
+        self.assertIn("could not check the remote", T.NOTICES[-1][2])
+        del T.NOTICES[before:]
+
+
+class LockAndPrune(unittest.TestCase):
+    class Args:
+        path = None
+        force = False
+        yes = False
+
+    def setUp(self):
+        isolate_caches(self)
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+        self.wt = self.fx.worktree("l", "worktree-l")
+
+    def run_cmd(self, fn, **flags):
+        args = self.Args()
+        for k, v in flags.items():
+            setattr(args, k, v)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = fn(args)
+        return rc, out.getvalue()
+
+    def locked(self):
+        return os.path.realpath(self.wt) in T._locks(self.fx.gitdir)
+
+    def test_a_lock_whose_process_is_gone_is_released(self):
+        gone = subprocess.Popen([sys.executable, "-c", "pass"]); gone.wait()
+        git("worktree", "lock", "--reason", "session (pid %d)" % gone.pid, self.wt, cwd=self.fx.main)
+        rc, out = self.run_cmd(T.cmd_unlock, path=[self.wt])
+        self.assertEqual(rc, 0, out)
+        self.assertFalse(self.locked())
+
+    def test_a_lock_a_running_process_holds_is_left_unless_forced(self):
+        git("worktree", "lock", "--reason", "session (pid %d)" % os.getpid(), self.wt, cwd=self.fx.main)
+        rc, out = self.run_cmd(T.cmd_unlock, path=[self.wt])
+        self.assertEqual(rc, 1)
+        self.assertIn("still running", out)
+        self.assertTrue(self.locked())
+        rc, _ = self.run_cmd(T.cmd_unlock, path=[self.wt], force=True)
+        self.assertEqual(rc, 0)
+        self.assertFalse(self.locked())
+
+    def test_prune_previews_then_forgets_a_folder_that_is_gone(self):
+        shutil.move(self.wt, self.wt + "-moved")
+        listed = lambda: "worktree-l" in git("worktree", "list", "--porcelain", cwd=self.fx.main)
+        rc, out = self.run_cmd(T.cmd_prune, path=[self.fx.main])
+        self.assertEqual(rc, 0)
+        self.assertIn("dry run", out)
+        self.assertTrue(listed(), "a preview forgets nothing")
+        rc, _ = self.run_cmd(T.cmd_prune, path=[self.fx.main], yes=True)
+        self.assertEqual(rc, 0)
+        self.assertFalse(listed())

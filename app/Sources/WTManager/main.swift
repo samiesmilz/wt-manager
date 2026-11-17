@@ -148,6 +148,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.removeAllItems()
         menu.addItem(item("Open window", #selector(openWindow), key: "o"))
         menu.addItem(.separator())
+        for line in statusLines() {
+            let entry = NSMenuItem(title: line, action: #selector(openWindow), keyEquivalent: "")
+            entry.target = self
+            menu.addItem(entry)
+        }
+        if !statusLines().isEmpty { menu.addItem(.separator()) }
         if let f = store.face {
             let m = NSMenuItem(title: f.meaning, action: nil, keyEquivalent: "")
             m.isEnabled = false
@@ -168,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(item("Reset mascot position", #selector(resetFloating), key: ""))
         menu.addItem(.separator())
         menu.addItem(item("Refresh now", #selector(refresh), key: "r"))
-        menu.addItem(item("Watched folders…", #selector(watchedFolders), key: ","))
+        menu.addItem(item("Settings…", #selector(watchedFolders), key: ","))
         menu.addItem(item("Check for updates…", #selector(checkUpdates), key: ""))
         let updateState = NSMenuItem(title: store.updates.status, action: nil, keyEquivalent: "")
         updateState.isEnabled = false
@@ -189,6 +195,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func quitApp() { store.quit() }
     @objc private func checkUpdates() { store.updates.check(manual: true) }
     @objc private func openUpdate() { if let url = store.updates.availableURL { NSWorkspace.shared.open(url) } }
+
+    /// The window's own numbers, for a glance from the menu bar: what could
+    /// be freed, then each verdict that has folders in it.
+    private func statusLines() -> [String] {
+        var lines: [String] = []
+        if let free = store.freeable, free.totalKb > 0 {
+            lines.append(Store.human(free.totalKb) + " you could free")
+        }
+        let rows: [Worktree] = store.folderRows
+        func count(_ verdict: String) -> Int { rows.filter { $0.folder?.verdict == verdict }.count }
+        let unsaved: Int = count("unsaved"), agents: Int = count("agent"), safe: Int = count("safe")
+        if unsaved > 0 { lines.append("Unsaved work: \(unsaved)") }
+        if agents > 0 { lines.append("Agent running: \(agents)") }
+        if safe > 0 { lines.append("Safe to delete: \(safe)") }
+        return lines
+    }
 
     private func item(_ title: String, _ action: Selector, key: String,
                       target: AnyObject? = nil) -> NSMenuItem {

@@ -98,10 +98,12 @@ class CompanionArtTests(unittest.TestCase):
         # back one pixel a pose in the drawing. Some floor pixel, shifted by
         # the distance travelled, has to stay put through the whole stance.
         # Their first walks lunged and lurched with feet that did not follow.
-        for fig in ('pup', 'rex'):
-            for start in (0, 8):
+        # A step is eight poses with each foot down for five of them, so the
+        # stance to hold through is five poses long, starting at 0 and at 4.
+        for fig in ('pup', 'rex', 'robot', 'antenna', 'rooster'):
+            for start in (0, 4, 8, 12):
                 held = None
-                for frame in range(start, start + 8):
+                for frame in range(start, start + 5):
                     floor = C.walking_sprite(fig, 'open', frame)[31]
                     on_screen = {x + frame for x, ch in enumerate(floor) if ch != '.'}
                     held = on_screen if held is None else held & on_screen
@@ -146,7 +148,27 @@ class CompanionArtTests(unittest.TestCase):
         for fig in ('rabbit', 'pup', 'rex', 'snowman', 'robot', 'antenna', 'orb'):
             for frame in range(C.WALK_FRAMES):
                 rows = C.walking_sprite(fig, 'open', frame)
+                # Pip hops: three poses of every eight are in the air, on purpose.
+                if fig == 'rabbit' and frame % 8 in (5, 6, 7):
+                    self.assertTrue(all(ch == '.' for ch in rows[-1]), 'rabbit is airborne on %d' % frame)
+                    continue
                 self.assertTrue(any(ch != '.' for ch in rows[-1]), '%s frame %d' % (fig, frame))
+
+    def test_a_walker_is_still_its_portrait(self):
+        # The redo's whole point: walking must not swap the character for a
+        # different drawing. Most of a walker's upper body is the portrait's
+        # own pixels: more than half match exactly, and the rest is the
+        # two-pixel turn of the face and the shade on the far side.
+        import walk_art
+        for fig in walk_art.REDRAWN:
+            if fig in ('robot', 'pup', 'rooster'):
+                continue        # rigged, re-posed on four legs, and mirrored: compared by eye
+            front = C.sprite(fig, 'open', 0)
+            walk = C.walking_sprite(fig, 'open', 0)
+            same = sum(1 for y in range(0, 24) for x in range(32)
+                       if front[y][x] != '.' and walk[y][x] == front[y][x])
+            filled = sum(1 for y in range(0, 24) for x in range(32) if front[y][x] != '.')
+            self.assertGreater(same / filled, 0.5, fig)
 
     def test_original_profiles_keep_portrait_dimensions(self):
         for fig in ('cat','crab'):

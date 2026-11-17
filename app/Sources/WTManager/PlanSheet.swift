@@ -37,6 +37,13 @@ struct PlanSheet: View {
         }
     }
 
+    /// "Delete anyway" on one folder asks for its name: the one delete that
+    /// can lose something should not be a reflex.
+    @State private var typed: String = ""
+    private var mustType: String? {
+        guard plan.action.discardWork, let p = preview, p.paths.count == 1 else { return nil }
+        return URL(fileURLWithPath: p.paths[0]).lastPathComponent
+    }
     private var kind: Store.ActionKind { plan.action.kind }
     private var preview: Store.PlanResult? { plan.preview }
     private var destructive: Bool { plan.stage == .reviewing && !(preview?.paths.isEmpty ?? true) }
@@ -47,6 +54,10 @@ struct PlanSheet: View {
             Hairline()
             scopeBar
             Hairline()
+            if destructive, let p = preview {
+                reviewStats(p)
+                Hairline()
+            }
             outcome
             Hairline()
             buttons
@@ -69,16 +80,16 @@ struct PlanSheet: View {
         HStack(alignment: .top, spacing: 12) {
             if plan.stage == .done {
                 OutcomeGlyph(symbol: headingSymbol, tint: headingTint)
-            } else {
+            } else if plan.stage != .reviewing {
                 Image(systemName: headingSymbol)
                     .font(.system(size: 20, weight: .medium)).foregroundStyle(headingTint)
                     .frame(width: 26, height: 26)
             }
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(headingTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
                 Text(headingBlurb)
-                    .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
@@ -177,18 +188,15 @@ struct PlanSheet: View {
     private var scopeBar: some View {
         HStack(spacing: 8) {
             Image(systemName: plan.action.single ? "scope" : "square.stack.3d.up")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(plan.action.single ? Palette.muted : Palette.ink(status: "stale"))
             Text(scopeText).font(.system(size: 11)).foregroundStyle(.primary)
             Spacer(minLength: 0)
-            if let p = preview, plan.stage == .reviewing, !p.paths.isEmpty {
-                Text(summaryText(p))
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.primary)
-            }
+            // The count and size are the two big figures directly below;
+            // saying them here as well was the same numbers twice.
         }
         .padding(.horizontal, 20).padding(.vertical, 9)
-        .background(plan.action.single ? Color.clear : Palette.status("stale").opacity(0.10))
+        .background(Color.primary.opacity(0.03))
     }
 
     private var scopeText: String {
@@ -255,7 +263,7 @@ struct PlanSheet: View {
         let current = plan.progress ?? (store.busy ? store.scanProgress : nil)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(store.busy && plan.progress == nil ? title : current.map { phaseNames($0)[min($0.step - 1, phaseNames($0).count - 1)] } ?? title).font(.system(size: 12.5, weight: .medium))
+                Text(store.busy && plan.progress == nil ? title : current.map { phaseNames($0)[min($0.step - 1, phaseNames($0).count - 1)] } ?? title).font(.system(size: 12, weight: .medium))
                 Spacer(minLength: 8)
                 TimerText(since: plan.since)
             }
@@ -293,8 +301,8 @@ struct PlanSheet: View {
                     ForEach(Array(phaseNames(p).enumerated()), id: \.offset) { i, name in
                         HStack(spacing: 4) {
                             Image(systemName: i + 1 < p.step ? "checkmark.circle.fill" : i + 1 == p.step ? "circle.inset.filled" : "circle")
-                                .font(.system(size: 9))
-                            Text(name).font(.system(size: 10, weight: i + 1 == p.step ? .semibold : .regular))
+                                .font(.system(size: 11))
+                            Text(name).font(.system(size: 11, weight: i + 1 == p.step ? .semibold : .regular))
                         }
                         .foregroundStyle(i + 1 <= p.step ? Palette.ink(barTint) : Palette.muted)
                         if i < phaseNames(p).count - 1 { Spacer(minLength: 0) }
@@ -326,14 +334,14 @@ struct PlanSheet: View {
             VStack(spacing: 14) {
                 VStack(spacing: 6) {
                     Image(systemName: refused ? "lock" : "checkmark.circle")
-                        .font(.system(size: 22))
+                        .font(.system(size: 20))
                         .foregroundStyle(refused ? Palette.ink(status: "stale") : Palette.muted)
                     Text(refused
                          ? (p.skipped.count == 1
                             ? "That one cannot be \(verbPast)."
                             : "None of these can be \(verbPast).")
                          : "Nothing to do here.")
-                        .font(.system(size: 12.5, weight: refused ? .medium : .regular))
+                        .font(.system(size: 12, weight: refused ? .medium : .regular))
                         .foregroundStyle(refused ? .primary : Palette.muted)
                 }
                 if refused { skippedList(p.skipped).padding(.horizontal, 20) }
@@ -400,12 +408,12 @@ struct PlanSheet: View {
             ForEach(Array(p.paths.enumerated()), id: \.element) { i, path in
                 if i > 0 { Hairline() }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Image(systemName: kind.icon).font(.system(size: 10))
-                        .foregroundStyle(kind == .reap ? Palette.status("merged") : Palette.reclaim)
+                    Image(systemName: kind == .reap ? "trash" : kind.icon).font(.system(size: 11))
+                        .foregroundStyle(Palette.muted)
                         .frame(width: 14)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(URL(fileURLWithPath: path).lastPathComponent)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 13, weight: .semibold))
                         Text(kind == .clean
                              ? (p.entries[path] ?? []).joined(separator: "  ")
                              : path)
@@ -417,14 +425,29 @@ struct PlanSheet: View {
                 .padding(.vertical, 8)
             }
         }
-        .padding(.horizontal, 12)
-        .background(RoundedRectangle(cornerRadius: 9).fill(.primary.opacity(0.04)))
+        .padding(.horizontal, 14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+    }
+
+    /// What confirming would do, in the two numbers that matter.
+    private func reviewStats(_ p: Store.PlanResult) -> some View {
+        let n: Int = p.paths.count
+        let noun: String = kind == .reap ? (n == 1 ? "folder" : "folders") : (n == 1 ? "checkout cleaned" : "checkouts cleaned")
+        return HStack(alignment: .top, spacing: 36) {
+            if p.kb > 0 {
+                figure(Store.human(p.kb), "returned to the disk", tint: Palette.inkReclaim)
+            }
+            figure("\(n)", noun, tint: Color.primary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 14)
     }
 
     private func skippedList(_ items: [Store.PlanResult.Skipped]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(items, id: \.path) { s in
-                line(s.name, s.why + (s.override.isEmpty ? "" : "  ·  \(s.override) in the terminal overrides"))
+                line(s.name, s.why + (s.override.isEmpty ? "" : "  ·  left in place"))
             }
         }
     }
@@ -438,11 +461,13 @@ struct PlanSheet: View {
                                   @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
-                    .foregroundStyle(ink)
+                // One neutral label for every section. Each had its own colour,
+                // and three coloured captions competed with the rows under them.
+                Text(title.uppercased()).font(.system(size: 11, weight: .semibold)).tracking(0.6)
+                    .foregroundStyle(Palette.muted)
                 if !folder.isEmpty {
                     Text((folder as NSString).abbreviatingWithTildeInPath)
-                        .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted)
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted)
                         .textSelection(.enabled)
                 }
             }
@@ -452,7 +477,7 @@ struct PlanSheet: View {
 
     private func line(_ head: String, _ tail: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(head).font(.system(size: 12.5, weight: .medium))
+            Text(head).font(.system(size: 12, weight: .medium))
             Text(tail).font(.system(size: 12)).foregroundStyle(Palette.muted)
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -486,7 +511,7 @@ struct PlanSheet: View {
                 HStack(spacing: 5) {
                     Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
                         .rotationEffect(.degrees(showRaw ? 90 : 0))
-                    Text("The command's own output").font(.system(size: 10.5))
+                    Text("Details").font(.system(size: 11))
                 }
                 .foregroundStyle(Palette.muted)
             }
@@ -504,6 +529,20 @@ struct PlanSheet: View {
 
     private var changed: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "info.circle.fill").font(.system(size: 15))
+                    .foregroundStyle(Palette.ink(Palette.brand))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Something changed after you reviewed it")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Nothing was deleted. A confirmation only covers exactly what you reviewed, so review the updated plan to continue.")
+                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.wash(Palette.brand)))
             if let text = plan.result?.text, !text.isEmpty {
                 Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
                     .font(.system(size: 12, design: .monospaced))
@@ -570,7 +609,7 @@ struct PlanSheet: View {
                             Text(kind == .reap
                                  ? "REMOVED — THESE WORKTREES ARE GONE"
                                  : "STILL HERE — ONLY THEIR BUILD OUTPUT WENT")
-                                .font(.system(size: 9, weight: .semibold)).tracking(0.6)
+                                .font(.system(size: 11, weight: .semibold)).tracking(0.6)
                                 .foregroundStyle(kind == .reap
                                                  ? Palette.ink(status: "merged")
                                                  : Palette.inkReclaim)
@@ -578,19 +617,19 @@ struct PlanSheet: View {
                             ForEach(Array(doneRows.enumerated()), id: \.element) { i, path in
                                 if i > 0 { Hairline() }
                                 HStack(spacing: 9) {
-                                    Image(systemName: kind == .reap ? "xmark" : "sparkles")
-                                        .font(.system(size: 9, weight: .bold))
+                                    Image(systemName: kind == .reap ? "checkmark" : "sparkles")
+                                        .font(.system(size: 11, weight: .bold))
                                         .foregroundStyle(kind == .reap
                                                          ? Palette.ink(status: "merged")
                                                          : Palette.inkReclaim)
                                         .frame(width: 12)
                                     Text(URL(fileURLWithPath: path).lastPathComponent)
-                                        .font(.system(size: 11.5))
+                                        .font(.system(size: 11))
                                         .lineLimit(1).truncationMode(.middle)
                                     Spacer(minLength: 8)
                                     Text(URL(fileURLWithPath: path).deletingLastPathComponent()
                                             .lastPathComponent)
-                                        .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
                                 }
                                 .padding(.vertical, 6)
                             }
@@ -615,7 +654,7 @@ struct PlanSheet: View {
 
     private func figure(_ value: String, _ label: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(value).font(.system(size: 26, weight: .semibold, design: .rounded))
+            Text(value).font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit()
                 .foregroundStyle(tint)
             Text(label).font(.system(size: 11)).foregroundStyle(Palette.muted)
         }
@@ -627,11 +666,11 @@ struct PlanSheet: View {
         HStack(spacing: 10) {
             if destructive {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10)).foregroundStyle(Palette.status("stale"))
+                    .font(.system(size: 11)).foregroundStyle(Palette.status("stale"))
                 Text(kind == .reap
                      ? "Removed through git. This cannot be undone from here."
                      : "Comes back with a build or install, not with undo.")
-                    .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    .font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
             Spacer()
             // Nothing to press while a delete is in flight. Closing the sheet
@@ -646,6 +685,17 @@ struct PlanSheet: View {
                 Button("Review again") { store.preview(plan.action) }
                     .buttonStyle(.borderedProminent)
             }
+            if plan.done, (plan.result?.failed ?? 0) > 0 {
+                // What failed was left exactly as it was, so the same request
+                // reviewed again is the rest of the job.
+                Button("Try the rest again") { store.preview(plan.action) }
+                    .buttonStyle(.borderedProminent)
+            }
+            if destructive, let name = mustType {
+                TextField("Type \(name) to confirm", text: $typed)
+                    .textFieldStyle(.roundedBorder).frame(width: 200)
+                    .accessibilityLabel("Type the folder name to confirm")
+            }
             if destructive {
                 // Labelled with the consequence: a button that names what it
                 // destroys gets read, one that says "Confirm" gets clicked.
@@ -656,6 +706,7 @@ struct PlanSheet: View {
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .tint(Palette.badge)
+                    .disabled(mustType != nil && typed != mustType)
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 14)
