@@ -7,17 +7,12 @@ struct UpdateBanner: View {
     var body: some View {
         if let url = updates.availableURL, let release = updates.release,
            (release.tagName != store.dismissedUpdate || updates.showStatus) {
-            HStack(spacing: 10) {
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Palette.brand)
-                Text("wt-manager \(release.tagName) is ready")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer(minLength: 4)
-                Link("See update", destination: url).font(.system(size: 12))
-                Button { store.dismissedUpdate = release.tagName; updates.showStatus = false } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).accessibilityLabel("Dismiss this update")
+            Banner(tone: .info, symbol: "arrow.up",
+                   title: "wt-manager \(release.tagName) is available",
+                   detail: "Updates are announced, never installed for you",
+                   onDismiss: { store.dismissedUpdate = release.tagName; updates.showStatus = false }) {
+                Button("Release notes") { NSWorkspace.shared.open(url) }
             }
-            .padding(.horizontal, 20).padding(.vertical, 10)
-            .background(Palette.brand.opacity(0.08))
         } else if updates.showStatus {
             HStack(spacing: 10) {
                 if updates.checking { ProgressView().controlSize(.small) }

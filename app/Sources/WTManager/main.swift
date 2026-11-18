@@ -109,7 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func drawStatusItem() {
         guard let button = statusItem.button else { return }
-        let n = store.attention
+        // Only what needs you: unsaved work. Safe folders never raise it.
+        let n = store.folderRows.filter { $0.folder?.verdict == "unsaved" }.count
         let wag = Pulse.shared.wag, blinking = Pulse.shared.blinking
         let key = "\(store.face?.gauge ?? -1)/\(blinking ? "shut" : store.face?.eyes ?? "")"
             + "/\(wag)/\(store.skin)/\(store.figure)/\(store.face?.tint ?? "")/\(store.face?.mood ?? "working")/\(n)"
@@ -146,24 +147,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        menu.addItem(item("Open window", #selector(openWindow), key: "o"))
-        menu.addItem(.separator())
-        for line in statusLines() {
-            let entry = NSMenuItem(title: line, action: #selector(openWindow), keyEquivalent: "")
-            entry.target = self
-            menu.addItem(entry)
-        }
-        if !statusLines().isEmpty { menu.addItem(.separator()) }
-        if let f = store.face {
+        // The summary, as the design draws it: what could be freed, then each
+        // verdict with folders in it.
+        let rows: [Worktree] = store.folderRows
+        func count(_ verdict: String) -> Int { rows.filter { $0.folder?.verdict == verdict }.count }
+        var lines: [(String, Color, Int, Bool)] = []
+        if count("unsaved") > 0 { lines.append(("Unsaved work", Palette.riskInk, count("unsaved"), true)) }
+        if count("agent") > 0 { lines.append(("Agent running", Palette.agentInk, count("agent"), false)) }
+        if count("safe") > 0 { lines.append(("Safe to delete", Palette.safeInk, count("safe"), false)) }
+        let free: String? = store.freeable.flatMap { $0.totalKb > 0 ? Store.human($0.totalKb) : nil }
+        if free != nil || !lines.isEmpty {
+            let summary = NSMenuItem()
+            let host = NSHostingView(rootView: MenuSummary(free: free, rows: lines))
+            host.frame = NSRect(origin: .zero, size: host.fittingSize)
+            summary.view = host
+            menu.addItem(summary)
+            menu.addItem(.separator())
+        } else if let f = store.face {
             let m = NSMenuItem(title: f.meaning, action: nil, keyEquivalent: "")
             m.isEnabled = false
             menu.addItem(m)
+            menu.addItem(.separator())
         }
-        if let f = store.freeable, f.totalKb > 0 {
-            let m = NSMenuItem(title: "\(Store.human(f.totalKb)) you could free", action: nil, keyEquivalent: "")
-            m.isEnabled = false
-            menu.addItem(m)
+        if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
+            let name: String = nudge.paths.first.map { URL(fileURLWithPath: $0).lastPathComponent } ?? nudge.repo
+            menu.addItem(item("PR #\(nudge.number) merged · \(name) · Review", #selector(openWindow), key: ""))
+            menu.addItem(.separator())
         }
+        menu.addItem(item("Open wt-manager", #selector(openWindow), key: "o"))
+        menu.addItem(item("Refresh", #selector(refresh), key: "r"))
+        menu.addItem(item("Settings…", #selector(watchedFolders), key: ","))
         menu.addItem(.separator())
         let floatingItem = item("Show floating mascot", #selector(toggleFloating), key: "")
         floatingItem.state = store.floatingMascot ? .on : .off
@@ -172,9 +185,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         wanderItem.state = store.mascotWanders ? .on : .off
         menu.addItem(wanderItem)
         menu.addItem(item("Reset mascot position", #selector(resetFloating), key: ""))
-        menu.addItem(.separator())
-        menu.addItem(item("Refresh now", #selector(refresh), key: "r"))
-        menu.addItem(item("Settings…", #selector(watchedFolders), key: ","))
         menu.addItem(item("Check for updates…", #selector(checkUpdates), key: ""))
         let updateState = NSMenuItem(title: store.updates.status, action: nil, keyEquivalent: "")
         updateState.isEnabled = false
@@ -184,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             release.representedObject = url; release.target = self; menu.addItem(release)
         }
         menu.addItem(.separator())
-        let quitItem = item("Quit wt-manager", #selector(quitApp), key: "q")
+        let quitItem = item("Quit", #selector(quitApp), key: "q")
         quitItem.isEnabled = store.plan?.stage != .committing
         menu.addItem(quitItem)
     }
@@ -245,7 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let margin: CGFloat = 48
         // Half the screen for the content, plus the sidebar on top of it: the
         // rail is chrome and holds none of the data.
-        let minW: CGFloat = 540 + Sidebar.railWidth
+        // Narrow enough for the chip layout: below 780 the rail folds away.
+        let minW: CGFloat = 660
         let maxW = max(minW, floor(vf.width / 2) + Sidebar.railWidth)
         let maxH = max(480, floor(vf.height - margin))
         let minH: CGFloat = 480
@@ -617,8 +628,16 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         // The window at the size the design's boards are drawn, so each page
         // can be laid beside its artboard.
         let board = CGSize(width: 1280, height: 1130)
+        var boardCompletion = Store.samplePlan(.done)
+        boardCompletion?.result = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"removed 3 folders","paths":[],"plan":"board","done":true,"removed":3,"freed_kb":2170551,"completed_paths":["/a","/b","/c"]}"#)
         draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
              size: board, appearance: appearance, to: "\(name)-board-folders.png")
+        draw(RootView(store: store, forceCompact: true).background(Color(nsColor: .windowBackgroundColor)),
+             size: CGSize(width: 760, height: 1280), appearance: appearance, to: "\(name)-board-narrow.png")
+        store.completion = boardCompletion
+        draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+             size: CGSize(width: 1280, height: 720), appearance: appearance, to: "\(name)-board-banner.png")
+        store.completion = nil
         store.page = .locations
         draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
              size: CGSize(width: 1280, height: 900), appearance: appearance, to: "\(name)-board-locations.png")

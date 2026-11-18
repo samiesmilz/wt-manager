@@ -14,14 +14,31 @@ struct RootView: View {
     var openRow: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    static let compactBelow: CGFloat = 780
+    @State private var width: CGFloat = 1000
+    /// Offscreen only: render the narrow layout whatever the width.
+    var forceCompact: Bool? = nil
+
     var body: some View {
-        HStack(spacing: 0) {
-            Sidebar(store: store)
-                .frame(width: Sidebar.railWidth - 1)
-                .background(Palette.rail)
-            Rectangle().fill(Palette.line).frame(width: 1)
-            page.background(Palette.ground)
+        // Below `compactBelow` the rail folds into a strip of chips under the
+        // header. The width is read from behind, not with a reader around the
+        // window's content: a reader has no height of its own, and the window
+        // sizes itself from what its content asks for.
+        let compact: Bool = forceCompact ?? (width < RootView.compactBelow)
+        return HStack(spacing: 0) {
+            if !compact {
+                Sidebar(store: store)
+                    .frame(width: Sidebar.railWidth - 1)
+                    .background(Palette.rail)
+                Rectangle().fill(Palette.line).frame(width: 1)
+            }
+            page(compact: compact).background(Palette.ground)
         }
+        .background(GeometryReader { geo in
+            Color.clear
+                .onAppear { width = geo.size.width }
+                .onChange(of: geo.size.width) { width = $0 }
+        })
         // The window enforces the minimum via contentMinSize. Declaring it here
         // too makes the hosting view demand a size the window may not have yet,
         // and the overflow is clipped at both edges rather than scrolled.
@@ -38,9 +55,15 @@ struct RootView: View {
     }
 
     /// The header, banners, the folder list and the inventory strip.
-    private var page: some View {
+    private func page(compact: Bool) -> some View {
         VStack(spacing: 0) {
+            // With no rail, the header sits under the window's own buttons.
+            if compact { Color.clear.frame(height: 24) }
             Header(store: store)
+            if compact {
+                Rectangle().fill(Palette.line).frame(height: 1)
+                ChipBar(store: store)
+            }
             UpdateBanner(store: store, updates: store.updates)
             if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
                 MergeSpeechBanner(store: store, nudge: nudge)

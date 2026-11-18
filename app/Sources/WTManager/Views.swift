@@ -198,37 +198,38 @@ struct CompletionBanner: View {
         let dir = !p.changesKeptIn.isEmpty ? p.changesKeptIn : p.keptIn
         return dir.isEmpty ? nil : dir
     }
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: issues ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                .font(.system(size: 20)).foregroundStyle(Palette.ink(tint))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12, weight: .semibold))
-                Text(issues ? "Some work could not finish. Review the result for details."
-                     : (plan.result?.freedKb ?? 0) > 0 ? "\(Store.human(plan.result?.freedKb ?? 0)) freed" : "Operation confirmed · review the details")
-                    .font(.system(size: 11)).foregroundStyle(Palette.muted)
-                if (plan.result?.freedKb ?? 0) > 0 && !(plan.result?.completedPaths.isEmpty ?? true) {
-                    // The running total, worded apart from this cleanup's own
-                    // figure above it: two "reclaimed" numbers side by side
-                    // read as one contradicting the other.
-                    Text("✦ \(store.history.rank) · \(Store.human(store.history.reclaimedKb)) freed in all"
-                         + (store.history.nextMilestoneKb.map { next in
-                             " · \(Store.human(next - store.history.reclaimedKb)) to \(store.history.nextRank ?? "")" } ?? ""))
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.inkReclaim)
-                }
-            }
-            Spacer(minLength: 4)
-            if let savedIn, !(plan.result?.completedPaths.isEmpty ?? true) {
-                Button("Show saved work") { NSWorkspace.shared.open(URL(fileURLWithPath: savedIn)) }
-                    .buttonStyle(.wt(.quiet))
-                    .help(savedIn)
-            }
-            Button("View result") { store.plan = plan }.buttonStyle(.wt(.quiet))
-            Button { store.completion = nil } label: { Image(systemName: "xmark") }
-                .buttonStyle(.plain).accessibilityLabel("Dismiss operation result")
+    private var headline: String {
+        guard let r = plan.result else { return title }
+        if issues, !r.completedPaths.isEmpty, plan.action.kind == .reap {
+            return "Deleted \(r.completedPaths.count) of \(r.completedPaths.count + r.failed) folders"
         }
-        .modifier(BannerCard(tint: tint))
-        .accessibilityElement(children: .contain)
+        if !issues, r.freedKb > 0 { return "Freed " + Store.human(r.freedKb) }
+        return title
+    }
+    private var detail: String {
+        guard let r = plan.result else { return "" }
+        if issues {
+            return (r.failed == 1 ? "One folder was" : "\(r.failed) folders were") + " left in place. Nothing was lost."
+        }
+        var parts: [String] = []
+        if plan.action.kind == .reap {
+            parts.append(Store.count(max(r.removed, r.completedPaths.count), "folder") + " deleted")
+        } else {
+            parts.append("Build output only; the folders are still there")
+        }
+        if store.history.reclaimedKb > 0 { parts.append(Store.human(store.history.reclaimedKb) + " freed so far") }
+        return parts.joined(separator: " · ")
+    }
+    var body: some View {
+        Banner(tone: issues ? .warning : .success,
+               symbol: issues ? "exclamationmark.triangle" : "checkmark",
+               title: headline, detail: detail,
+               onDismiss: { store.completion = nil }) {
+            if savedIn != nil, !(plan.result?.completedPaths.isEmpty ?? true), plan.action.kind == .reap {
+                Button("See what was kept") { store.page = .kept; store.completion = nil }
+            }
+            Button(issues ? "Details" : "View result") { store.plan = plan }
+        }
     }
 }
 
@@ -238,6 +239,18 @@ struct MergeSpeechBanner: View {
     var compact = false
     var onReview: (() -> Void)? = nil
     var body: some View {
+        if compact {
+            compactBody
+        } else {
+            Banner(tone: .info, symbol: "arrow.triangle.merge",
+                   title: "PR #\(nudge.number) merged", detail: message,
+                   onDismiss: { store.dismissMerge(nudge.id) }) {
+                Button("Review") { store.preview(Store.Action(kind: .reap, paths: nudge.paths)); onReview?() }
+                    .disabled(store.busy || store.plan != nil)
+            }
+        }
+    }
+    private var compactBody: some View {
         HStack(alignment: .top, spacing: 10) {
             if !compact { WityView(store: store, height: 32).accessibilityHidden(true) }
             VStack(alignment: .leading, spacing: 4) {
@@ -261,7 +274,171 @@ struct MergeSpeechBanner: View {
     private var message: String {
         if compact { return "\(nudge.repo) — let’s review this local checkout before removing anything." }
         let space = nudge.occupiedKb.map { $0 == 0 ? " This checkout uses 0 B." : " About \(Store.human($0)) is still on disk." } ?? " Space has not been measured yet."
-        return "\(nudge.repo) — let’s review the local checkout." + space
+        return "\(nudge.repo): the local checkout can be reviewed." + space
             + (nudge.blocked ? " Local work or another blocker needs attention." : " Removal is checked again before anything changes.")
+    }
+}
+
+// MARK: the design's banner
+
+enum BannerTone { case success, info, warning, error }
+
+/// One pattern for everything the window says between pages: a mark, a bold
+/// line, one muted line under it, its action on the right, and a close box.
+/// White for news; the warm ground for what needs attention.
+struct Banner<Actions: View>: View {
+    let tone: BannerTone
+    let symbol: String
+    let title: String
+    let detail: String
+    var outer: CGFloat = 28
+    var onDismiss: (() -> Void)? = nil
+    @ViewBuilder var actions: () -> Actions
+
+    private var ink: Color {
+        switch tone {
+        case .success: return Palette.safeInk
+        case .info: return Palette.agentInk
+        case .warning: return Palette.riskInk
+        case .error: return Palette.danger
+        }
+    }
+    private var warm: Bool { tone == .warning || tone == .error }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: symbol).font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(ink).frame(width: 20).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                if !detail.isEmpty {
+                    Text(detail).font(.system(size: 12)).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 8) { actions() }.buttonStyle(.wt(.quiet))
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Palette.muted).frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Dismiss")
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(warm ? Palette.warnFill : Palette.cardFill))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(warm ? Palette.warnLine : Palette.line, lineWidth: 1))
+        .padding(.horizontal, outer).padding(.top, outer > 0 ? 14 : 0)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// The sidebar, folded into a strip of chips for a narrow window.
+struct ChipBar: View {
+    @ObservedObject var store: Store
+
+    private struct Chip {
+        let title: String
+        let dot: Color?
+        let on: Bool
+        let run: () -> Void
+    }
+
+    private var chips: [Chip] {
+        var out: [Chip] = []
+        let rows: [Worktree] = store.folderRows
+        let plain: Bool = store.page == .folders && store.verdictFilter == nil && store.locationFilter == nil
+        out.append(Chip(title: "All \(rows.count)", dot: nil, on: plain) {
+            store.page = .folders; store.verdictFilter = nil; store.locationFilter = nil
+        })
+        for v in FoldersView.Verdict.allCases {
+            let n: Int = rows.filter { $0.folder?.verdict == v.rawValue }.count
+            if n == 0 { continue }
+            let on: Bool = store.page == .folders && store.verdictFilter == v.rawValue
+            let short: String = ["safe": "Safe", "busy": "In progress", "agent": "Agent",
+                                 "unsaved": "Unsaved", "kept": "Kept"][v.rawValue] ?? v.label
+            out.append(Chip(title: short + " \(n)", dot: v.tint, on: on) {
+                store.page = .folders
+                store.verdictFilter = on ? nil : v.rawValue
+            })
+        }
+        out.append(Chip(title: "Locations", dot: nil, on: store.page == .locations) {
+            store.locationFilter = nil; store.page = .locations
+        })
+        out.append(Chip(title: "Kept files", dot: nil, on: store.page == .kept) { store.page = .kept })
+        out.append(Chip(title: "Mascots", dot: nil, on: store.page == .mascots) { store.page = .mascots })
+        out.append(Chip(title: "Settings", dot: nil, on: false) { store.showingSettings = true })
+        return out
+    }
+
+    private func row(_ items: [Chip]) -> some View {
+        HStack(spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, chip in
+                Button(action: chip.run) {
+                    HStack(spacing: 6) {
+                        if let dot = chip.dot { Circle().fill(dot).frame(width: 8, height: 8) }
+                        Text(chip.title).font(.system(size: 12, weight: .semibold)).lineLimit(1).fixedSize()
+                    }
+                    .foregroundStyle(chip.on ? Palette.onAction : Color.primary)
+                    .padding(.horizontal, 11).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(chip.on ? Palette.action : Palette.cardFill))
+                    .overlay(RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(chip.on ? Palette.action : Palette.line, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(chip.on ? .isSelected : [])
+            }
+        }
+    }
+
+    var body: some View {
+        let all: [Chip] = chips
+        let half: Int = (all.count + 1) / 2
+        return ViewThatFits(in: .horizontal) {
+            row(all)
+            VStack(alignment: .leading, spacing: 8) {
+                row(Array(all.prefix(max(half, 5))))
+                row(Array(all.dropFirst(max(half, 5))))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20).padding(.vertical, 12)
+        .background(Palette.rail)
+    }
+}
+
+/// The menu-bar menu's summary, as the design draws it: what could be freed,
+/// then each verdict with folders in it.
+struct MenuSummary: View {
+    let free: String?
+    let rows: [(String, Color, Int, Bool)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let free {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(free).font(.system(size: 20, weight: .bold)).foregroundStyle(Palette.safeInk)
+                    Text("you could free").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                }
+                .padding(.bottom, rows.isEmpty ? 0 : 10)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                HStack(spacing: 9) {
+                    Circle().fill(r.1).frame(width: 8, height: 8)
+                    Text(r.0).font(.system(size: 13, weight: r.3 ? .semibold : .regular))
+                    Spacer(minLength: 16)
+                    Text("\(r.2)").font(.system(size: 13)).monospacedDigit().foregroundStyle(Palette.muted)
+                }
+                .padding(.vertical, 5)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .frame(width: 280, alignment: .leading)
     }
 }

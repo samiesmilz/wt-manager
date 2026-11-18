@@ -322,44 +322,35 @@ struct FoldersView: View {
 
     /// What went wrong, what still works, and the one thing to do about it.
     private func errorCard(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 15))
-                .foregroundStyle(Palette.ink(status: "blocked")).padding(.top, 1)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Something could not be read").font(.system(size: 13, weight: .semibold))
-                Text("What is listed below is from the last scan that worked.")
-                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
-                Text(text).font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Palette.muted).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 8)
-            Button("Try again") { store.refresh(measureDisk: false) }
-                .buttonStyle(.wt(.quiet)).disabled(store.busy)
+        Banner(tone: .error, symbol: "exclamationmark.triangle",
+               title: "Something could not be read",
+               detail: "What is listed below is from the last scan that worked. " + text,
+               outer: 0) {
+            Button("Try again") { store.refresh(measureDisk: false) }.disabled(store.busy)
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.wash(Palette.status("blocked")))
-            .overlay(RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Palette.edge(Palette.status("blocked")), lineWidth: 1)))
     }
 
     /// The scan, as steps: which pass it is on and how far through.
     private func progressCard(_ p: Engine.Progress) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Step \(p.step) of \(p.steps)").font(.system(size: 13, weight: .semibold))
-                Text(p.label).font(.system(size: 12)).foregroundStyle(Palette.muted)
-                    .lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 0)
+        let label: String = p.label.isEmpty ? "Working" : String(p.label.prefix(1)).uppercased() + String(p.label.dropFirst())
+        return CardBox {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Step \(p.step) of \(p.steps) · " + label).font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    if p.total > 0 {
+                        Text("\(p.done) of \(p.total)").font(.system(size: 12)).monospacedDigit()
+                            .foregroundStyle(Palette.muted)
+                    }
+                }
+                Bar(fraction: p.fraction, tint: Palette.safeInk)
+                Text("Names and verdicts are ready. Sizes fill in as each folder is measured; you can already open and review rows.")
+                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            ProgressView(value: min(max(p.fraction ?? 0, 0), 1))
-                .progressViewStyle(.linear).tint(Palette.reclaim)
-            Text("Names and verdicts appear first. Sizes fill in as each folder is measured.")
-                .font(.system(size: 11)).foregroundStyle(Palette.muted)
+            .padding(.horizontal, 20).padding(.vertical, 16)
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line))
     }
 
     private func notice(_ text: String, tint: Color, mono: Bool = false) -> some View {
@@ -770,8 +761,14 @@ private struct FolderRow: View {
             }
             // The size, and under it what a build would put back.
             VStack(alignment: .trailing, spacing: 3) {
-                Text(w.sizeKb > 0 ? Store.human(w.sizeKb) : "—")
-                    .font(.system(size: 13)).monospacedDigit()
+                if w.sizeKb <= 0 && store.busy {
+                    // Still being measured: a placeholder the size of a figure.
+                    Capsule().fill(Palette.line).frame(width: 56, height: 10)
+                        .accessibilityLabel("Measuring")
+                } else {
+                    Text(w.sizeKb > 0 ? Store.human(w.sizeKb) : "—")
+                        .font(.system(size: 13)).monospacedDigit()
+                }
                 if w.reclaimKb > 0 {
                     Button("clean \(Store.human(w.reclaimKb))") {
                         store.preview(Store.Action(kind: .clean, paths: [w.path]))
