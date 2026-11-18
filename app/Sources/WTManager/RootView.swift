@@ -131,7 +131,7 @@ struct Sidebar: View {
                 store.verdictFilter = nil
                 store.locationFilter = nil
             }
-            entry("Locations", "folder.fill.badge.gearshape", ready && !store.locations.isEmpty ? "\(store.locations.count)" : nil,
+            entry("Locations", "mappin.and.ellipse", ready && !store.locations.isEmpty ? "\(store.locations.count)" : nil,
                   tint: Palette.status("trunk"),
                   on: store.page == .locations || (store.page == .folders && store.locationFilter != nil)) {
                 store.locationFilter = nil
@@ -140,16 +140,13 @@ struct Sidebar: View {
             entry("Kept files", "archivebox", nil, tint: Palette.muted, on: store.page == .kept) {
                 store.page = .kept
             }
-            entry("Mascots", "pawprint.fill", nil, tint: Palette.mascot, on: store.page == .mascots) {
-                store.page = .mascots
-            }
 
             if ready && !(store.folderRows.isEmpty && store.emptyLocations.isEmpty) {
                 // The list's filters, here rather than as pills over it: a
                 // filter is where you are, and where you are is the sidebar's.
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        heading("Show")
+                        heading("Status")
                         let scoped = store.folderRows.filter(store.inScope)
                         ForEach(FoldersView.Verdict.allCases, id: \.self) { v in
                             // Empty leftover folders are safe by definition.
@@ -157,20 +154,26 @@ struct Sidebar: View {
                                 + (v == .safe && store.locationFilter == nil && store.query.isEmpty
                                    ? store.emptyLocations.count : 0)
                             let on = store.page == .folders && store.verdictFilter == v.rawValue
-                            if v != .kept || n > 0 || on {
+                            if n > 0 || on {
                                 entry(v.label, nil, n == 0 ? nil : "\(n)", dot: v.tint, tint: v.tint, on: on, dim: n == 0 && !on) {
                                     store.page = .folders
                                     store.verdictFilter = on ? nil : v.rawValue
                                 }
                             }
                         }
-                        heading("Made by")
-                        ForEach(Store.makers, id: \.self) { maker in
-                            let n: Int = store.folderRows.filter { Store.madeBy($0.path) == maker }.count
-                            let on: Bool = store.page == .folders && store.madeByFilter == maker
-                            entry(maker, nil, n == 0 ? nil : "\(n)", tint: Palette.muted, on: on, dim: n == 0 && !on) {
-                                store.page = .folders
-                                store.madeByFilter = on ? nil : maker
+                        let makers: [String] = Store.makers.filter { maker in
+                            store.madeByFilter == maker
+                                || store.folderRows.contains { Store.madeBy($0.path) == maker }
+                        }
+                        if makers.count > 1 {
+                            heading("Made by")
+                            ForEach(makers, id: \.self) { maker in
+                                let n: Int = store.folderRows.filter { Store.madeBy($0.path) == maker }.count
+                                let on: Bool = store.page == .folders && store.madeByFilter == maker
+                                entry(maker, Sidebar.makerSymbol(maker), n == 0 ? nil : "\(n)", tint: Palette.muted, on: on) {
+                                    store.page = .folders
+                                    store.madeByFilter = on ? nil : maker
+                                }
                             }
                         }
                     }
@@ -179,17 +182,13 @@ struct Sidebar: View {
             }
 
             Spacer(minLength: 12)
-            VStack(spacing: 7) {
-                Button { store.showingSettings = true } label: {
-                    Label("Settings", systemImage: "gearshape")
-                        .font(.system(size: 11))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Palette.muted)
-                .padding(.horizontal, 7)
+            entry("Mascots", "pawprint", nil, tint: Palette.muted, on: store.page == .mascots) {
+                store.page = .mascots
             }
-            .padding(.horizontal, 12).padding(.bottom, 15)
+            entry("Settings", "gearshape", nil, tint: Palette.muted, on: false) {
+                store.showingSettings = true
+            }
+            Color.clear.frame(height: 12)
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
@@ -202,6 +201,14 @@ struct Sidebar: View {
     /// loudest thing on the window. A pale accent ground with accent ink is
     /// what every sidebar on this machine does, and it reads as selected
     /// without competing.
+    static func makerSymbol(_ maker: String) -> String {
+        switch maker {
+        case "Claude Code": return "sparkle"
+        case "Codex": return "chevron.left.forwardslash.chevron.right"
+        default: return "hand.point.up.left"
+        }
+    }
+
     private func heading(_ title: String) -> some View {
         Text(title.uppercased())
             .font(.system(size: 11, weight: .semibold)).tracking(0.6)
@@ -218,9 +225,15 @@ struct Sidebar: View {
                        action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                // Words only, as designed; a dot where the entry is a verdict.
+                // A dot where the entry is a verdict, a line icon otherwise:
+                // both sit in the same 16pt column so the words line up.
                 if let dot {
                     Circle().fill(dim ? Palette.faint : dot).frame(width: 8, height: 8)
+                        .frame(width: 16)
+                } else if let symbol {
+                    Image(systemName: symbol).font(.system(size: 12, weight: on ? .semibold : .regular))
+                        .foregroundStyle(on ? Color.primary : Palette.muted)
+                        .frame(width: 16).accessibilityHidden(true)
                 }
                 Text(title).font(.system(size: 13, weight: on ? .semibold : .regular))
                     .foregroundStyle(dim ? Palette.muted : Color.primary)

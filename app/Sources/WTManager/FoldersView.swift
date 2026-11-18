@@ -522,6 +522,11 @@ struct FoldersView: View {
     }
 
     /// What one delete of the ticked folders would do, said on its button.
+    static func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
     private func selectionBar(_ all: [Row]) -> some View {
         let rows = all.filter { selected.contains($0.id) }
         let kb = rows.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }
@@ -637,19 +642,25 @@ struct FoldersView: View {
                 // at a time: "select all" to clear a card must not sweep up
                 // the one folder that still holds something.
                 let pickable = Set(g.rows.filter(\.verdict.lossless).map(\.id))
-                if pickable.count < 0 {
+                if pickable.count > 1 {
                     let all = pickable.isSubset(of: selected)
                     Button(all ? "Deselect" : "Select all") {
                         if all { selected.subtract(pickable) } else { selected.formUnion(pickable) }
                     }
-                    .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Palette.muted)
-                    .fixedSize()
+                    .buttonStyle(.wt(.quiet))
                     .help("Ticks the folders that lose nothing; unsaved work is ticked one at a time")
                 }
                 if !g.safe.isEmpty {
                     clearButton("Delete \(g.safe.count) safe · "
                                 + Store.human(g.safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
                                 rows: g.safe)
+                } else if pickable.count > 1 {
+                    // Nothing here is finished, but they may all be done with:
+                    // the review still checks each one and saves what it must.
+                    let rest: [Row] = g.rows.filter(\.verdict.lossless)
+                    clearButton("Delete all \(rest.count) · "
+                                + Store.human(rest.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }) + "…",
+                                rows: rest)
                 }
             }
             VStack(spacing: 0) {
@@ -715,8 +726,22 @@ private struct FolderRow: View {
     private var line: some View {
         let w = row.worktree, v = row.verdict
         return HStack(alignment: .center, spacing: 14) {
-            Toggle("", isOn: $selected).toggleStyle(.checkbox).labelsHidden()
-                .disabled(!row.deletable)
+            Button { selected.toggle() } label: {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(selected ? Palette.action : Palette.cardFill)
+                    .overlay(RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(selected ? Palette.action : Palette.controlLine, lineWidth: 1.5))
+                    .overlay { if selected {
+                        Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Palette.onAction)
+                    } }
+                    .frame(width: 16, height: 16)
+                    .opacity(row.deletable ? 1 : 0.4)
+                    .padding(4).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!row.deletable)
+            .accessibilityAddTraits(selected ? .isSelected : [])
                 .help(v.lossless ? "Select for one delete"
                                  : row.anyway ? "Tick to delete anyway: its work is saved first" : row.reason)
                 .accessibilityLabel("Select \(row.name)")
@@ -730,14 +755,21 @@ private struct FolderRow: View {
                             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line, lineWidth: 1))
                             .fixedSize()
                     }
-                    Text(row.name).font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1).truncationMode(.middle)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(row.name).font(.system(size: 13, weight: .semibold))
+                            .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                        Text(row.madeBy ?? "By hand").font(.system(size: 11)).foregroundStyle(Palette.muted)
+                            .padding(.horizontal, 7).padding(.vertical, 1)
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line, lineWidth: 1))
+                            .fixedSize()
+                    }
                 }
                 Text(w.branch ?? "detached")
                     .font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted)
-                    .lineLimit(1).truncationMode(.middle)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
             .help(w.path)
             // Verdict over reason, in its own column.
             VStack(alignment: .leading, spacing: 3) {
@@ -747,16 +779,20 @@ private struct FolderRow: View {
                         .foregroundStyle(Palette.ink(v.tint))
                 }
                 Text(row.reason.prefix(1).uppercased() + row.reason.dropFirst()).font(.system(size: 12)).foregroundStyle(Palette.muted)
-                    .lineLimit(1).truncationMode(.tail).help(row.reason)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).help(row.reason)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if hovering {
-                HStack(spacing: 4) {
-                    if store.editorChoice != nil {
-                        quick("chevron.left.forwardslash.chevron.right", "Open in editor") { store.openInEditor(w) }
+            .frame(minWidth: 150, idealWidth: 250, maxWidth: 250, alignment: .leading)
+            .overlay(alignment: .trailing) {
+                if hovering {
+                    HStack(spacing: 4) {
+                        if store.editorChoice != nil {
+                            quick("chevron.left.forwardslash.chevron.right", "Open in editor") { store.openInEditor(w) }
+                        }
+                        quick("terminal", "Open in terminal") { store.openInTerminal(w) }
+                        quick("folder", "Reveal in Finder") { store.reveal(w) }
                     }
-                    quick("terminal", "Open in terminal") { store.openInTerminal(w) }
-                    quick("folder", "Reveal in Finder") { store.reveal(w) }
+                    .padding(.leading, 10).padding(.vertical, 4)
+                    .background(selected ? Color.clear : Palette.cardFill)
                 }
             }
             // The size, and under it what a build would put back.
@@ -813,6 +849,10 @@ private struct FolderRow: View {
                     store.preview(Store.Action(kind: .clean, paths: [w.path]))
                 }
             }
+            Button("Copy name") { FoldersView.copy(row.name) }
+            Button("Copy path") { FoldersView.copy(w.path) }
+            if let branch = w.branch { Button("Copy branch") { FoldersView.copy(branch) } }
+            Divider()
             Button(expanded ? "Hide details" : "Show details", action: toggle)
             Button("Reveal in Finder") { store.reveal(w) }
             Button("Open in Terminal") { store.openInTerminal(w) }
