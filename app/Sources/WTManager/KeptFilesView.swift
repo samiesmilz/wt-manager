@@ -31,36 +31,50 @@ struct KeptFilesView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Kept files")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    Text("Files git could not give back, copied and verified before a folder was deleted. They stay until you remove them.")
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .bottom, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Kept files").font(.system(size: 20, weight: .semibold))
+                        Text("Files git could not give back, copied and verified before a folder was deleted. They stay until you remove them or they expire.")
+                            .font(.system(size: 13)).foregroundStyle(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    HStack(spacing: 8) {
+                        Text("Expire after").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                            .fixedSize()
+                        Picker("Expire after", selection: $keptDays) {
+                            Text("90 days").tag(90); Text("30 days").tag(30); Text("Never").tag(0)
+                        }
+                        .labelsHidden().pickerStyle(.menu).fixedSize()
+                        .onChange(of: keptDays) { _ in load() }
+                    }
                 }
-                Picker("Keep them for", selection: $keptDays) {
-                    Text("Forever").tag(0); Text("90 days").tag(90); Text("30 days").tag(30)
-                }
-                .pickerStyle(.menu).fixedSize().font(.system(size: 12))
-                .onChange(of: keptDays) { _ in load() }
                 if let note {
-                    Text(note).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Text(note).font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
                 if !loaded {
-                    Text("Reading…").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    Text("Reading…").font(.system(size: 13)).foregroundStyle(Palette.muted)
                 } else if sets.isEmpty {
-                    Text("Nothing has been set aside yet.")
-                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    CardBox {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Nothing has been set aside yet").font(.system(size: 13, weight: .semibold))
+                            Text("When a deleted folder holds files git cannot give back, they are copied here first.")
+                                .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                        }
+                        .padding(.horizontal, 20).padding(.vertical, 16)
+                    }
                 } else {
                     ForEach(repos, id: \.self) { repo in card(repo) }
+                    HStack {
+                        Text(Store.count(sets.count, "set") + " · " + Store.human(sets.reduce(0) { $0 + $1.kb }))
+                        Spacer()
+                        Text("Stored only on this Mac")
+                    }
+                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 }
-                Button("Open the kept folder in Finder") {
-                    NSWorkspace.shared.open(Self.root)
-                }
-                .buttonStyle(.link).font(.system(size: 11)).disabled(!loaded || sets.isEmpty)
             }
-            .padding(20)
+            .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear(perform: load)
@@ -86,40 +100,65 @@ struct KeptFilesView: View {
     private func card(_ repo: String) -> some View {
         let mine: [KeptSet] = sets.filter { $0.repo == repo }
         let total: Int = mine.reduce(0) { $0 + $1.kb }
-        return VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
+        let where_: String = (Self.root.appendingPathComponent(repo).path as NSString).abbreviatingWithTildeInPath
+        return CardBox {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(repo).font(.system(size: 15, weight: .semibold))
-                Text(Store.count(mine.count, "set") + " · " + Store.human(total))
-                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                (Text(where_).font(.system(size: 12, design: .monospaced))
+                 + Text(" · " + Store.count(mine.count, "set") + " · " + Store.human(total)).font(.system(size: 12)))
+                    .foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
             }
-            .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
+            .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
             ForEach(mine) { set in
-                Hairline().padding(.horizontal, 14)
+                Hairline().padding(.horizontal, 20)
                 row(set)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+    }
+
+    /// What a set holds, by name: the first few things in it.
+    private func contents(_ set: KeptSet) -> String {
+        let names: [String] = ((try? FileManager.default.contentsOfDirectory(atPath: set.url.path)) ?? [])
+            .filter { !$0.hasPrefix(".DS_") }.sorted()
+        if names.isEmpty { return set.url.hasDirectoryPath ? "Empty" : "One file" }
+        let head: String = names.prefix(3).joined(separator: ", ")
+        return names.count > 3 ? head + " and \(names.count - 3) more" : head
+    }
+
+    private func expiry(_ set: KeptSet) -> String {
+        guard keptDays > 0, set.date != Date.distantPast else { return "" }
+        let left: Int = keptDays - Int(Date().timeIntervalSince(set.date) / 86400)
+        return " · expires in " + Store.count(max(left, 0), "day")
     }
 
     private func row(_ set: KeptSet) -> some View {
         let when: String = RelativeDateTimeFormatter().localizedString(for: set.date, relativeTo: Date())
-        return HStack(spacing: 12) {
+        return HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(set.name).font(.system(size: 13, weight: .semibold))
                     .lineLimit(1).truncationMode(.middle)
-                Text("Kept " + when).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                Text(contents(set)).font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    .lineLimit(1).truncationMode(.tail)
             }
-            Spacer(minLength: 8)
-            Text(Store.human(set.kb))
-                .font(.system(size: 13, design: .rounded)).monospacedDigit()
-            Button("Restore…") { restore(set) }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Kept " + when + expiry(set)).font(.system(size: 12)).foregroundStyle(Palette.muted)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(Store.human(set.kb)).font(.system(size: 13)).monospacedDigit().fixedSize()
+            Button("Restore…") { restore(set) }.buttonStyle(.wt(.quiet))
             Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([set.url]) }
-            Button { pending = set } label: { Image(systemName: "trash") }
-                .accessibilityLabel("Move \(set.name) to the Trash")
+                .buttonStyle(.wt(.quiet))
+            Button { pending = set } label: {
+                Image(systemName: "trash").font(.system(size: 12))
+                    .frame(width: 30, height: 30)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.cardFill))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.controlLine, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Move \(set.name) to the Trash")
+            .help("Move to the Trash")
         }
-        .controlSize(.small)
-        .padding(.horizontal, 14).padding(.vertical, 11)
+        .padding(.horizontal, 20).padding(.vertical, 13)
     }
 
     private func load() {

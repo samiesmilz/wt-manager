@@ -612,8 +612,26 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         draw(PixelCelebration(previewElapsed: 0.9).background(Color(nsColor: .windowBackgroundColor)),
              size: CGSize(width: 500, height: 300), appearance: appearance, to: "\(name)-celebration.png")
         draw(SettingsSheet(store: store).background(Color(nsColor: .windowBackgroundColor)),
-             size: CGSize(width: 525, height: 610), appearance: appearance,
+             size: CGSize(width: 600, height: 820), appearance: appearance,
              to: "\(name)-settings.png")
+        // The window at the size the design's boards are drawn, so each page
+        // can be laid beside its artboard.
+        let board = CGSize(width: 1280, height: 1130)
+        draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+             size: board, appearance: appearance, to: "\(name)-board-folders.png")
+        store.page = .locations
+        draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+             size: CGSize(width: 1280, height: 900), appearance: appearance, to: "\(name)-board-locations.png")
+        store.page = .kept
+        draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+             size: CGSize(width: 1280, height: 720), appearance: appearance, to: "\(name)-board-kept.png")
+        store.page = .folders
+        for verdict in ["unsaved", "agent"] {
+            if let row = store.envelope?.worktrees.first(where: { $0.folder?.verdict == verdict }) {
+                draw(RootView(store: store, openRow: row.path).background(Color(nsColor: .windowBackgroundColor)),
+                     size: board, appearance: appearance, to: "\(name)-board-open-\(verdict).png")
+            }
+        }
         // One row open, because the detail is most of what a row is for and
         // the commit subjects in it are the whole point of the risk work.
         if let risky = store.envelope?.worktrees
@@ -668,7 +686,31 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
         var clean = Store.Plan(action: Store.Action(kind: .clean, paths: ["/Users/me/worktrees/web/feat-campaign-cards"]))
         clean.stage = .done
         clean.result = Store.decodePlanForSnapshot(#"{"kind":"clean","text":"Cleaned build output. The checkout and protected files were kept.","paths":[],"plan":"clean","done":true,"freed_kb":1200000,"completed_paths":["/Users/me/worktrees/web/feat-campaign-cards"]}"#)
+        // The design's own boards, on the design fixture's folders, so each
+        // sheet can be laid beside its artboard.
+        let boardPaths: [String] = ["/Users/me/dev/storefront-web/.claude/worktrees/pr-1234", "/Users/me/dev/storefront-web/.claude/worktrees/checkout-tax-fix", "/Users/me/dev/storefront-web/.claude/worktrees/quiet-amber-owl"]
+        let boardPreview = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"would remove 3 folders","paths":["/Users/me/dev/storefront-web/.claude/worktrees/pr-1234","/Users/me/dev/storefront-web/.claude/worktrees/checkout-tax-fix","/Users/me/dev/storefront-web/.claude/worktrees/quiet-amber-owl"],"plan":"board","count":3,"kb":2170551,"branches":{"/Users/me/dev/storefront-web/.claude/worktrees/checkout-tax-fix":"worktree-checkout-tax-fix"},"duplicates":{"/Users/me/dev/storefront-web/.claude/worktrees/checkout-tax-fix":[".env.local"]},"precious":{"/Users/me/dev/storefront-web/.claude/worktrees/quiet-amber-owl":["notes.txt"]},"kept_in":"/Users/me/.local/share/wt-manager/kept","skipped":[{"path":"/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer","repo":"storefront-web","name":"cart-drawer","why":"Has 2 commits only on this Mac","override":"--force"},{"path":"/Users/me/dev/storefront-web/.claude/worktrees/bright-running-fox","repo":"storefront-web","name":"bright-running-fox","why":"A Claude session is running in it","override":""}]}"#)
+        var boardReview = Store.Plan(action: Store.Action(kind: .reap, paths: boardPaths, folders: true))
+        boardReview.stage = .reviewing
+        boardReview.preview = boardPreview
+        var boardWorking = boardReview
+        boardWorking.stage = .committing
+        boardWorking.progress = Engine.Progress(line: "wt-progress 1 3 4 4 removing storefront-web/checkout-tax-fix"[...])
+        var boardDone = boardReview
+        boardDone.stage = .done
+        boardDone.result = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"removed 3 folders","paths":[],"plan":"board","done":true,"removed":3,"freed_kb":2170551,"completed_paths":["/Users/me/dev/storefront-web/.claude/worktrees/pr-1234","/Users/me/dev/storefront-web/.claude/worktrees/checkout-tax-fix","/Users/me/dev/storefront-web/.claude/worktrees/quiet-amber-owl"]}"#)
+        var boardPartial = boardReview
+        boardPartial.stage = .done
+        boardPartial.result = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"removed storefront-web/pr-1234\nremoved storefront-web/checkout-tax-fix\nfailed storefront-web/quiet-amber-owl: notes.txt could not be copied (permission denied), so the folder was left exactly as it was\n2 removed, 1 failed","paths":[],"plan":"board","done":true,"removed":2,"failed":1,"rc":1,"freed_kb":1635778,"completed_paths":["/Users/me/dev/storefront-web/.claude/worktrees/pr-1234","/Users/me/dev/storefront-web/.claude/worktrees/checkout-tax-fix"]}"#)
+        var boardChanged = boardReview
+        boardChanged.stage = .changed
+        boardChanged.result = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"The reviewed set changed. No worktrees were removed. Review the current files again.","paths":[],"plan":"changed","rc":3}"#)
+        var boardAnyway = Store.Plan(action: Store.Action(kind: .reap, paths: ["/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer"], folders: true, discardWork: true))
+        boardAnyway.stage = .reviewing
+        boardAnyway.preview = Store.decodePlanForSnapshot(#"{"kind":"reap","text":"","paths":["/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer"],"plan":"anyway","count":1,"kb":6815744,"changes":{"/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer":["src/cart/Drawer.tsx","src/cart/CartLine.tsx","src/cart/scroll.ts"]},"commits":{"/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer":"2 commits stay on branch worktree-cart-drawer"},"precious":{"/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer":[".env.local"]},"kept_in":"/Users/me/.local/share/wt-manager/kept","changes_kept_in":"/Users/me/.local/share/wt-manager/kept","dropped_unknown":{"/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer":["tmp/exports/"]}}"#)
         let stages: [(String, Store.Plan?)] = [
+            ("board-review", boardReview), ("board-working", boardWorking), ("board-done", boardDone),
+            ("board-partial", boardPartial), ("board-changed", boardChanged), ("board-anyway", boardAnyway),
             ("sheet", Store.samplePlan()),
             ("sheet-working", Store.samplePlan(.committing, progress: Engine.Progress(
                 line: "wt-progress 4 13 4 4 preserving web/feat-campaign-cards: 20 of 168 paths"[...]))),
@@ -683,7 +725,7 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
             guard let plan else { continue }
             store.plan = plan
             draw(PlanSheet(store: store, plan: plan).background(Color(nsColor: .windowBackgroundColor)),
-                 size: CGSize(width: 740, height: 680), appearance: appearance, to: "\(name)-\(file).png")
+                 size: CGSize(width: 740, height: 720), appearance: appearance, to: "\(name)-\(file).png")
             store.plan = nil
         }
         for (file, result) in [("completion", Store.samplePlan(.done)), ("completion-partial", partial)] {

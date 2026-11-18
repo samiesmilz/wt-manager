@@ -18,9 +18,9 @@ struct RootView: View {
         HStack(spacing: 0) {
             Sidebar(store: store)
                 .frame(width: Sidebar.railWidth - 1)
-                .background(Color.primary.opacity(0.035))
-            Rectangle().fill(.primary.opacity(0.07)).frame(width: 1)
-            page
+                .background(Palette.rail)
+            Rectangle().fill(Palette.line).frame(width: 1)
+            page.background(Palette.ground)
         }
         // The window enforces the minimum via contentMinSize. Declaring it here
         // too makes the hosting view demand a size the window may not have yet,
@@ -28,9 +28,10 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: store.completion?.id)
         .overlay { if let id = store.celebration { PixelCelebration().id(id).allowsHitTesting(false) } }
+        .tint(Palette.action)
         .preferredColorScheme(store.colorScheme)
-        .sheet(item: $store.plan) { PlanSheet(store: store, plan: $0) }
-        .sheet(isPresented: $store.showingSettings) { SettingsSheet(store: store) }
+        .sheet(item: $store.plan) { PlanSheet(store: store, plan: $0).tint(Palette.action) }
+        .sheet(isPresented: $store.showingSettings) { SettingsSheet(store: store).tint(Palette.action) }
         .onChange(of: store.figure) { figure in
             if let coat = Mascot.drawnCoats[figure] { store.skin = coat }
         }
@@ -44,13 +45,13 @@ struct RootView: View {
             if store.mergeNudges, let nudge = store.prLifecycle.pending.first {
                 MergeSpeechBanner(store: store, nudge: nudge)
             }
-            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            Rectangle().fill(Palette.line).frame(height: 1)
             if let completion = store.completion {
                 CompletionBanner(store: store, plan: completion)
                     .transition(.opacity)
             }
             content
-            Rectangle().fill(.primary.opacity(0.07)).frame(height: 1)
+            Rectangle().fill(Palette.line).frame(height: 1)
             StatusBar(store: store)
         }
     }
@@ -95,8 +96,10 @@ struct Sidebar: View {
             // first row reads as deliberate, and the header keeps its own
             // tighter padding because nothing overlaps it.
             Color.clear.frame(height: 34)
-            PixelWordmark()
-                .padding(.horizontal, 17).padding(.bottom, 18)
+            (Text("wt-").foregroundColor(Palette.rust) + Text("manager"))
+                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                .accessibilityLabel("wt-manager")
+                .padding(.horizontal, 19).padding(.bottom, 18)
 
             let ready = store.envelope != nil && !store.unconfigured
             entry("Folders", "folder", ready && !store.folderRows.isEmpty ? "\(store.folderRows.count)" : nil,
@@ -131,9 +134,11 @@ struct Sidebar: View {
                                 + (v == .safe && store.locationFilter == nil && store.query.isEmpty
                                    ? store.emptyLocations.count : 0)
                             let on = store.page == .folders && store.verdictFilter == v.rawValue
-                            entry(v == .unsaved ? "Unsaved" : v.label, nil, n == 0 ? nil : "\(n)", dot: v.tint, tint: v.tint, on: on, dim: n == 0 && !on, alert: v == .unsaved && n > 0) {
-                                store.page = .folders
-                                store.verdictFilter = on ? nil : v.rawValue
+                            if v != .kept || n > 0 || on {
+                                entry(v.label, nil, n == 0 ? nil : "\(n)", dot: v.tint, tint: v.tint, on: on, dim: n == 0 && !on) {
+                                    store.page = .folders
+                                    store.verdictFilter = on ? nil : v.rawValue
+                                }
                             }
                         }
                         heading("Made by")
@@ -190,12 +195,9 @@ struct Sidebar: View {
                        action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                if let symbol {
-                    Image(systemName: symbol)
-                        .font(.system(size: 13)).frame(width: 18)
-                        .foregroundStyle(dim ? Palette.faint : on ? Color.primary : Palette.muted)
-                } else if let dot {
-                    Circle().fill(dim ? Palette.faint : dot).frame(width: 8, height: 8).frame(width: 18)
+                // Words only, as designed; a dot where the entry is a verdict.
+                if let dot {
+                    Circle().fill(dim ? Palette.faint : dot).frame(width: 8, height: 8)
                 }
                 Text(title).font(.system(size: 13, weight: on ? .semibold : .regular))
                     .foregroundStyle(dim ? Palette.muted : Color.primary)
@@ -212,9 +214,9 @@ struct Sidebar: View {
             .padding(.horizontal, 8).padding(.vertical, 5)
             // Selected is a raised neutral card, the same for every entry. It
             // was each entry's own colour, which made the rail three accents.
-            .background(RoundedRectangle(cornerRadius: 8).fill(on ? Palette.surface : Color.clear))
+            .background(RoundedRectangle(cornerRadius: 8).fill(on ? Palette.cardFill : Color.clear))
             .overlay(RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(on ? Color.primary.opacity(0.12) : Color.clear, lineWidth: 1))
+                .strokeBorder(on ? Palette.line : Color.clear, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
@@ -287,7 +289,7 @@ struct Header: View {
                     if let phase = store.phase {
                         HStack(spacing: 6) {
                             ProgressView().controlSize(.mini).scaleEffect(0.55)
-                            Text(phase)
+                            Text(phase).lineLimit(1).fixedSize()
                             if let p = store.scanProgress {
                                 Bar(fraction: p.fraction, step: p.step, steps: p.steps, tint: Palette.brand)
                                     .frame(width: 92)
@@ -295,11 +297,13 @@ struct Header: View {
                             }
                         }
                         .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                        .fixedSize()
                     }
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 8)
                 if store.page == .folders && !store.unconfigured && store.envelope != nil {
-                    FilterBar(store: store, compact: true).frame(width: 220)
+                    FilterBar(store: store, compact: true).frame(minWidth: 120, idealWidth: 220, maxWidth: 220)
                 }
                 controls
             }
@@ -315,27 +319,17 @@ struct Header: View {
         guard let env = store.envelope else {
             return store.phase == "measuring disk" ? "Measuring disk…" : "Reading your repos…"
         }
+        if store.page == .locations {
+            let places = Set(store.folderRows.map(store.location(of:))).count
+            if places > 0 { return Store.count(places, "place") + (places == 1 ? " holds" : " hold") + " your worktrees" }
+        }
         return env.headline
     }
 
     private var controls: some View {
-        HStack(spacing: 8) {
-            Button { store.refresh(measureDisk: true) } label: {
-                Image(systemName: "arrow.clockwise")
-            }
+        Button("Refresh") { store.refresh(measureDisk: true) }
+            .buttonStyle(.wt(.quiet))
             .help("Refresh, measuring disk").disabled(store.busy)
-
-            Menu {
-                Button("Check for updates…") { store.updates.check(manual: true) }
-                Toggle("Check updates automatically", isOn: $store.automaticUpdates)
-                Divider()
-                Picker("Theme", selection: $store.theme) {
-                    Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
-                }
-            } label: { Image(systemName: "slider.horizontal.3") }
-            .menuStyle(.borderlessButton).fixedSize().help("Theme and updates")
-        }
-        .buttonStyle(.borderless).font(.system(size: 12))
     }
 }
 
@@ -354,15 +348,15 @@ struct StatusBar: View {
                 Text(Store.count(store.folderRows.count, "folder"))
                 Text("· " + Store.count(Set(env.worktrees.map(\.repo)).count, "repo"))
                 if store.filtering {
-                    Text("· \(store.folderRows.filter { store.inScope($0) && (store.verdictFilter == nil || $0.folder?.verdict == store.verdictFilter) }.count) shown")
+                    Text("· showing \(store.folderRows.filter { store.inScope($0) && (store.verdictFilter == nil || $0.folder?.verdict == store.verdictFilter) }.count)")
                 }
             }
             Spacer()
             if let d = store.disk {
-                Text("measured \(Store.human(d.total))")
+                Text("\(Store.human(d.total)) on disk")
             }
         }
         .font(.system(size: 11)).foregroundStyle(Palette.muted)
-        .padding(.horizontal, 20).padding(.vertical, 7)
+        .padding(.horizontal, 28).padding(.vertical, 9)
     }
 }

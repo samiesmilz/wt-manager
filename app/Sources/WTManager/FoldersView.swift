@@ -105,7 +105,8 @@ struct FoldersView: View {
     /// Grouped by parent folder over every row, then filtered, so a folder
     /// does not move to "Elsewhere" just because a filter hid its neighbours.
     private func groups(_ rows: [Row]) -> [Group] {
-        let order = Verdict.allCases
+        // The design's order: what needs you first, what can simply go after.
+        let order: [Verdict] = [.unsaved, .agent, .busy, .safe, .kept]
         func sorted(_ rs: [Row]) -> [Row] {
             rs.sorted { a, b in
                 let i = order.firstIndex(of: a.verdict)!, j = order.firstIndex(of: b.verdict)!
@@ -132,7 +133,6 @@ struct FoldersView: View {
         let rows = allRows
         VStack(spacing: 0) {
             header(rows.filter(searched))
-            Divider().opacity(0.35)
             if scrolls {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -192,21 +192,11 @@ struct FoldersView: View {
                 .buttonStyle(.plain).foregroundStyle(Palette.ink(Palette.status("trunk")))
                 .padding(.bottom, -4)
             }
-            HStack(alignment: .center, spacing: 10) {
+            if store.locationFilter != nil {
                 Text(title)
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1).truncationMode(.head)
-                if !rows.isEmpty {
-                    Text(verbatim: "\(rows.count)")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Palette.muted)
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.primary.opacity(0.06)))
-                        .accessibilityLabel(Store.count(rows.count, "folder"))
-                }
-                Spacer()
             }
-            hero(caches: caches, safe: safe)
             if let e = store.error { errorCard(e) }
             if let note = store.commandNote {
                 HStack(spacing: 8) {
@@ -226,20 +216,25 @@ struct FoldersView: View {
             // One line: the two cleanups, each carrying its own size, then
             // what exists only here. The sizes are the "could free"; saying
             // it again in a chip above was the same number twice.
-            let actions = HStack(spacing: 8) {
-                if !caches.isEmpty { cleanButton(caches) }
+            // The figure on the left, the two sweeps on the right: outlined
+            // for the delete, filled for the one that loses nothing.
+            let actions = HStack(spacing: 10) {
                 if !safe.isEmpty {
                     clearButton("Delete \(safe.count) safe · "
                                 + Store.human(safe.reduce(0) { $0 + max($1.worktree.sizeKb, 0) }),
                                 rows: safe)
                 }
+                if !caches.isEmpty { cleanButton(caches) }
             }
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { actions; chips(rows); Spacer(minLength: 0) }
-                VStack(alignment: .leading, spacing: 8) { actions; chips(rows) }
+                HStack(alignment: .bottom, spacing: 16) {
+                    hero(caches: caches, safe: safe); Spacer(minLength: 8); actions
+                }
+                VStack(alignment: .leading, spacing: 10) { hero(caches: caches, safe: safe); actions }
             }
+            chips(rows)
         }
-        .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
+        .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 8)
     }
 
     /// The number the page exists for, at the size of a headline: everything a
@@ -258,7 +253,7 @@ struct FoldersView: View {
                 Text("You could free")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 Text(Store.human(total))
-                    .font(.system(size: 34, weight: .bold, design: .rounded)).monospacedDigit()
+                    .font(.system(size: 44, weight: .bold)).monospacedDigit()
                     .foregroundStyle(Palette.inkReclaim)
                 Text(heroParts(cacheKb: cacheKb, safeKb: safeKb, safeCount: safe.count))
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
@@ -295,13 +290,13 @@ struct FoldersView: View {
     private func chips(_ rows: [Row]) -> some View {
         let commits = rows.reduce(0) { $0 + max($1.worktree.atRisk, 0) }
         let unsaved = rows.filter { $0.verdict == .unsaved }.count
-        if commits > 0 || (store.disk == nil && store.envelope != nil) {
+        if store.disk == nil && store.envelope != nil {
             HStack(spacing: 7) {
                 if store.disk == nil, store.envelope != nil {
                     chip(store.phase == "measuring disk" ? "measuring disk…" : "disk not measured yet",
                          "internaldrive", Palette.status("empty"))
                 }
-                if commits > 0 {
+                if commits < 0 {
                     Button { store.verdictFilter = only == .unsaved ? nil : FoldersView.Verdict.unsaved.rawValue } label: {
                         chip(Store.count(commits, "commit") + " only here"
                              + (unsaved > 0 ? " · " + Store.count(unsaved, "folder") : ""),
@@ -340,7 +335,7 @@ struct FoldersView: View {
             }
             Spacer(minLength: 8)
             Button("Try again") { store.refresh(measureDisk: false) }
-                .controlSize(.small).disabled(store.busy)
+                .buttonStyle(.wt(.quiet)).disabled(store.busy)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
         .background(RoundedRectangle(cornerRadius: 12).fill(Palette.wash(Palette.status("blocked")))
@@ -363,8 +358,8 @@ struct FoldersView: View {
                 .font(.system(size: 11)).foregroundStyle(Palette.muted)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line))
     }
 
     private func notice(_ text: String, tint: Color, mono: Bool = false) -> some View {
@@ -384,9 +379,9 @@ struct FoldersView: View {
         return Button {
             store.preview(Store.Action(kind: .clean, paths: ws.map(\.path)))
         } label: {
-            Label("Clean caches · \(Store.human(kb))", systemImage: "sparkles")
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 12).padding(.vertical, 7)
+            Text("Clean caches · \(Store.human(kb))")
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 16).padding(.vertical, 9)
                 // The one filled button on the page: ink on the ground's
                 // opposite, so it leads in both appearances.
                 .foregroundStyle(Color(nsColor: .windowBackgroundColor))
@@ -422,17 +417,29 @@ struct FoldersView: View {
                         }
                         .frame(maxWidth: 520).padding(.bottom, 10).accessibilityHidden(true)
                     } else {
-                        WityView(store: store, height: 72).frame(width: 72, height: 72)
+                        WityView(store: store, height: 96).frame(width: 96, height: 96)
                             .padding(.bottom, 6).accessibilityHidden(true)
                     }
                     Text(store.envelope == nil ? "Reading your repos…" : "No extra worktree folders")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 20, weight: .semibold))
                     if store.envelope != nil {
                         Text("Every checkout here is a repo's main one. New worktrees show up here as soon as they are created.")
                             .font(.system(size: 12)).foregroundStyle(Palette.muted)
                             .multilineTextAlignment(.center).frame(maxWidth: 380)
-                        Button("Watch another folder…") { store.showingSettings = true }
-                            .controlSize(.regular).padding(.top, 8)
+                        HStack(spacing: 10) {
+                            if !store.cacheCandidates.isEmpty { cleanButton(store.cacheCandidates) }
+                            Button { store.showingSettings = true } label: {
+                                Text("Watch another folder")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .padding(.horizontal, 16).padding(.vertical, 9)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.cardFill)
+                                        .overlay(RoundedRectangle(cornerRadius: 8)
+                                            .strokeBorder(Color.primary.opacity(0.22), lineWidth: 1)))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.top, 10)
                     }
                 }
                 .frame(maxWidth: .infinity).padding(.top, 56)
@@ -466,7 +473,7 @@ struct FoldersView: View {
                     .font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
         }
-        .padding(20)
+        .padding(.horizontal, 28).padding(.top, 12).padding(.bottom, 24)
         .frame(maxWidth: .infinity, alignment: .leading)
         // Deleted folders leave, and the rest close up, rather than the page
         // jumping to its new shape.
@@ -517,9 +524,10 @@ struct FoldersView: View {
             }
             .padding(.leading, 30)
         }
-        .padding(15)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface)
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08))))
+        .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 6)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill)
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line))
+            .shadow(color: Color.black.opacity(0.05), radius: 2, y: 1))
     }
 
     /// What one delete of the ticked folders would do, said on its button.
@@ -572,17 +580,17 @@ struct FoldersView: View {
     private func clearButton(_ title: String, rows: [Row], prominent: Bool = false,
                              warning: Bool = false) -> some View {
         Button { delete(rows) } label: {
-            Label(title, systemImage: "trash")
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .foregroundStyle(prominent ? Color.white : Palette.ink(Palette.reclaim))
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 16).padding(.vertical, 9)
+                .foregroundStyle(prominent ? Color.white : Color.primary)
                 // A fixed deep green, not the ink: ink turns light in dark
                 // mode, and white on light green could not be read.
                 .background(RoundedRectangle(cornerRadius: 8)
                     .fill(prominent ? (warning ? Palette.badge : Color(red: 0.17, green: 0.44, blue: 0.31))
-                                    : Palette.wash(Palette.reclaim))
+                                    : Palette.cardFill)
                     .overlay(RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(prominent ? Color.clear : Palette.edge(Palette.reclaim), lineWidth: 1)))
+                        .strokeBorder(prominent ? Color.clear : Color.primary.opacity(0.22), lineWidth: 1)))
                 .fixedSize()
                 .contentShape(Rectangle())
         }
@@ -605,39 +613,40 @@ struct FoldersView: View {
         // The whole way, then only its last step, then the name alone. Cut
         // with an ellipsis, the way shrank to a stray dot beside the name.
         let near = (parent as NSString).lastPathComponent
-        return ViewThatFits(in: .horizontal) {
-            if agentHome {
-                HStack(spacing: 0) { named; Text("  .claude/worktrees").foregroundStyle(Palette.muted) }
-            }
-            if !g.elsewhere && !parent.isEmpty && !agentHome {
-                HStack(spacing: 0) { Text(parent + "/").foregroundStyle(Palette.muted); named }
-                HStack(spacing: 0) { Text("…/" + near + "/").foregroundStyle(Palette.muted); named }
-            }
-            named.truncationMode(.middle)
-        }
-        .font(.system(size: 13))
+        _ = near
+        return named.truncationMode(.middle)
+        .font(.system(size: 15))
         .help(g.elsewhere ? "Folders that sit alone in their parent" : g.id)
+    }
+
+    /// Where a group's folders live, the way the design writes it under the
+    /// name: `.claude/worktrees` for an agent's home, the tilde path otherwise.
+    private func groupWhere(_ g: Group) -> String {
+        if g.elsewhere { return "" }
+        let parent = (g.id as NSString).deletingLastPathComponent
+        if (g.id as NSString).lastPathComponent == "worktrees"
+            && (parent as NSString).lastPathComponent == ".claude" { return ".claude/worktrees" }
+        return (g.id as NSString).abbreviatingWithTildeInPath
     }
 
     private func card(_ g: Group) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: g.elsewhere ? "folder" : "folder.fill")
-                    .font(.system(size: 20)).foregroundStyle(Palette.status("trunk"))
-                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     pathTitle(g)
-                    Text(g.elsewhere
+                    (Text(groupWhere(g)).font(.system(size: 12, design: .monospaced))
+                     + Text((groupWhere(g).isEmpty ? "" : " · ") + (g.elsewhere
                          ? "one folder in each of \(g.rows.count) places · " + Store.human(g.kb)
-                         : Store.count(g.rows.count, "folder") + " · " + Store.human(g.kb))
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                         : Store.count(g.rows.count, "folder") + " · " + Store.human(g.kb)))
+                        .font(.system(size: 12)))
+                        .foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
                 // Only folders that lose nothing. Unsaved work is ticked one
                 // at a time: "select all" to clear a card must not sweep up
                 // the one folder that still holds something.
                 let pickable = Set(g.rows.filter(\.verdict.lossless).map(\.id))
-                if !pickable.isEmpty {
+                if pickable.count < 0 {
                     let all = pickable.isSubset(of: selected)
                     Button(all ? "Deselect" : "Select all") {
                         if all { selected.subtract(pickable) } else { selected.formUnion(pickable) }
@@ -671,8 +680,8 @@ struct FoldersView: View {
             }
         }
         .padding(15)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface)
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08))))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill)
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line)))
     }
 }
 
@@ -706,7 +715,7 @@ private struct FolderRow: View {
             line
             if expanded {
                 WorktreeDetail(store: store, worktree: row.worktree)
-                    .padding(.leading, 52).padding(.top, 2).padding(.bottom, 12)
+                    .padding(.leading, 29).padding(.top, 2).padding(.bottom, 12)
                     .transition(.opacity)
             }
         }
@@ -714,60 +723,42 @@ private struct FolderRow: View {
 
     private var line: some View {
         let w = row.worktree, v = row.verdict
-        return HStack(spacing: 10) {
-            Image(systemName: "chevron.right")
-                .font(.system(size: 8, weight: .bold))
-                .rotationEffect(.degrees(expanded ? 90 : 0))
-                .foregroundStyle(Palette.faint).frame(width: 8)
-                .accessibilityHidden(true)
-            // A slot either way, so the names line up.
+        return HStack(alignment: .center, spacing: 14) {
             Toggle("", isOn: $selected).toggleStyle(.checkbox).labelsHidden()
                 .disabled(!row.deletable)
-                .opacity(row.deletable ? 1 : 0)
                 .help(v.lossless ? "Select for one delete"
-                                 : "Tick to delete anyway: its work is saved first")
+                                 : row.anyway ? "Tick to delete anyway: its work is saved first" : row.reason)
                 .accessibilityLabel("Select \(row.name)")
-                .accessibilityHidden(!row.deletable)
-            // Two lines that each share their width: the name with its
-            // verdict, then where it lives with why. A fixed reason column
-            // beside both cut every name to "copy-serm…hts-update".
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(row.name)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1).truncationMode(.middle)
-                        .layoutPriority(1)
-                    if let tool = row.madeBy {
-                        Text(tool).font(.system(size: 11)).foregroundStyle(Palette.muted)
-                            .padding(.horizontal, 6).padding(.vertical, 1)
-                            .overlay(RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1))
+            // Name over branch.
+            VStack(alignment: .leading, spacing: 3) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        Text(row.name).font(.system(size: 13, weight: .semibold)).lineLimit(1).fixedSize()
+                        Text(row.madeBy ?? "By hand").font(.system(size: 11)).foregroundStyle(Palette.muted)
+                            .padding(.horizontal, 7).padding(.vertical, 1)
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line, lineWidth: 1))
                             .fixedSize()
                     }
-                    Spacer(minLength: 0)
-                    // A dot carries the colour; the word stays quiet. Twelve
-                    // bold orange "Unsaved work" labels were most of the page.
-                    HStack(spacing: 5) {
-                        Circle().fill(v.tint).frame(width: 6, height: 6)
-                        Text(v.label).font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Palette.ink(v.tint))
-                    }
-                    .fixedSize()
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text((w.branch ?? "detached") + " · " + (elsewhere ? row.parent : w.repo))
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Text(row.name).font(.system(size: 13, weight: .semibold))
                         .lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 0)
-                    Text(row.reason).font(.system(size: 11)).foregroundStyle(Palette.muted)
-                        .lineLimit(1).truncationMode(.tail)
-                        .layoutPriority(1)
-                        .help(row.reason)
                 }
+                Text(w.branch ?? "detached")
+                    .font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted)
+                    .lineLimit(1).truncationMode(.middle)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .help(w.path)
-            // Under the pointer, the three ways out of the app, so handing a
-            // folder off does not need its details opened first.
+            // Verdict over reason, in its own column.
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Circle().fill(v.tint).frame(width: 8, height: 8)
+                    Text(v.label).font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.ink(v.tint))
+                }
+                Text(row.reason.prefix(1).uppercased() + row.reason.dropFirst()).font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    .lineLimit(1).truncationMode(.tail).help(row.reason)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             if hovering {
                 HStack(spacing: 4) {
                     if store.editorChoice != nil {
@@ -776,48 +767,41 @@ private struct FolderRow: View {
                     quick("terminal", "Open in terminal") { store.openInTerminal(w) }
                     quick("folder", "Reveal in Finder") { store.reveal(w) }
                 }
-                .transition(.opacity)
             }
-            // The size, and under it the part a build puts back. A folder
-            // holding unsaved work cannot go, but its caches can: measured,
-            // 44GB of a 45GB Rust worktree was `target/`.
-            VStack(alignment: .trailing, spacing: 2) {
+            // The size, and under it what a build would put back.
+            VStack(alignment: .trailing, spacing: 3) {
                 Text(w.sizeKb > 0 ? Store.human(w.sizeKb) : "—")
-                    .font(.system(size: 11, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(Palette.muted)
+                    .font(.system(size: 13)).monospacedDigit()
                 if w.reclaimKb > 0 {
                     Button("clean \(Store.human(w.reclaimKb))") {
                         store.preview(Store.Action(kind: .clean, paths: [w.path]))
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Palette.inkReclaim)
                     .help("Clean this folder's caches (preview first). The folder stays.")
                     .accessibilityLabel("Clean \(Store.human(w.reclaimKb)) of caches in \(row.name)")
                 }
             }
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 92, alignment: .trailing)
             SwiftUI.Group {
                 if v.lossless {
-                    Button(action: delete) { Image(systemName: "trash") }
-                        .buttonStyle(.plain)
-                        .help("Delete this folder (preview first)")
-                        .accessibilityLabel("Delete \(row.name)")
+                    Button(action: delete) {
+                        Image(systemName: "trash").font(.system(size: 13))
+                            .frame(width: 32, height: 32)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.cardFill)
+                                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line, lineWidth: 1)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete this folder (preview first)")
+                    .accessibilityLabel("Delete \(row.name)")
                 } else {
-                    // No button, and the reason why, rather than a blank.
-                    Image(systemName: "trash.slash").opacity(0.35)
-                        .help(row.anyway ? "Holds unsaved work. Tick it to delete it anyway." : row.reason)
-                        .accessibilityLabel("Cannot delete \(row.name) from here")
+                    Color.clear.frame(width: 32, height: 32)
                 }
             }
-            .font(.system(size: 12))
-            .foregroundStyle(hovering ? Palette.ink(v.tint) : Palette.muted)
-            .frame(width: 22, height: 16)
         }
-        .padding(.vertical, 7).padding(.horizontal, 6)
-        .background(RoundedRectangle(cornerRadius: 8)
-            .fill(selected ? Palette.wash(v.tint) : hovering ? Color.primary.opacity(0.04) : .clear))
-        .padding(.horizontal, -6)
+        .padding(.vertical, 12)
+        .background(selected ? Palette.wash(v.tint) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture(perform: toggle)
         .onHover { hovering = $0 }

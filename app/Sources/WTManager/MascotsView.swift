@@ -64,7 +64,7 @@ struct MascotsView: View {
             }
             .frame(maxWidth: .infinity).padding(.vertical, 14).padding(.horizontal, 8)
             .background(RoundedRectangle(cornerRadius: 12)
-                .fill(selected ? Palette.mascot.opacity(0.10) : Palette.surface))
+                .fill(selected ? Palette.mascot.opacity(0.10) : Palette.cardFill))
             .overlay(RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(selected ? Palette.mascot : Color.primary.opacity(0.08),
                               lineWidth: selected ? 1.5 : 1))
@@ -93,7 +93,7 @@ struct MascotsView: View {
             }
             .frame(maxWidth: .infinity).padding(.vertical, 14)
             .background(RoundedRectangle(cornerRadius: 12)
-                .fill(selected ? Palette.mascot.opacity(0.10) : Palette.surface))
+                .fill(selected ? Palette.mascot.opacity(0.10) : Palette.cardFill))
             .overlay(RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(selected ? Palette.mascot : Color.primary.opacity(0.08),
                               lineWidth: selected ? 1.5 : 1))
@@ -185,8 +185,8 @@ struct MascotsView: View {
                 .foregroundStyle(Palette.muted)
                 .padding(.leading, 2)
             VStack(alignment: .leading, spacing: 0) { content() }
-                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

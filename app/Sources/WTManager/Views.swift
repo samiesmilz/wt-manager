@@ -51,7 +51,7 @@ struct Hairline: View {
     var inset: CGFloat = 0
     var body: some View {
         Rectangle()
-            .fill(.primary.opacity(0.07))
+            .fill(Palette.line)
             .frame(height: 1)
             .padding(.leading, inset)
     }
@@ -84,11 +84,12 @@ struct FirstRun: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(found.isEmpty ? "Where do you keep your repositories?"
                                        : "Found your repositories")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .font(.system(size: 20, weight: .semibold))
                     Text(found.isEmpty
                          ? "Nothing turned up in the usual folders, so point me at yours."
-                         : "Scanned the usual folders. Pick the ones to watch.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                         : "These are the usual places code lives on this Mac. Untick any you don’t want watched.")
+                        .font(.system(size: 13)).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if !found.isEmpty {
@@ -98,9 +99,9 @@ struct FirstRun: View {
                             row(c)
                         }
                     }
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill))
                     .overlay(RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(.primary.opacity(0.08), lineWidth: 1))
+                        .strokeBorder(Palette.line, lineWidth: 1))
                 }
 
                 HStack(spacing: 10) {
@@ -109,12 +110,13 @@ struct FirstRun: View {
                             store.adopt(roots: found.map(\.root).filter(chosen.contains))
                         }
                         .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent).tint(Color.primary.opacity(0.85))
+                        .buttonStyle(.wt(.primary))
                         .disabled(chosen.isEmpty || store.adopting)
                     }
                     Button(found.isEmpty ? "Choose a folder…" : "Choose another…") {
                         store.chooseRoot()
                     }
+                    .buttonStyle(.wt(found.isEmpty ? .primary : .secondary))
                     .disabled(store.adopting)
                     if store.adopting { ProgressView().controlSize(.small) }
                     Spacer(minLength: 0)
@@ -145,10 +147,10 @@ struct FirstRun: View {
             if chosen.contains(c.root) { chosen.remove(c.root) } else { chosen.insert(c.root) }
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: chosen.contains(c.root) ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 13))
-                    .foregroundStyle(chosen.contains(c.root) ? Color.accentColor : Palette.muted)
-                Text(c.display).font(.system(size: 12))
+                Image(systemName: chosen.contains(c.root) ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 14))
+                    .foregroundStyle(chosen.contains(c.root) ? Palette.action : Palette.muted)
+                Text(c.display).font(.system(size: 12, design: .monospaced))
                 Spacer(minLength: 8)
                 Text("\(c.repos) repo\(c.repos == 1 ? "" : "s")")
                     .font(.system(size: 11, design: .rounded)).foregroundStyle(Palette.muted)
@@ -218,10 +220,10 @@ struct CompletionBanner: View {
             Spacer(minLength: 4)
             if let savedIn, !(plan.result?.completedPaths.isEmpty ?? true) {
                 Button("Show saved work") { NSWorkspace.shared.open(URL(fileURLWithPath: savedIn)) }
-                    .controlSize(.small)
+                    .buttonStyle(.wt(.quiet))
                     .help(savedIn)
             }
-            Button("View result") { store.plan = plan }.controlSize(.small)
+            Button("View result") { store.plan = plan }.buttonStyle(.wt(.quiet))
             Button { store.completion = nil } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain).accessibilityLabel("Dismiss operation result")
         }
@@ -243,12 +245,12 @@ struct MergeSpeechBanner: View {
                 Text(message).font(.system(size: 11)).lineLimit(compact ? 3 : nil).help(message).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button("Review checkout") { store.preview(Store.Action(kind: .reap, paths: nudge.paths)); onReview?() }
-                        .controlSize(.small).disabled(store.busy || store.plan != nil)
+                        .buttonStyle(.wt(.quiet)).disabled(store.busy || store.plan != nil)
                     if let row = LinkedPRSummary.groups(store.envelope?.worktrees ?? []).first(where: { $0.id == nudge.id }),
                        let url = row.webURL {
                         Link("Open PR", destination: url).controlSize(.small)
                     }
-                    Button("Dismiss") { store.dismissMerge(nudge.id) }.controlSize(.small)
+                    Button("Dismiss") { store.dismissMerge(nudge.id) }.buttonStyle(.wt(.quiet))
                 }
             }
             Spacer(minLength: 0)

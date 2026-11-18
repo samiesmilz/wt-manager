@@ -35,43 +35,32 @@ struct LocationsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                // Title and line together, the way the Mascots page has them.
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(alignment: .center, spacing: 10) {
-                        Text("Locations")
-                            .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        if !places.isEmpty {
-                            Text(verbatim: "\(places.count)")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Palette.muted)
-                                .padding(.horizontal, 8).padding(.vertical, 2)
-                                .background(Capsule().fill(Color.primary.opacity(0.06)))
-                        }
+            VStack(alignment: .leading, spacing: 20) {
+                CardBox {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Where worktree folders live").font(.system(size: 15, weight: .semibold))
+                        Text(Store.count(places.count, "location") + " · biggest first")
+                            .font(.system(size: 12)).foregroundStyle(Palette.muted)
                     }
-                    Text("Where your worktree folders live, biggest first. Open one to see them.")
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
-                }
-                if places.isEmpty {
-                    Text(store.envelope == nil ? "Reading your repos…" : "No worktree folders yet.")
-                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(places.enumerated()), id: \.element.id) { i, place in
-                            if i > 0 { Hairline().padding(.horizontal, 14) }
-                            PlaceRow(store: store, place: place, share: share(of: place))
-                        }
+                    .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
+                    if places.isEmpty {
+                        Hairline().padding(.horizontal, 20)
+                        Text(store.envelope == nil ? "Reading your repos…" : "No worktree folders yet.")
+                            .font(.system(size: 13)).foregroundStyle(Palette.muted)
+                            .padding(.horizontal, 20).padding(.vertical, 14)
                     }
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+                    ForEach(places) { place in
+                        Hairline().padding(.horizontal, 20)
+                        PlaceRow(store: store, place: place, share: share(of: place))
+                    }
                 }
                 if !store.leftovers.isEmpty { LeftoversCard(store: store, items: store.leftovers) }
                 if let note = store.commandNote {
-                    Text(note).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Text(note).font(.system(size: 12)).foregroundStyle(Palette.muted)
                         .textSelection(.enabled)
                 }
             }
-            .padding(20)
+            .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -86,6 +75,7 @@ private struct PlaceRow: View {
     /// "5 folders · 3 safe · 2 unsaved · 4.1GB caches", only the parts there are.
     private var summary: String {
         var parts: [String] = [Store.count(place.folders.count, "folder")]
+        if place.kb > 0 { parts.append(Store.human(place.kb)) }
         let safe: Int = place.count("safe")
         let unsaved: Int = place.count("unsaved")
         if safe > 0 { parts.append("\(safe) safe") }
@@ -96,6 +86,11 @@ private struct PlaceRow: View {
     @State private var hovering = false
 
     private var elsewhere: Bool { place.id == Store.elsewhere }
+    /// `.claude/worktrees` for an agent's home, the tilde path otherwise.
+    private var shownPath: String {
+        place.id.hasSuffix("/.claude/worktrees") ? ".claude/worktrees"
+            : (place.id as NSString).abbreviatingWithTildeInPath
+    }
 
     var body: some View {
         Button {
@@ -103,34 +98,35 @@ private struct PlaceRow: View {
             store.verdictFilter = nil
             store.page = .folders
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: elsewhere ? "folder" : "folder.fill")
-                    .font(.system(size: 17)).foregroundStyle(Palette.muted)
-                    .frame(width: 24)
+            HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(store.locationLabel(place.id))
                         .font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                    Text(elsewhere ? "folders that sit alone in their parent" : place.id)
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Text(elsewhere ? "folders that sit alone in their parent" : shownPath)
+                        .font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted)
                         .lineLimit(1).truncationMode(.head)
-                    Text(summary)
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(1)
-                    // How big this place is beside the biggest: the list is
-                    // sorted by size, and the bar is that order made visible.
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.08)).frame(width: 180, height: 5)
-                        Capsule().fill(Palette.status("draft"))
-                            .frame(width: max(4, 180 * CGFloat(share)), height: 5)
-                    }
-                    .padding(.top, 3).accessibilityHidden(true)
                 }
-                Spacer(minLength: 8)
-                Text(place.kb > 0 ? Store.human(place.kb) : "—")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded)).monospacedDigit()
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Palette.faint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // How big this place is beside the biggest: the list is
+                // sorted by size, and the bar is that order made visible.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(summary).font(.system(size: 12)).foregroundStyle(Palette.muted).lineLimit(1)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Palette.line)
+                            Capsule().fill(Palette.status("draft"))
+                                .frame(width: max(4, geo.size.width * CGFloat(share)))
+                        }
+                    }
+                    .frame(height: 5).accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Open").font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 11).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.quiet)
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line, lineWidth: 1)))
             }
-            .padding(.horizontal, 14).padding(.vertical, 11)
+            .padding(.horizontal, 20).padding(.vertical, 12)
             .background(hovering ? Color.primary.opacity(0.04) : .clear)
             .contentShape(Rectangle())
         }

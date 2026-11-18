@@ -89,6 +89,23 @@ enum Palette {
     static let selection = dynamic(light: Color.accentColor.opacity(0.14),
                                    dark: Color.accentColor.opacity(0.24))
 
+    /// The design's solid grounds: a white page, a warm rail beside it, and
+    /// one hairline colour, each with its dark counterpart.
+    static let ground = dynamic(light: Color(red: 1, green: 1, blue: 1),
+                                dark: Color(red: 0.110, green: 0.106, blue: 0.098))
+    static let rail = dynamic(light: Color(red: 0.961, green: 0.953, blue: 0.937),
+                              dark: Color(red: 0.090, green: 0.086, blue: 0.078))
+    static let line = dynamic(light: Color(red: 0.906, green: 0.890, blue: 0.863),
+                              dark: Color(red: 0.227, green: 0.216, blue: 0.200))
+    static let cardFill = dynamic(light: Color(red: 1, green: 1, blue: 1),
+                                  dark: Color(red: 0.149, green: 0.141, blue: 0.133))
+    /// The filled button: ink on a light window. On a dark one it stays
+    /// dark enough for the white label the system draws on it.
+    static let action = dynamic(light: Color(red: 0.122, green: 0.114, blue: 0.102),
+                                dark: Color(red: 0.42, green: 0.40, blue: 0.37))
+    static let rust = dynamic(light: Color(red: 0.659, green: 0.310, blue: 0.133),
+                              dark: Color(red: 0.878, green: 0.576, blue: 0.373))
+
     /// Quiet material for information cards. Colour identifies the topic on
     /// the small mark; the reading surface stays consistent across topics.
     static let surface = dynamic(light: Color.white.opacity(0.72),
@@ -191,5 +208,97 @@ struct PrimaryActionStyle: ButtonStyle {
                 .fill(Palette.brand.opacity(enabled ? (configuration.isPressed ? 0.82 : 1) : 0.38)))
             .contentShape(Rectangle())
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+// MARK: the design's controls
+
+extension Palette {
+    private static func hex(_ v: UInt32) -> Color {
+        Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+    /// Text on a filled primary button.
+    static let onAction = dynamic(light: hex(0xFFFFFF), dark: hex(0x1C1B19))
+    static let danger = dynamic(light: hex(0xB93A26), dark: hex(0xC4452F))
+    /// The border of an outlined control: a step darker than a card's hairline.
+    static let controlLine = dynamic(light: hex(0xCFC9BF), dark: hex(0x5A554E))
+    static let quiet = dynamic(light: hex(0xF5F3EF), dark: hex(0x2E2B28))
+    static let warnFill = dynamic(light: hex(0xFBF4EA), dark: hex(0x33291C))
+    static let warnLine = dynamic(light: hex(0xEBD9BF), dark: hex(0x5A4526))
+    static let safeInk = dynamic(light: hex(0x23694A), dark: hex(0x7FD1A6))
+    static let agentInk = dynamic(light: hex(0x1F5FA8), dark: hex(0x8DBBF0))
+    static let riskInk = dynamic(light: hex(0x9A4B00), dark: hex(0xF0B26B))
+    static let field = dynamic(light: hex(0xFAF9F7), dark: hex(0x262422))
+}
+
+/// The four buttons the design draws. Drawn here rather than left to the
+/// system's bordered styles, so a button looks the same in every window,
+/// sheet and offscreen render, in both appearances.
+struct WTButtonStyle: ButtonStyle {
+    enum Kind { case primary, secondary, quiet, danger }
+    var kind: Kind = .secondary
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let small: Bool = kind == .quiet
+        return configuration.label
+            .font(.system(size: small ? 12 : 13, weight: .semibold))
+            .lineLimit(1).fixedSize()
+            .foregroundStyle(ink)
+            .padding(.horizontal, small ? 11 : 16).padding(.vertical, small ? 6 : 9)
+            .background(RoundedRectangle(cornerRadius: 8).fill(fill))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(stroke, lineWidth: 1))
+            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .contentShape(Rectangle())
+    }
+
+    private var ink: Color {
+        switch kind {
+        case .primary: return Palette.onAction
+        case .danger: return .white
+        case .secondary, .quiet: return Color.primary
+        }
+    }
+    private var fill: Color {
+        switch kind {
+        case .primary: return Palette.action
+        case .danger: return Palette.danger
+        case .secondary: return Palette.cardFill
+        case .quiet: return Palette.quiet
+        }
+    }
+    private var stroke: Color {
+        switch kind {
+        case .primary: return Palette.action
+        case .danger: return Palette.danger
+        case .secondary: return Palette.controlLine
+        case .quiet: return Palette.line
+        }
+    }
+}
+
+extension ButtonStyle where Self == WTButtonStyle {
+    static func wt(_ kind: WTButtonStyle.Kind) -> WTButtonStyle { WTButtonStyle(kind: kind) }
+}
+
+/// An uppercase group label, as above every card in the design.
+struct GroupLabel: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .semibold)).tracking(0.5)
+            .foregroundStyle(Palette.muted)
+    }
+}
+
+/// The design's card: white, 12pt corners, a warm hairline.
+struct CardBox<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) { content() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line, lineWidth: 1))
     }
 }
