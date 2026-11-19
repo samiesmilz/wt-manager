@@ -27,7 +27,42 @@ enum Notifier {
     }
 }
 
+extension Notifier {
+    private static let diskKey = "wtmanager.diskWarnedAt"
+
+    /// How full the startup disk is, 0 to 1, by what macOS says is available
+    /// for things a person keeps.
+    static func diskUsed() -> Double? {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        guard let v = try? home.resourceValues(forKeys: [.volumeTotalCapacityKey,
+                                                         .volumeAvailableCapacityForImportantUsageKey]),
+              let total = v.volumeTotalCapacity, total > 0,
+              let free = v.volumeAvailableCapacityForImportantUsage else { return nil }
+        return 1 - Double(free) / Double(total)
+    }
+
+    /// At most once a day, and only when there is something to do about it.
+    static func diskNearlyFull(used: Double, freeable: String?) {
+        let last: Double = UserDefaults.standard.double(forKey: diskKey)
+        guard Date().timeIntervalSince1970 - last > 86400 else { return }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: diskKey)
+        let content = UNMutableNotificationContent()
+        content.title = "Your disk is \(Int((used * 100).rounded()))% full"
+        content.body = freeable.map { "wt-manager could free " + $0 + " from worktree folders and caches." }
+            ?? "Open wt-manager to see what your worktree folders hold."
+        let request = UNNotificationRequest(identifier: "disk-full", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+}
+
 extension Store {
+    /// Called after each scan, beside the merge announcements.
+    func announceDisk() {
+        guard systemNotifications, diskNotifications, let used = Notifier.diskUsed(), used >= 0.9 else { return }
+        let free: String? = freeable.flatMap { $0.totalKb > 0 ? Store.human($0.totalKb) : nil }
+        Notifier.diskNearlyFull(used: used, freeable: free)
+    }
+
     /// Called after each scan. The in-app banner covers the window being
     /// open, so this speaks only when it is not the active app.
     func announceMerges() {

@@ -153,7 +153,11 @@ extension Mascot {
     public func image(figure: String, gauge: Int, eyes: String, frame: Int, skin: String,
                tint: String, fitting height: CGFloat, mood: String? = nil, detailed: Bool = false,
                showSignal: Bool = true, walking: Bool = false, facesLeft: Bool = false) -> NSImage? {
-        let dedicatedArt = detailed ? companion : (!showSignal ? menu : nil)
+        // One character everywhere: the 32-pixel drawing wherever it fits, and
+        // its own 22-pixel reduction below that. The header used to fall back
+        // to a third, older drawing whenever it carried the status mark.
+        let roomy: Bool = height >= CGFloat(companion?.width ?? 32)
+        let dedicatedArt = (detailed || roomy) ? companion : menu
         if let art = dedicatedArt {
             let walkKey = "\(figure)/\(eyes)/\(frame % max(art.walkingFrames ?? frames, 1))"
             let standKey = "\(figure)/\(eyes)/\(frame % max(frames, 1))"

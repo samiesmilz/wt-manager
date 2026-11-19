@@ -81,6 +81,10 @@ final class Store: ObservableObject {
     /// is running. Stored here: an extension cannot hold them.
     @Published var commandNote: String?
     @Published var commandRunning = false
+    /// The sheet put away while its work carries on. The plan itself stays:
+    /// it is what the result lands in, and what keeps Quit off.
+    @Published var planHidden = false
+    @AppStorage("wtmanager.diskNotifications") var diskNotifications = true
     /// Opt-in: a banner in Notification Center when a pull request merges
     /// while the window is not in front.
     @AppStorage("wtmanager.systemNotifications") var systemNotifications = false
@@ -334,7 +338,7 @@ final class Store: ObservableObject {
                 self.envelope = env
                 self.error = nil
                 self.countedAt = Date()
-                self.announceMerges()
+                self.announceMerges(); self.announceDisk()
             case .failure(let e):
                 self.error = e.localizedDescription
             }
@@ -852,6 +856,7 @@ extension Store {
         p.stage = .committing
         p.progress = nil
         p.since = Date()
+        planHidden = false
         plan = p
         var absorbed = false
         engine.run(["--json"] + action.commitArgs(for: preview), progress: { [weak self] pr in
@@ -883,6 +888,11 @@ extension Store {
             p.progress = nil
             p.since = Date()
             self.plan = p
+            // Hidden while it worked: a finished run reports through the
+            // banner, and anything that needs a decision brings the sheet back.
+            let wasHidden: Bool = self.planHidden
+            self.planHidden = false
+            if wasHidden, p.stage == .done, (p.result?.failed ?? 0) == 0 { self.plan = nil }
             if p.stage == .done, let r = p.result {
                 self.completion = p
                 if self.history.reward(id: p.id, done: r.done, completed: r.completedPaths.count, freedKb: r.freedKb) {

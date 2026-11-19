@@ -316,7 +316,7 @@ ROBOT = figure(Figure(
 ))
 
 ROOSTER = figure(Figure(
-    id="rooster", name="Cooper", tell="plum comb and warm beak", tail=None,
+    id="rooster", name="Cooper", tell="red comb, wattles and a sickle tail", tail=None,
     crown=[".....pp.pp......", "....#ppppp#.....",
            "...#ffffffff#...", "..#ffffffffff#.."],
     eye_row="..#fffffffffff#.",
@@ -329,7 +329,7 @@ ROOSTER = figure(Figure(
 ))
 
 RABBIT = figure(Figure(
-    id="rabbit", name="Pip", tell="long ears and tiny paws", tail=None,
+    id="rabbit", name="Pip", tell="a fluffy bunny with tall ears and a cotton tail", tail=None,
     crown=["...##......##...", "..#pf#....#fp#..",
            "..#pf#....#fp#..", "..#fff####fff#.."],
     eye_row=".#ffffffffffff#.",

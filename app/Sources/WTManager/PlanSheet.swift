@@ -203,8 +203,7 @@ struct PlanSheet: View {
         case .changed:
             return "A confirmation only covers exactly what you reviewed."
         case .committing:
-            return kind == .reap ? "Through git, one folder at a time."
-                                 : "Build output only, one folder at a time."
+            return "You can hide this; it keeps going and the result appears on the Folders page."
         case .reviewing:
             guard let p = preview, !p.paths.isEmpty else { return plan.action.blurb }
             if let _ = mustType {
@@ -808,10 +807,10 @@ struct PlanSheet: View {
                 Button("Close preview") { store.plan = nil }
                     .buttonStyle(.wt(.secondary)).keyboardShortcut(.cancelAction)
             case .committing:
-                // Nothing to press while a delete is in flight: closing the
-                // sheet would not stop it, and a Cancel that does not cancel
-                // is a lie about what it does.
-                Button("Working…") { }.buttonStyle(.wt(.secondary)).disabled(true)
+                // No Cancel while a delete is in flight: it could not stop it.
+                // Hide only puts the sheet away, and says so.
+                Button("Hide") { store.planHidden = true }.buttonStyle(.wt(.secondary))
+                    .help("Put this away. The work carries on and its result appears on the Folders page.")
             case .reviewing:
                 Button(destructive ? "Cancel" : "Close") { store.plan = nil }
                     .buttonStyle(.wt(.secondary)).keyboardShortcut(.cancelAction)

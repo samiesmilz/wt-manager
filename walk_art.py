@@ -193,21 +193,42 @@ def biped(fig, frame, eyes='open', stand=False):
     return [''.join(r) for r in out]
 
 # ── Cooper: the portrait is already a profile, facing left ──────────────────
+def ink_edges(g, w=S, h=S):
+    """Ink every empty cell that touches a filled one."""
+    edge = [(x, y) for y in range(h) for x in range(w) if g[y][x] == '.' and any(
+        0 <= x + dx < w and 0 <= y + dy < h and g[y + dy][x + dx] != '.'
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))]
+    for x, y in edge: g[y][x] = '#'
+
 def rooster(frame, eyes='open', stand=False):
+    """Cooper strides: the portrait turned to face the way he goes, on legs
+    with a feathered thigh, a shank, three toes ahead and a spur behind."""
     f = frame % 8
-    g = mirror(front('rooster', eyes))
-    for y in range(25, S): g[y] = ['.'] * S
-    for x in range(9, 20): px(g, x, 24, '#' if g[24][x] == '.' else g[24][x])
+    g = mirror([list(r) for r in _sprite('rooster', eyes, 0, False)])
     bob = 0 if stand else -BOB[f]
     nod = 0 if stand else (0, 0, 1, 1, 0, 0, 1, 1)[f]         # head leads each step
     if nod:
-        for y in range(0, 17):
-            row = g[y][14:32]; g[y][14:32] = ['.'] + row[:-1]
-    lift(g, 0, 24, bob)
+        for y in range(0, 13):
+            row = g[y][17:32]; g[y][17:32] = ['.'] + row[:-1]
+    lift(g, 0, 25, bob)
     out = blank()
-    for hip, ph, ch in ((11, (f + 4) % 8, 't'), (17, f, 'a')):
+    def one(hip, ph, thigh, shank):
         fx = hip + (0 if stand else FOOT_X[ph]); up = 0 if stand else FOOT_UP[ph] * 2
-        leg(out, hip, 24 - bob, fx, up, 1, ch, (5, 1, ch, 1), outline=False)
+        leg = blank()
+        for y in range(23 - bob, 27 - bob):
+            for x in range(hip, hip + 3): px(leg, x, y, thigh)
+        top, end = 27 - bob, 30 - up
+        n = max(1, end - top)
+        for i in range(n + 1):
+            px(leg, round(hip + 1 + (fx - hip) * i / n), top + i, shank)
+        for x in range(fx + 1, fx + 6): px(leg, x, 31 - up, shank)
+        px(leg, fx - 1, 31 - up, shank)
+        ink_edges(leg)
+        for y in range(S):
+            for x in range(S):
+                if leg[y][x] != '.': out[y][x] = leg[y][x]
+    one(12, (f + 4) % 8, 's', 't')                            # far leg, in shadow
+    one(18, f, 'f', 'a')
     for y in range(S):
         for x in range(S):
             if g[y][x] != '.': out[y][x] = g[y][x]
@@ -217,12 +238,12 @@ def rooster(frame, eyes='open', stand=False):
 HOP_UP = (0, 0, 0, 0, 0, 2, 3, 2)
 def rabbit(frame, eyes='open', stand=False):
     f = frame % 8
-    g = front('rabbit', eyes)
+    g = [list(r) for r in _sprite('rabbit', eyes, 0, False)]  # no feet; tail behind
     for y in range(28, S): g[y] = ['.'] * S
-    for x in range(11, 22): px(g, x, 27, g[27][x] if g[27][x] != '.' else '#')
-    for x in range(12, 21): px(g, x, 28, '#')
-    shift_box(g, (6, 13, 26, 23), 2)
-    shade_far(g, 13, 25)
+    for x in range(9, 23): px(g, x, 28, '#')
+    px(g, 8, 27, '#'); px(g, 23, 27, '#')
+    shift_box(g, (8, 11, 25, 20), 2)
+    shade_far(g, 12, 26)
     up = 0 if stand else HOP_UP[f]
     squash = 0 if stand else (1 if f == 0 else 0)             # lands low
     lift(g, 0, 28, up)
@@ -235,8 +256,11 @@ def rabbit(frame, eyes='open', stand=False):
         fx = hip + (0 if stand else FOOT_X[f]); fu = up
         x0 = fx - 3
         for y in range(28 - fu, 32 - fu):
-            for x in range(x0, x0 + 8):
-                edge = x in (x0, x0 + 7) or y in (28 - fu, 31 - fu)
+            for x in range(x0, x0 + 9):
+                corner = (x in (x0, x0 + 8)) and y == 28 - fu
+                if corner: continue
+                edge = x in (x0, x0 + 8) or y in (28 - fu, 31 - fu) \
+                    or (y == 29 - fu and x in (x0 + 1, x0 + 7) and False)
                 px(out, x, y, '#' if edge else ch)
     for y in range(S):
         for x in range(S):
@@ -344,6 +368,54 @@ OW, OH = 22, 23
 def _set(g, x, y, ch):
     if 0 <= x < OW and 0 <= y < OH: g[y][x] = ch
 
+HEAD_SPANS = {7: ((5, 6), (15, 16)), 8: ((4, 7), (14, 17)), 9: ((4, 17),), 10: ((4, 17),),
+              11: ((3, 18),), 12: ((3, 18),), 13: ((4, 16),), 14: ((5, 16),)}
+
+def cat4(src, f, stand=False):
+    """Wity on all fours, heading right: the portrait's own head, a short body
+    behind it, the plume carried high, four legs on the planted-foot gait."""
+    shift_box(src, (5, 10, 16, 14), 1)                       # the face turns
+    bob = 0 if stand else -BOB[f]
+    sway = 0 if stand else (0, 0, 1, 1, 0, 0, -1, -1)[f]
+    out = [['.'] * OW for _ in range(OH)]
+    def stamp(part):
+        ink_edges(part, OW, OH)
+        for y in range(OH):
+            for x in range(OW):
+                if part[y][x] != '.': out[y][x] = part[y][x]
+    def leg(hip, ph, ch):
+        part = [['.'] * OW for _ in range(OH)]
+        fx = hip + (0 if stand else FOOT_X[ph]); up = 0 if stand else FOOT_UP[ph]
+        top, end = 17 - bob, 21 - up
+        for y in range(top, end + 1):
+            x = round(hip + (fx - hip) * (y - top) / max(1, end - top))
+            _set(part, x, y, ch); _set(part, x + 1, y, ch)
+        for k in range(3): _set(part, fx + k, 22 - up, ch)
+        stamp(part)
+    leg(4, (f + 4) % 8, 's'); leg(13, f, 's')                 # far pair, in shadow
+    plume = [['.'] * OW for _ in range(OH)]                   # the plume, up over the back
+    for y, x0, x1 in ((1, 3, 5), (2, 2, 6), (3, 1, 6), (4, 1, 6), (5, 1, 5), (6, 1, 4), (7, 1, 4),
+                      (8, 1, 3), (9, 1, 3), (10, 1, 3), (11, 2, 4), (12, 2, 4)):
+        for x in range(x0, x1 + 1): _set(plume, x + (sway if y < 6 else 0), y - bob, 's')
+    stamp(plume)
+    body = [['.'] * OW for _ in range(OH)]
+    for y, x0, x1 in ((12, 3, 14), (13, 2, 15), (14, 1, 15), (15, 1, 15), (16, 1, 15), (17, 2, 14)):
+        for x in range(x0, x1 + 1): _set(body, x, y - bob, 'f')
+    stamp(body)
+    leg(1, f, 'f'); leg(10, (f + 4) % 8, 'f')                 # near pair
+    hx, hy = 2, -2 - bob                                      # head: the portrait's own pixels
+    head = [['.'] * OW for _ in range(OH)]
+    for y, spans in HEAD_SPANS.items():
+        for x0, x1 in spans:
+            for x in range(x0, x1 + 1):
+                if src[y][x] != '.': _set(head, x + hx, y + hy, src[y][x])
+    for x in range(6, 16): _set(head, x + hx, 15 + hy, '#')   # chin
+    for y in range(OH):
+        for x in range(OW):
+            if head[y][x] != '.': out[y][x] = head[y][x]
+    return [''.join(r) for r in out]
+
+
 def original(figure, eyes, frame, rows):
     """`rows` is the figure's own front portrait for this expression."""
     f = frame % 8
@@ -353,19 +425,7 @@ def original(figure, eyes, frame, rows):
     g = [[accent if ch == '*' else ch for ch in r] for r in rows]
     for y in (21, 22): g[y] = ['.'] * OW
     if figure == 'cat':
-        shift_box(g, (5, 10, 16, 14), 1)                    # the face turns
-        sway = (0, 0, 1, 1, 0, 0, -1, -1)[f]                 # the plume follows
-        if sway:
-            for y in range(0, 6):
-                row = g[y]
-                g[y] = (['.'] + row[:-1]) if sway > 0 else (row[1:] + ['.'])
-        for hip, ph in ((13, (f + 4) % 8), (4, f)):          # far foot, then near
-            x = hip + FOOT_X[ph]; up = FOOT_UP[ph]
-            for k, ch in enumerate('#fff#'): _set(g, x + k, 21 - up, ch)
-            for k in range(1, 5): _set(g, x + k, 22 - up, '#')
-            if up:                                            # the leg reaches down to it
-                for k in range(1, 4): _set(g, x + k, 20, 'f')
-        return [''.join(r) for r in g]
+        return cat4(g, f)
     if figure == 'crab':
         snap = (0, 0, 0, 1, 1, 0, 0, 0)[f]
         if snap:                                              # claws open a pixel

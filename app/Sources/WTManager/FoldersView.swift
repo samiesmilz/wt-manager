@@ -21,6 +21,8 @@ struct FoldersView: View {
     /// The folder opened to its details, as a row of the old list opened.
     @State var open: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// How folders are ordered inside each group.
+    @AppStorage("wtmanager.sort") private var sort = "needs"
 
     enum Verdict: String, CaseIterable {
         case safe, busy, agent, unsaved, kept
@@ -109,8 +111,19 @@ struct FoldersView: View {
         let order: [Verdict] = [.unsaved, .agent, .busy, .safe, .kept]
         func sorted(_ rs: [Row]) -> [Row] {
             rs.sorted { a, b in
-                let i = order.firstIndex(of: a.verdict)!, j = order.firstIndex(of: b.verdict)!
-                return i != j ? i < j : a.worktree.sizeKb > b.worktree.sizeKb
+                switch sort {
+                case "size":
+                    if a.worktree.sizeKb != b.worktree.sizeKb { return a.worktree.sizeKb > b.worktree.sizeKb }
+                case "age":
+                    if a.worktree.ageDays != b.worktree.ageDays { return a.worktree.ageDays > b.worktree.ageDays }
+                case "name":
+                    break
+                default:
+                    let i = order.firstIndex(of: a.verdict)!, j = order.firstIndex(of: b.verdict)!
+                    if i != j { return i < j }
+                    if a.worktree.sizeKb != b.worktree.sizeKb { return a.worktree.sizeKb > b.worktree.sizeKb }
+                }
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
             }
         }
         let byParent = Dictionary(grouping: rows, by: \.parent)
@@ -234,6 +247,19 @@ struct FoldersView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             chips(rows)
+            if rows.count > 1 {
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                    Text("Sort by").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    Picker("Sort by", selection: $sort) {
+                        Text("What needs you").tag("needs")
+                        Text("Size").tag("size")
+                        Text("Oldest first").tag("age")
+                        Text("Name").tag("name")
+                    }
+                    .labelsHidden().pickerStyle(.menu).fixedSize()
+                }
+            }
         }
         .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 8)
     }

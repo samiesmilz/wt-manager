@@ -47,27 +47,51 @@ class Canvas:
         else:
             self.rect(x,y,x+1,y+1,'#')
             if eyes!='wide': self.put(x+(1 if eyes=='glance' else 0),y,'w')
+    def outline(self, ink='#'):
+        """Ink every empty pixel that touches a filled one: the silhouette's edge."""
+        w,h=self.width,self.height
+        edge=[(x,y) for y in range(h) for x in range(w) if self.p[y][x]=='.' and any(
+              0<=x+dx<w and 0<=y+dy<h and self.p[y+dy][x+dx] not in '.' for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)))]
+        for x,y in edge: self.p[y][x]=ink
     def rows(self): return [''.join(r) for r in self.p]
 
-def sprite(figure,eyes,frame):
+def sprite(figure,eyes,frame,legs=True):
+    """`legs=False` leaves the feet off (and puts Pip's tail behind a right-facing
+    walk): the walker draws its own."""
     c=Canvas();f=frame%8
     if figure=='rabbit':
-        # Plush oval face, restrained muzzle, and one soft folding ear.
-        fold=(0,0,1,2,3,2,1,0)[f]
-        c.ellipse(7,1,13,16,'#');c.ellipse(8,2,12,15,'f');c.ellipse(9,4,11,12,'p')
-        c.poly([(20,2+fold),(24,1+fold),(27,5+fold),(24,16),(19,15)],'#')
-        c.poly([(21,3+fold),(24,3+fold),(25,6+fold),(23,15),(20,14)],'f')
-        c.line(23,5+fold,21,12,'p')
-        c.ellipse(10,23,23,31,'#');c.ellipse(11,24,22,30,'f');c.ellipse(13,25,20,29,'b')
-        c.ellipse(6,28,13,31,'#');c.ellipse(7,29,12,30,'f')
-        c.ellipse(20,28,27,31,'#');c.ellipse(21,29,26,30,'f')
-        c.ellipse(4,10,28,26,'#');c.ellipse(5,11,27,25,'s');c.ellipse(5,11,26,24,'f')
-        c.ellipse(9,18,23,24,'b')
-        c.eye(10,14,eyes);c.eye(20,14,eyes)
-        c.rect(7,19,9,20,'p');c.rect(24,19,25,20,'p')
-        c.rect(15,19,17,19,'p');c.put(16,20,'p')
-        c.put(16,21,'#');c.put(15,22,'#');c.put(17,22,'#')
-        c.line(8,12,11,12,'w')
+        # Pip: a fluffy bunny sitting up. A big round head with cheek tufts,
+        # tall ears pink inside, a white chest and a cotton tail.
+        tw=(0,0,0,1,1,0,0,0)[f]                     # the right ear twitches
+        tl=(0,0,0,0,0,0,-1,0)[f]                    # and now and then the left
+        tx=1 if not legs else 23                    # tail: behind a walker, beside a sitter
+        c.ellipse(tx,20,tx+7,27,'#');c.ellipse(tx+1,21,tx+6,26,'b');c.rect(tx+2,22,tx+3,23,'w')
+        if legs:
+            c.ellipse(2,25,12,31,'#');c.ellipse(3,26,11,30,'f')          # hind feet
+            c.ellipse(19,25,29,31,'#');c.ellipse(20,26,28,30,'f')
+            for x in (4,6,25,27): c.put(x,29,'#')
+        c.ellipse(6,16,25,31,'#');c.ellipse(7,17,24,30,'f')              # body
+        c.ellipse(10,19,21,30,'b')                                       # chest fluff
+        for x in (11,14,17,20): c.put(x,22,'w')
+        for x in (12,15,18): c.put(x,24,'w')
+        if legs:
+            c.ellipse(9,26,14,31,'#');c.ellipse(10,27,13,30,'f')         # front paws
+            c.ellipse(17,26,22,31,'#');c.ellipse(18,27,21,30,'f')
+            c.put(11,30,'#');c.put(12,30,'#');c.put(19,30,'#');c.put(20,30,'#')
+        # ears, then the head over their roots
+        c.ellipse(7+tl,0,14+tl,13,'#');c.ellipse(8+tl,1,13+tl,12,'f');c.ellipse(9+tl,3,12+tl,11,'p')
+        c.ellipse(17+tw,0,24+tw,13,'#');c.ellipse(18+tw,1,23+tw,12,'f');c.ellipse(19+tw,3,22+tw,11,'p')
+        # head: round cheeks wider than the skull, and a forelock
+        for x0,y0,x1,y1 in ((2,12,10,21),(21,12,29,21),(13,5,18,10)): c.ellipse(x0,y0,x1,y1,'#')
+        c.ellipse(4,7,27,21,'#')
+        for x0,y0,x1,y1 in ((3,13,9,20),(22,13,28,20),(14,6,17,9)): c.ellipse(x0,y0,x1,y1,'f')
+        c.ellipse(5,8,26,20,'f')
+        c.ellipse(11,14,20,20,'b')                                       # muzzle
+        c.eye(9,11,eyes);c.eye(20,11,eyes)
+        c.rect(6,16,7,17,'p');c.rect(24,16,25,17,'p')
+        c.rect(15,15,16,15,'p');c.put(15,16,'p');c.put(16,16,'p')
+        c.put(14,17,'#');c.put(17,17,'#');c.put(15,18,'#');c.put(16,18,'#')
+        c.line(8,9,11,8,'w')
     elif figure=='snowman':
         wave=(0,0,-1,-2,-3,-2,-1,0)[f];flutter=(0,1,2,1,0,-1,-2,-1)[f]
         c.line(8,21,3,17+wave,'t');c.line(3,17+wave,1,14+wave,'t')
@@ -86,30 +110,34 @@ def sprite(figure,eyes,frame):
         c.rect(8,7,22,8,'r');c.rect(6,9,25,10,'#');c.rect(7,9,23,9,'h')
         c.rect(9,6,11,7,'g');c.put(9,5,'l')
     elif figure=='rooster':
-        nod=(0,0,0,1,1,0,0,0)[f];wing=(0,0,0,1,1,0,0,0)[f]
-        # Slim neck, compact head, and long legs with alternating toe lifts.
-        c.poly([(21,19),(24,8),(27,7),(27,22)],'#')
-        c.poly([(24,21),(29,11),(30,12),(28,24)],'#')
-        c.poly([(23,18),(25,10),(26,10),(25,21)],'b')
-        c.line(27,17,29,13,'f')
-        c.ellipse(9,16,28,25,'#');c.ellipse(10,17,27,24,'s');c.ellipse(11,17,26,23,'f')
-        c.ellipse(14,18+wing,24,23,'s');c.ellipse(14,18+wing,22,22,'b')
-        c.line(16,20+wing,20,20+wing,'f')
-        c.rect(10,12,16,20,'#');c.rect(11,13,15,19,'f');c.rect(12,14,14,18,'b')
-        c.ellipse(6+nod,5+nod,17+nod,15+nod,'#');c.ellipse(7+nod,6+nod,16+nod,14+nod,'f')
-        c.ellipse(8+nod,6+nod,14+nod,12+nod,'b')
-        for x,y in [(7,2),(10,1),(13,3)]:
-            c.ellipse(x+nod,y+nod,x+2+nod,6+nod,'r')
-        c.put(8+nod,3+nod,'p');c.put(11+nod,2+nod,'p')
-        c.ellipse(6+nod,12+nod,8+nod,16+nod,'r')
-        c.poly([(6+nod,9+nod),(2+nod,11+nod),(6+nod,12+nod)],'#')
-        c.line(3+nod,11+nod,6+nod,11+nod,'a')
-        c.eye(9+nod,7+nod,eyes)
-        left=f in (2,3);right=f in (6,7)
-        for x,lift,dx in [(13,left,1),(22,right,-1)]:
-            end=30 if lift else 31;toe=x+dx if lift else x
-            c.line(x,25,x,28,'a');c.line(x,28,toe,end,'a')
-            c.line(toe-2,end,toe+2,end,'a')
+        # Cooper: a cock in profile. Upright chest, a red comb and wattles, a
+        # dark sickle tail arching over his back, and sturdy yellow legs.
+        nod=(0,0,0,1,1,0,0,0)[f];fl=(0,0,1,1,0,0,0,0)[(f+3)%8]
+        c.poly([(20,15),(22,7-fl),(26,3-fl),(29,4-fl),(30,7-fl),(28,7-fl),(26,6-fl),(24,10),(24,17)],'h')
+        c.poly([(22,17),(26,10-fl),(30,10-fl),(30,13-fl),(27,12-fl),(25,18)],'h')
+        c.poly([(22,19),(27,15),(30,16),(29,19),(26,18),(24,21)],'h')
+        c.ellipse(9,13,24,23,'f')                                        # body
+        c.ellipse(6,13,14,21,'f')                                        # chest, pushed out
+        c.poly([(7,7+nod),(13,7+nod),(16,15),(7,16)],'f')                # neck
+        c.ellipse(5,3+nod,13,10+nod,'f')                                 # head
+        for x,top in zip(range(5,14),(3,1,2,3,1,2,3,2,3)):               # comb: three points
+            c.rect(x,top+nod,x,4+nod,'r')
+        c.rect(12,5+nod,13,5+nod,'r')
+        c.poly([(5,6+nod),(1,7+nod),(5,8+nod)],'a')                      # beak
+        c.ellipse(4,9+nod,6,13+nod,'r')                                  # wattles
+        if legs:
+            for hip in (11,17):
+                up=1 if hip==17 and f in (5,6) else 0                    # a scratch at the ground
+                c.rect(hip,24,hip+2,26,'f')                              # feathered thigh
+                c.rect(hip+1,27,hip+1,30-up,'a')                         # shank
+                c.rect(hip-3,31-up,hip+1,31-up,'a');c.put(hip+3,31-up,'a')   # toes ahead, spur behind
+        c.outline()
+        c.ellipse(13,15,22,21,'#');c.ellipse(14,16,21,20,'s')            # wing
+        c.line(15,18,20,18,'b');c.line(17,20,20,20,'b')
+        c.line(9,10+nod,10,15,'b');c.line(11,9+nod,13,15,'b')            # hackle
+        c.line(23,8-fl,26,4-fl,'g');c.line(26,11-fl,29,11-fl,'g');c.line(26,17,28,17,'g')
+        c.put(1,7+nod,'t')                                               # beak tip
+        c.eye(7,5+nod,eyes)
     elif figure=='palm':
         sway=(0,1,2,1,0,-1,-2,-1)[f]
         c.ellipse(6,28,28,31,'t');c.line(8,29,25,29,'b')
@@ -470,7 +498,7 @@ def export(skins, slots, eyes, frames):
         for name,skin in skins.items():
             palettes[f'{figure}/{name}']={ch:skin[slot] for ch,slot in slots.items() if slot!='accent'} | ACCESSORIES
             if figure == 'antenna': palettes[f'{figure}/{name}'].update(r='#fb5966', l='#45d8d1')
-            if figure == 'rooster': palettes[f'{figure}/{name}']['r'] = '#b9719c'
+            if figure == 'rooster': palettes[f'{figure}/{name}']['r'] = '#d8433c'
     return {'width':SIZE,'height':SIZE,
             'sprites':{f'{fig}/{eye}/{f}':sprite(fig,eye,f) for fig in FIGURES for eye in eyes for f in range(frames)},
             'walking_frames':WALK_FRAMES,

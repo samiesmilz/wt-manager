@@ -99,7 +99,7 @@ The first scan quietly establishes a baseline. Messages and dismissals persist l
 
 ## Meet the pixel crew
 
-Detailed companions have separate **32×32 drawings**, shown at **64×64pt** on the desktop. Their menu-bar versions use separate 22px portraits with larger facial features and no framed badge. Wity retains its original front portrait when resting. Cooper has a slim neck, longer legs and alternating toe lifts; Pip has a softer face and simpler muzzle. Detailed art adds shading, accessories and individual part animations without enlarging the floating window. Pip’s default coat is warm chestnut; saved coats remain available.
+Detailed companions have **32×32 drawings**, shown at **64×64pt** on the desktop. The menu bar shows the same character: each 22px icon is computed from the desktop drawing, so the two cannot differ. Wity and Nipper are already 22px wide and are used as they are.
 
 You can also let the floating companion take slow, short screen strolls from **Mascots → Let it wander now and then**. This is off by default. Moving companions use separate side profiles, facing their direction of travel, then turn back to their front portraits when resting. Their gaits suit their shapes: the rabbit hops with a planted back foot, the crab scuttles, Bork trots on diagonal pairs, Chomp stomps on thick legs with its head landing a beat late, and the little machines lift each foot ahead before landing. Mallow rolls. Walking keeps each character’s portrait scale and foot baseline, with a brief blend when turning into or out of its profile. Coco stays rooted: a gust sways its fronds and trunk while its base and sand never move. The companion pauses between mostly horizontal walks, then returns to the position you chose at the same gentle pace. Clicking or dragging stops it at once. The first stroll starts a few seconds after enabling wandering, whether the wt-manager window is open or closed. Wandering pauses during cleanup and while macOS Reduce Motion is enabled. Unread PR messages stay still and readable without stopping the mascot. The body advances with each alternating walking pose and hides its status arrow while walking. The pose clock runs only during travel.
 
@@ -109,11 +109,11 @@ You can also let the floating companion take slow, short screen strolls from **M
 
 | Companion | Personality |
 |---|---|
-| **Wity** | The original cat, with a plume and status collar |
+| **Wity** | The original cat, with a plume and status collar; walks on all fours |
 | **Nipper** | A crab with snapping claws and tiny legs |
 | **Byte** | An original slate robot with a visor, scanning signal lights, and a small smile |
-| **Cooper** | A rooster with a plum comb, warm beak, and a double peck |
-| **Pip** | A chestnut rabbit with a cream muzzle, folding ear and little paws |
+| **Cooper** | A cock in profile: red comb and wattles, a dark sickle tail, sturdy yellow legs |
+| **Pip** | A fluffy bunny with tall ears, round cheeks, a white chest and a cotton tail |
 | **Flurry** | A snowman with a top hat, waving twig hand, carrot nose, and fluttering scarf |
 | **Coco** | A palm tree with swaying fronds and coconuts |
 | **Mallow** | A limbless pearl orb with slanted eyes and a rolling highlight |

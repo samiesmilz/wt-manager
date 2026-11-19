@@ -47,7 +47,10 @@ struct RootView: View {
         .overlay { if let id = store.celebration, store.plan == nil { PixelCelebration().id(id).allowsHitTesting(false) } }
         .tint(Palette.action)
         .preferredColorScheme(store.colorScheme)
-        .sheet(item: $store.plan) { PlanSheet(store: store, plan: $0).tint(Palette.action) }
+        .sheet(item: Binding(get: { store.planHidden ? nil : store.plan },
+                             set: { if $0 == nil && !store.planHidden { store.plan = nil } })) {
+            PlanSheet(store: store, plan: $0).tint(Palette.action)
+        }
         .sheet(isPresented: $store.showingSettings) { SettingsSheet(store: store).tint(Palette.action) }
         .onChange(of: store.figure) { figure in
             if let coat = Mascot.drawnCoats[figure] { store.skin = coat }
@@ -69,6 +72,14 @@ struct RootView: View {
                 MergeSpeechBanner(store: store, nudge: nudge)
             }
             Rectangle().fill(Palette.line).frame(height: 1)
+            if store.planHidden, let working = store.plan, working.stage == .committing {
+                Banner(tone: .info, symbol: "arrow.triangle.2.circlepath",
+                       title: (working.action.kind == .reap ? "Deleting " : "Cleaning ")
+                           + Store.count(working.preview?.paths.count ?? 0, "folder") + "…",
+                       detail: "Still working. Quit is off until it finishes.") {
+                    Button("Show") { store.planHidden = false }
+                }
+            }
             if let completion = store.completion {
                 CompletionBanner(store: store, plan: completion)
                     .transition(.move(edge: .top).combined(with: .opacity))

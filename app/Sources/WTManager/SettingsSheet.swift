@@ -89,6 +89,10 @@ struct SettingsSheet: View {
                 .disabled(!store.mergeNudges)
                 .onChange(of: store.systemNotifications) { on in if on { Notifier.requestPermission() } }
             Hairline()
+            switchRow("Disk is over 90% full",
+                      "At most once a day, in Notification Center", isOn: $store.diskNotifications)
+                .disabled(!store.systemNotifications)
+            Hairline()
             switchRow("Celebrate a cleanup",
                       "Pixel sparks; off with Reduce Motion", isOn: $store.celebrationsEnabled)
             Hairline()

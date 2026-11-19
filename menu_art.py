@@ -30,7 +30,7 @@ class Canvas:
             if eyes!='wide':self.put(x+(1 if eyes=='glance' else 0),y,'w')
     def rows(self):return [''.join(r) for r in self.p]
 
-def sprite(figure,eyes,frame):
+def _drawn(figure,eyes,frame):
     c=Canvas(); blink=eyes;f=frame%8
     if figure=='robot':
         c.rect(4,4,17,16,'f');c.rect(3,6,18,14,'f')
@@ -121,10 +121,101 @@ def sprite(figure,eyes,frame):
     else:raise ValueError(figure)
     return c.rows()
 
+# ── the menu bar wears the desktop character ────────────────────────────────
+# The drawings above were made for 22 pixels on their own, and each drifted
+# from the 32-pixel character that walks the desktop: a different crab, a
+# different rooster. The menu bar now shows the desktop character itself,
+# reduced: every icon is computed from that drawing, so the two cannot differ.
+# Wity and Nipper are already 22 pixels wide and are used as they are.
+import companion_art as _big
+
+FIGURES = _big.FIGURES
+_boxes = {}
+
+def _box(figure):
+    """One frame for every pose of a figure, so the icon does not jitter."""
+    if figure not in _boxes:
+        x0 = y0 = 99; x1 = y1 = 0
+        for f in range(8):
+            for y, row in enumerate(_big.sprite(figure, 'open', f)):
+                for x, ch in enumerate(row):
+                    if ch != '.':
+                        x0 = min(x0, x); x1 = max(x1, x); y0 = min(y0, y); y1 = max(y1, y)
+        _boxes[figure] = (x0, y0, x1, y1)
+    return _boxes[figure]
+
+def reduce(rows, box, n=SIZE):
+    """Fit the box into n by n. Each small pixel takes what most of its patch
+    holds; ink wins from a third, because an outline thinner than that is lost."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0 + 1, y1 - y0 + 1
+    s = max(w, h) / n
+    ow, oh = max(1, round(w / s)), max(1, round(h / s))
+    out = [['.'] * n for _ in range(n)]
+    ox, oy = (n - ow) // 2, n - oh
+    k = 4
+    for j in range(oh):
+        for i in range(ow):
+            seen = {}
+            for a in range(k):
+                for b in range(k):
+                    sx = min(x1, x0 + int((i + (a + .5) / k) * w / ow))
+                    sy = min(y1, y0 + int((j + (b + .5) / k) * h / oh))
+                    ch = rows[sy][sx]; seen[ch] = seen.get(ch, 0) + 1
+            total = k * k
+            if seen.get('.', 0) > total * 0.5: ch = '.'
+            elif seen.get('#', 0) >= total * 0.34: ch = '#'
+            else:
+                rest = {c: v for c, v in seen.items() if c not in '.#'}
+                ch = max(rest, key=rest.get) if rest else '#'
+            out[oy + j][ox + i] = ch
+    return out
+
+def _eyes(figure, eyes):
+    """Where the eyes land, and the small eye that says the expression: a
+    reduced eye is two pixels, too few to tell wide from a glance."""
+    box = _box(figure); x0, y0, x1, y1 = box
+    a = _big.sprite(figure, 'open', 0); b = _big.sprite(figure, 'shut', 0)
+    cells = [(x, y) for y in range(32) for x in range(32) if a[y][x] != b[y][x]]
+    if not cells: return []
+    w, h = x1 - x0 + 1, y1 - y0 + 1
+    s = max(w, h) / SIZE
+    ow, oh = max(1, round(w / s)), max(1, round(h / s))
+    ox, oy = (SIZE - ow) // 2, SIZE - oh
+    mid = (min(x for x, _ in cells) + max(x for x, _ in cells)) / 2
+    groups = [[c for c in cells if c[0] <= mid], [c for c in cells if c[0] > mid]]
+    spots = []
+    for g in groups:
+        if not g: continue
+        gx = sum(x for x, _ in g) / len(g); gy = min(y for _, y in g)
+        spots.append((ox + int((gx - x0) * ow / w), oy + int((gy - y0) * oh / h)))
+    return spots
+
+def sprite(figure, eyes, frame):
+    rows = reduce(_big.sprite(figure, 'open' if eyes != 'shut' else 'shut', frame), _box(figure))
+    for x, y in _eyes(figure, eyes):
+        # A two-by-three eye, redrawn so each expression is its own shape.
+        for dy in range(3):
+            for dx in range(2):
+                if 0 <= y + dy < SIZE and 0 <= x + dx < SIZE and rows[y + dy][x + dx] == '#':
+                    pass
+        shape = {'open': ('w#', '##', '##'), 'glance': ('#w', '##', '##'), 'wide': ('##', '##', '##'),
+                 'squint': ('..', '##', '##'), 'shut': ('..', '..', '##')}[eyes]
+        under = rows[y + 3][x] if y + 3 < SIZE and rows[y + 3][x] not in '.#' else 'f'
+        for dy, line in enumerate(shape):
+            for dx, ch in enumerate(line):
+                if 0 <= y + dy < SIZE and 0 <= x + dx < SIZE:
+                    rows[y + dy][x + dx] = under if ch == '.' else ch
+    return [''.join(r) for r in rows]
+
 def export(skins,frames):
     sprites={f'{fig}/{eyes}/{f}':sprite(fig,eyes,f) for fig in FIGURES for eyes in ('open','shut','wide','squint','glance') for f in range(frames)}
     palettes={}
     for fig in FIGURES:
         for skin,p in skins.items():
-            palettes[f'{fig}/{skin}']={'#':p['outline'],'f':p['fur'],'s':p['fur_dark'],'b':p['pale'],'w':p['shine'],'p':p['blush'],'v':'#203047','e':'#83e2df','o':'#cd8a48'}
+            pal={'#':p['outline'],'f':p['fur'],'s':p['fur_dark'],'b':p['pale'],'w':p['shine'],'p':p['blush']}
+            pal.update(_big.ACCESSORIES)
+            if fig=='antenna': pal.update(r='#fb5966', l='#45d8d1')
+            if fig=='rooster': pal['r']='#d8433c'
+            palettes[f'{fig}/{skin}']=pal
     return {'width':SIZE,'height':SIZE,'sprites':sprites,'palettes':palettes}
