@@ -2934,11 +2934,72 @@ def changed_files(w: Worktree) -> Optional[List[str]]:
     return sorted(files)
 
 
+RESCUE_REFS = "refs/wt-manager/rescue"
+
+
+def rescue_commit(w: Worktree, head: str) -> Tuple[Optional[str], str]:
+    """One commit holding the folder exactly as it stands: every tracked edit
+    and every untracked file git does not ignore, on top of HEAD. Built through
+    a throwaway index, so the folder's own index and files are not touched.
+    Its ancestry is HEAD's, so commits on no branch are held by it too."""
+    fd, index = tempfile.mkstemp(prefix="wt-rescue-index-")
+    os.close(fd)
+    os.unlink(index)
+    env = {**GIT_ENV, "GIT_INDEX_FILE": index,
+           "GIT_AUTHOR_NAME": "wt-manager", "GIT_AUTHOR_EMAIL": "wt-manager@localhost",
+           "GIT_COMMITTER_NAME": "wt-manager", "GIT_COMMITTER_EMAIL": "wt-manager@localhost"}
+    try:
+        for step in (["read-tree", head], ["add", "-A", "."]):
+            rc, _, err = sh(["git", "-C", w.path] + step, timeout=300, env=env)
+            if rc != 0:
+                return None, f"git {step[0]} failed: " + (err.splitlines()[-1][:80] if err else str(rc))
+        rc, tree, err = sh(["git", "-C", w.path, "write-tree"], timeout=120, env=env)
+        if rc != 0 or not tree:
+            return None, "git write-tree failed: " + err[:80]
+        rc, commit, err = sh(["git", "-C", w.path, "commit-tree", tree, "-p", head, "-m",
+                              f"wt-manager rescue: {w.repo}/{w.name}\n\n"
+                              f"The folder {w.path} as it stood when it was deleted."],
+                             timeout=60, env=env)
+        if rc != 0 or not commit:
+            return None, "git commit-tree failed: " + err[:80]
+        return commit, ""
+    finally:
+        for leftover in (index, index + ".lock"):
+            try:
+                os.unlink(leftover)
+            except OSError:
+                pass
+
+
+def sweep_rescues(gitdir: str, repo: str, days: int = 7) -> int:
+    """Delete rescue branches whose record in the kept folder is gone: the
+    record is what the app lists and expires, and a rescue nobody can see is
+    kept for ever. Only ones older than `days`, and only when this repo's kept
+    folder exists at all, so a kept folder that moved loses nothing."""
+    home = kept_root() / repo
+    if not home.is_dir():
+        return 0
+    rc, out, _ = git(["for-each-ref", "--format=%(refname) %(committerdate:unix)", RESCUE_REFS + "/"],
+                     gitdir=gitdir)
+    gone = 0
+    for line in out.splitlines() if rc == 0 else []:
+        ref, _, stamp = line.rpartition(" ")
+        if not ref or not stamp.isdigit() or time.time() - int(stamp) < days * 86400:
+            continue
+        if (home / ref.rsplit("/", 1)[-1]).exists():
+            continue
+        if git(["update-ref", "-d", ref], gitdir=gitdir)[0] == 0:
+            gone += 1
+    return gone
+
+
 def save_changes(w: Worktree, files: Sequence[str], bundle: bool = False) -> Tuple[Optional[Path], str]:
-    """Save what `git worktree remove --force` would destroy: a binary patch of
-    every tracked change against HEAD, a verified copy of each untracked file,
-    and how to put them back. Returns (where, error); nothing is removed unless
-    this succeeded."""
+    """Save what `git worktree remove --force` would destroy, inside the repo:
+    one rescue commit of the folder as it stands (tracked edits, untracked
+    files, and through its ancestry any commits on no branch), under
+    refs/wt-manager/rescue. The kept folder gets only the record that says how
+    to put it back. Returns (where, error); nothing is removed unless this
+    succeeded."""
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", w.name).strip("-") or "worktree"
     dest = kept_root() / w.repo / f"{slug}-changes-{time.strftime('%Y%m%d-%H%M%S')}"
     n = 1
@@ -2948,62 +3009,41 @@ def save_changes(w: Worktree, files: Sequence[str], bundle: bool = False) -> Tup
     rc, head, _ = git(["rev-parse", "HEAD"], cwd=w.path)
     if rc != 0 or not head:
         return None, "cannot read HEAD"
-    # Raw bytes: a text round trip would corrupt a binary patch.
-    try:
-        patch = subprocess.run(["git", "-C", w.path, "diff", "HEAD", "--binary"],
-                               capture_output=True, timeout=120)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return None, f"git diff failed: {e}"
-    if patch.returncode != 0:
-        return None, "git diff failed: " + patch.stderr.decode(errors="replace")[:80]
-    try:
-        listed = subprocess.run(["git", "-C", w.path, "ls-files", "--others",
-                                 "--exclude-standard", "-z"], capture_output=True, timeout=60)
-    except (OSError, subprocess.TimeoutExpired):
-        return None, "cannot list untracked files"
-    if listed.returncode != 0:
-        return None, "cannot list untracked files"
-    untracked = [p for p in listed.stdout.decode("utf-8", "surrogateescape").split("\0") if p]
+    # A rescue is needed when something exists only in the folder: edits,
+    # untracked files, or commits nothing else points at.
+    ref = ""
+    if files or bundle:
+        commit, err = rescue_commit(w, head)
+        if commit is None:
+            return None, err
+        ref = f"{RESCUE_REFS}/{dest.name.replace('~', '-')}"
+        rc, _, err = git(["update-ref", ref, commit], cwd=w.path)
+        # Read back through the ref: the commit must be there, and hold HEAD.
+        if rc != 0 or git(["rev-parse", "--verify", "--quiet", ref + "^{commit}"], cwd=w.path)[1] != commit \
+                or git(["merge-base", "--is-ancestor", head, ref], cwd=w.path)[0] != 0:
+            git(["update-ref", "-d", ref], cwd=w.path)
+            return None, "could not record the rescue branch: " + (err or "verify failed")[:80]
     try:
         dest.mkdir(parents=True)
         for d in (kept_root(), dest):
             os.chmod(d, 0o700)
-        if patch.stdout:
-            (dest / "changes.patch").write_bytes(patch.stdout)
-        if bundle:
-            # A detached HEAD's commits have nothing else pointing at them;
-            # once the folder goes, git would collect them. The bundle holds
-            # every commit no remote has, and is verified before anything
-            # is removed.
-            target = dest / "commits.bundle"
-            rc, _, err = git(["bundle", "create", str(target), "HEAD", "--not", "--remotes"],
-                             cwd=w.path, timeout=120)
-            if rc != 0 or git(["bundle", "verify", str(target)], cwd=w.path)[0] != 0:
-                raise OSError("could not bundle its commits: " + (err or "verify failed")[:80])
-        for rel in untracked:
-            src, dst = os.path.join(w.path, rel), dest / "untracked" / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            if os.path.islink(src):
-                os.symlink(os.readlink(src), dst)
-            else:
-                shutil.copy2(src, dst)
-            if not verify_copy(src, str(dst)):
-                raise OSError(f"{rel} did not copy exactly")
         (dest / "RESTORE.txt").write_text(
             f"worktree: {w.path}\nbranch: {w.name}\ncommit: {head}\n"
             f"pr: #{w.pr.number if w.pr else '?'}\n"
             f"saved: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"files: {len(files)}\n"
             # Only the steps for what was saved: a branch-only record has no
-            # patch, and pointing at one that is not there reads as a failure.
-            + ("\nTo put these changes back, from the repository:\n"
-               f"  git worktree add <new-path> {head}\n"
-               + (f"  cd <new-path> && git apply --binary '{dest}/changes.patch'\n" if patch.stdout else "")
-               + (f"  cp -R '{dest}/untracked/.' .\n" if untracked else "")
-               if patch.stdout or untracked else "")
-            + (f"\nIts commits on no branch are in commits.bundle. To get them back:\n"
-               f"  git fetch '{dest}/commits.bundle' HEAD:refs/heads/restored-{slug}\n"
-               if bundle else "")
+            # rescue, and pointing at one that is not there reads as a failure.
+            + (f"rescue: {ref}\n"
+               "\nEverything that was only in the folder is in that rescue branch,\n"
+               "inside the repository. To put it back, from the repository:\n"
+               f"  git worktree add <new-path> {ref}\n"
+               "The edits come back as one commit on top of the original. To have\n"
+               "them uncommitted again, as they were:\n"
+               "  cd <new-path> && git reset HEAD~1\n"
+               "To throw the rescue away:\n"
+               f"  git update-ref -d {ref}\n"
+               if ref else "")
             # Once the folder is gone wt-manager no longer shows the branch,
             # so the commits it still holds are named here.
             + (f"\n{w.unpushed} commit{'s' if w.unpushed != 1 else ''} on no remote "
@@ -3013,6 +3053,8 @@ def save_changes(w: Worktree, files: Sequence[str], bundle: bool = False) -> Tup
                + f"To work on them again:  git worktree add <new-path> {w.branch}\n"
                if w.branch and w.unpushed > 0 and not w.landed else ""))
     except OSError as e:
+        if ref:
+            git(["update-ref", "-d", ref], cwd=w.path)
         return None, str(e)
     return dest, ""
 
@@ -3332,7 +3374,7 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     bundled = {w.path for w in cands
                if discard_work and not args.force and not w.branch and w.unpushed > 0 and not w.landed}
     plan["commits"] = {
-        w.path: (f"{w.unpushed} commit{'s' if w.unpushed != 1 else ''} saved as a bundle"
+        w.path: (f"{w.unpushed} commit{'s' if w.unpushed != 1 else ''} saved on a rescue branch"
                  if w.path in bundled else
                  f"{w.unpushed} commit{'s stay' if w.unpushed != 1 else ' stays'} on branch {w.branch}")
         for w in cands if discard_work and w.unpushed > 0 and not w.landed}
@@ -3430,6 +3472,14 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
     begin_step()
     removed, failed, freed = 0, 0, 0
     completed = []
+    # Rescue branches whose record was removed or expired go first: the kept
+    # folder is where a rescue is listed, so one without a record is unseen.
+    swept: set = set()
+    for w in cands:
+        cd0 = common_dir(w.path) or ""
+        if cd0 and cd0 not in swept:
+            swept.add(cd0)
+            sweep_rescues(cd0, w.repo)
     for i, w in enumerate(cands):
         progress(i, len(cands), f"removing {w.repo}/{w.name}")
         same = set(duplicates.get(w.path, []))
@@ -3445,7 +3495,7 @@ def _reap(wts: List[Worktree], args, plan: dict) -> int:
                       f"{C.dim}could not save its changes, so it was left: {err[:90]}{C.off}")
                 continue
             archived_kb += max(du_kb(str(saved), cache=False), 0)
-            print(f"{C.cyan}saved{C.off}   {w.repo}/{w.name} {C.dim}changes in {saved}{C.off}")
+            print(f"{C.cyan}saved{C.off}   {w.repo}/{w.name} {C.dim}on a rescue branch; how to restore is in {saved}{C.off}")
             progress(i, len(cands), f"removing {w.repo}/{w.name}")
         if keep:
             kept, err = keep_precious(w, keep, on_progress=lambda n, total: progress(

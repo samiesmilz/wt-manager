@@ -186,7 +186,7 @@ struct RowButtonStyle: ButtonStyle {
         configuration.label
             .background(
                 RoundedRectangle(cornerRadius: radius)
-                    .fill(Color.primary.opacity(configuration.isPressed ? 0.11 : (hover ? 0.055 : 0)))
+                    .fill(configuration.isPressed ? Palette.pressFill : (hover ? Palette.hoverFill : Color.clear))
                     .padding(.horizontal, inset)
             )
             .contentShape(Rectangle())
@@ -228,6 +228,10 @@ extension Palette {
     static let safeInk = dynamic(light: hex(0x23694A), dark: hex(0x7FD1A6))
     static let agentInk = dynamic(light: hex(0x1F5FA8), dark: hex(0x8DBBF0))
     static let riskInk = dynamic(light: hex(0x9A4B00), dark: hex(0xF0B26B))
+    /// What a row, an entry or a quiet button turns under the pointer, and
+    /// one step further when pressed: the rail's warm tone, not a grey veil.
+    static let hoverFill = dynamic(light: hex(0xF3F0EA), dark: hex(0x2C2926))
+    static let pressFill = dynamic(light: hex(0xE9E5DD), dark: hex(0x37332F))
     static let field = dynamic(light: hex(0xFAF9F7), dark: hex(0x262422))
 }
 
@@ -238,19 +242,32 @@ struct WTButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, quiet, danger }
     var kind: Kind = .secondary
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hover = false
 
     func makeBody(configuration: Configuration) -> some View {
         let small: Bool = kind == .quiet
+        let pressed: Bool = configuration.isPressed
+        let filled: Bool = kind == .primary || kind == .danger
         return configuration.label
             .font(.system(size: small ? 12 : 13, weight: .semibold))
             .lineLimit(1).fixedSize()
             .foregroundStyle(ink)
             .padding(.horizontal, small ? 11 : 16).padding(.vertical, small ? 6 : 9)
-            .background(RoundedRectangle(cornerRadius: 8).fill(fill))
+            .background(RoundedRectangle(cornerRadius: 8)
+                .fill(filled ? fill : (pressed ? Palette.pressFill : (hover && enabled ? hoverTone : fill))))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(stroke, lineWidth: 1))
-            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            // A filled button lifts under the pointer and settles when pressed.
+            .brightness(filled && enabled ? (pressed ? -0.06 : (hover ? 0.07 : 0)) : 0)
+            .scaleEffect(pressed && !reduceMotion ? 0.98 : 1)
+            .opacity(enabled ? 1 : 0.45)
             .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hover)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: pressed)
     }
+
+    private var hoverTone: Color { kind == .quiet ? Palette.pressFill : Palette.hoverFill }
 
     private var ink: Color {
         switch kind {
@@ -301,4 +318,36 @@ struct CardBox<Content: View>: View {
             .background(RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line, lineWidth: 1))
     }
+}
+
+/// The trash button: neutral at rest, red under the pointer, so what it does
+/// is plain before the click.
+struct TrashButtonStyle: ButtonStyle {
+    var side: CGFloat = 32
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hover = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(hover ? Palette.danger : Color.primary)
+            .frame(width: side, height: side)
+            .background(RoundedRectangle(cornerRadius: 8)
+                .fill(hover ? Palette.danger.opacity(configuration.isPressed ? 0.18 : 0.10) : Palette.cardFill))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(hover ? Palette.danger.opacity(0.55) : Palette.line, lineWidth: 1))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hover)
+    }
+}
+
+/// A size that counts up to where it lands.
+struct CountUp: View, Animatable {
+    var kb: Double
+    var animatableData: Double {
+        get { kb }
+        set { kb = newValue }
+    }
+    var body: some View { Text(Store.human(Int(kb))) }
 }

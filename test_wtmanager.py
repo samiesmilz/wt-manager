@@ -1670,13 +1670,51 @@ class DiscardChanges(unittest.TestCase):
         self.assertEqual(plan["changes"], {self.wt: ["app.txt", "notes.md"]})
         saved = next(T.Path(d) for d, _, files in os.walk(T.kept_root()) if "RESTORE.txt" in files)
         self.assertIn(self.head, (saved / "RESTORE.txt").read_text())
-        # The way RESTORE.txt says: a worktree at the commit, the patch, the copies.
+        # Nothing but the record leaves the repo: the work is a rescue branch.
+        self.assertEqual(sorted(os.listdir(saved)), ["RESTORE.txt"])
+        ref = self.rescue_ref(saved)
+        # The way RESTORE.txt says: a worktree at the rescue, edits uncommitted again.
         again = os.path.join(self.fx.root, "again")
-        git("worktree", "add", "-q", "--detach", again, self.head, cwd=self.fx.main)
-        git("apply", "--binary", str(saved / "changes.patch"), cwd=again)
+        git("worktree", "add", "-q", "--detach", again, ref, cwd=self.fx.main)
+        git("reset", "-q", "HEAD~1", cwd=again)
+        self.assertEqual(git("rev-parse", "HEAD", cwd=again), self.head)
         with open(os.path.join(again, "app.txt")) as fh:
             self.assertEqual(fh.read(), edited)
-        self.assertEqual((saved / "untracked" / "notes.md").read_bytes(), b"untracked \x00 bytes\n")
+        with open(os.path.join(again, "notes.md"), "rb") as fh:
+            self.assertEqual(fh.read(), b"untracked \x00 bytes\n")
+
+    def test_a_rescue_leaves_the_folders_own_index_alone(self):
+        self.edit()
+        w = self.probe()
+        before = git("status", "--porcelain", cwd=self.wt)
+        commit, err = T.rescue_commit(w, self.head)
+        self.assertTrue(commit, err)
+        self.assertEqual(git("status", "--porcelain", cwd=self.wt), before)
+        self.assertEqual(git("rev-parse", commit + "~1", cwd=self.wt), self.head)
+
+    def test_a_rescue_without_its_record_is_swept_once_old(self):
+        self.edit()
+        rc, _ = self.reap(self.probe(), discard_changes=True, yes=True)
+        self.assertEqual(rc, 0)
+        saved = next(T.Path(d) for d, _, files in os.walk(T.kept_root()) if "RESTORE.txt" in files)
+        ref = self.rescue_ref(saved)
+        gitdir = git("rev-parse", "--absolute-git-dir", cwd=self.fx.main)
+        repo = saved.parent.name
+        # Its record is there: kept, however old.
+        self.assertEqual(T.sweep_rescues(gitdir, repo, days=0), 0)
+        (saved / "RESTORE.txt").unlink()
+        saved.rmdir()
+        # Record gone but the rescue is new: kept, in case the folder only moved.
+        self.assertEqual(T.sweep_rescues(gitdir, repo, days=7), 0)
+        self.assertEqual(T.sweep_rescues(gitdir, repo, days=0), 1)
+        self.assertEqual(git("for-each-ref", ref, cwd=self.fx.main), "")
+
+    @staticmethod
+    def rescue_ref(saved):
+        for line in (saved / "RESTORE.txt").read_text().splitlines():
+            if line.startswith("rescue: "):
+                return line.split(": ", 1)[1]
+        raise AssertionError("no rescue named in RESTORE.txt")
 
     def test_a_commit_after_the_merge_is_new_work_and_stays(self):
         self.fx.commit(self.wt, "later.txt", "after the merge")
@@ -1787,8 +1825,9 @@ class Folders(unittest.TestCase):
         self.assertEqual(plan["changes"], {self.wt: ["work.txt"]})
         self.assertEqual(git("rev-parse", "feat/f", cwd=self.fx.main), commit,
                          "the branch keeps the commit no remote has")
-        saved = next(T.Path(d) for d, _, files in os.walk(T.kept_root()) if "changes.patch" in files)
-        self.assertIn("uncommitted", (saved / "changes.patch").read_text())
+        saved = next(T.Path(d) for d, _, files in os.walk(T.kept_root()) if "RESTORE.txt" in files)
+        ref = DiscardChanges.rescue_ref(saved)
+        self.assertIn("uncommitted", git("show", ref + ":work.txt", cwd=self.fx.main))
 
     def test_done_with_a_detached_checkout_bundles_its_commits(self):
         git("checkout", "-q", "--detach", cwd=self.wt)
@@ -1798,11 +1837,10 @@ class Folders(unittest.TestCase):
         rc, plan = self.reap(w, folders=True, discard_work=True, yes=True)
         self.assertEqual(rc, 0)
         self.assertFalse(os.path.exists(self.wt))
-        bundle = next(T.Path(d) / "commits.bundle" for d, _, files in os.walk(T.kept_root())
-                      if "commits.bundle" in files)
-        # The way RESTORE.txt says, and the commit is back.
-        git("fetch", "-q", str(bundle), "HEAD:refs/heads/restored", cwd=self.fx.main)
-        self.assertEqual(git("rev-parse", "restored", cwd=self.fx.main), commit)
+        saved = next(T.Path(d) for d, _, files in os.walk(T.kept_root()) if "RESTORE.txt" in files)
+        ref = DiscardChanges.rescue_ref(saved)
+        # Nothing else points at the commit; the rescue holds it.
+        self.assertEqual(git("rev-parse", ref + "~1", cwd=self.fx.main), commit)
 
     def test_done_with_it_never_passes_a_lock(self):
         with open(os.path.join(self.wt, "work.txt"), "a") as fh:
@@ -1833,7 +1871,7 @@ class Folders(unittest.TestCase):
         note = next(T.Path(d) / "RESTORE.txt" for d, _, files in os.walk(T.kept_root())
                     if "RESTORE.txt" in files).read_text()
         self.assertIn("stays on branch feat/f", note)
-        self.assertNotIn("changes.patch", note, "no edits, so no patch to point at")
+        self.assertNotIn("rescue:", note, "no edits, so no rescue to point at")
         self.assertIn("the idea I dropped", note)
 
     def test_a_main_checkout_is_not_a_folder(self):
@@ -2760,7 +2798,8 @@ class Leftovers(unittest.TestCase):
         shutil.move(path, path + "-moved")
         found = T.leftovers(rows)
         self.assertEqual([(f["kind"], f["repo"]) for f in found], [("prunable", "repo")])
-        self.assertEqual(found[0]["main"], self.fx.main)
+        # git reports the real path; on macOS the temp folder is a symlink.
+        self.assertEqual(os.path.realpath(found[0]["main"]), os.path.realpath(self.fx.main))
 
 
 class ReviewExtras(unittest.TestCase):

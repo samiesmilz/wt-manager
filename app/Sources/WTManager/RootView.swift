@@ -43,8 +43,8 @@ struct RootView: View {
         // too makes the hosting view demand a size the window may not have yet,
         // and the overflow is clipped at both edges rather than scrolled.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: store.completion?.id)
-        .overlay { if let id = store.celebration { PixelCelebration().id(id).allowsHitTesting(false) } }
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.84), value: store.completion?.id)
+        .overlay { if let id = store.celebration, store.plan == nil { PixelCelebration().id(id).allowsHitTesting(false) } }
         .tint(Palette.action)
         .preferredColorScheme(store.colorScheme)
         .sheet(item: $store.plan) { PlanSheet(store: store, plan: $0).tint(Palette.action) }
@@ -71,7 +71,7 @@ struct RootView: View {
             Rectangle().fill(Palette.line).frame(height: 1)
             if let completion = store.completion {
                 CompletionBanner(store: store, plan: completion)
-                    .transition(.opacity)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
             content
             Rectangle().fill(Palette.line).frame(height: 1)

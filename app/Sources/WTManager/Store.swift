@@ -1057,6 +1057,28 @@ extension Store {
         }
     }
 
+    /// The other way to be rid of a folder: the whole thing to the Trash,
+    /// intact, then git told it is gone. Nothing is freed until the Trash is
+    /// emptied, and until then it can be put back and re-registered.
+    func moveToTrash(_ w: Worktree) {
+        guard !commandRunning else { return }
+        let main: String? = envelope?.worktrees.first { other in
+            other.primary && (w.repoId != nil ? other.repoId == w.repoId : other.repo == w.repo)
+        }?.path
+        do {
+            try FileManager.default.trashItem(at: URL(fileURLWithPath: w.path), resultingItemURL: nil)
+        } catch {
+            commandNote = "Could not move it to the Trash: " + error.localizedDescription
+            return
+        }
+        if let main {
+            runCommand(["prune", "--path", main, "--yes"])
+        } else {
+            commandNote = "Moved to the Trash. Its git entry is cleared on the next prune."
+            refresh(measureDisk: false)
+        }
+    }
+
     static func lastLine(_ text: String) -> String {
         let lines: [String] = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         return lines.last { !$0.isEmpty } ?? "Done"

@@ -23,6 +23,8 @@ struct PlanSheet: View {
     /// envelope on the next refresh, and the result still has to say how big
     /// it was.
     @State private var sizes: [String: Int] = [:]
+    /// Nil shows the final figure; set while it counts up on arriving at done.
+    @State private var counted: Double? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let pad: CGFloat = 28
@@ -82,11 +84,16 @@ struct PlanSheet: View {
         .frame(width: sheetWidth, height: height)
         .background(Palette.ground)
         .overlay { if plan.stage == .done, let id = store.celebration {
-            PixelCelebration().id(id).allowsHitTesting(false)
+            PixelCelebration(origin: UnitPoint(x: 0.14, y: 0.3)).id(id).allowsHitTesting(false)
         } }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: plan.stage)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: plan.stage)
         .onAppear { remember() }
-        .onChange(of: plan.stage) { _ in remember() }
+        .onChange(of: plan.stage) { stage in
+            remember()
+            guard stage == .done, !reduceMotion, let kb = plan.result?.freedKb, kb > 0 else { return }
+            counted = 0
+            withAnimation(.easeOut(duration: 0.8)) { counted = Double(kb) }
+        }
     }
 
     private func remember() {
@@ -248,8 +255,15 @@ struct PlanSheet: View {
         let n: Int = max(r.completedPaths.count, r.removed)
         return HStack(alignment: .top, spacing: 36) {
             if r.freedKb > 0 {
-                figure(Store.human(r.freedKb), kind == .reap ? "returned to the disk" : "of build output deleted",
-                       tint: Palette.safeInk)
+                VStack(alignment: .leading, spacing: 2) {
+                    CountUp(kb: counted ?? Double(r.freedKb))
+                        .font(.system(size: 30, weight: .bold)).monospacedDigit()
+                        .foregroundStyle(Palette.safeInk)
+                    Text(kind == .reap ? "returned to the disk" : "of build output deleted")
+                        .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Store.human(r.freedKb) + (kind == .reap ? " returned to the disk" : " of build output deleted"))
             }
             if r.failed > 0 {
                 figure("\(r.failed)", r.failed == 1 ? "folder left in place" : "folders left in place",
@@ -442,7 +456,7 @@ struct PlanSheet: View {
             out.append(Note(ok: true, text: c.prefix(1).uppercased() + c.dropFirst()))
         }
         if let ch = p.changes[path], !ch.isEmpty {
-            out.append(Note(ok: true, text: Store.count(ch.count, "edit") + " saved as a patch in Kept files"))
+            out.append(Note(ok: true, text: Store.count(ch.count, "edit") + " saved on a rescue branch in the repo"))
         }
         if let b = p.branches[path], !b.isEmpty {
             out.append(Note(ok: true, text: "Branch \(b) deleted too"))
@@ -690,7 +704,7 @@ struct PlanSheet: View {
             if !kept.isEmpty {
                 text += " · " + listed(kept) + (kept.count == 1 ? " is" : " are") + " in Kept files"
             } else if let ch = p.changes[path], !ch.isEmpty {
-                text += " · " + Store.count(ch.count, "edit") + " saved in Kept files"
+                text += " · " + Store.count(ch.count, "edit") + " saved on a rescue branch"
             }
         }
         return text

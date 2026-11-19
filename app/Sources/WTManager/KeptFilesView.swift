@@ -18,8 +18,8 @@ struct KeptFilesView: View {
     @State private var loaded = false
     @State private var pending: KeptSet? = nil
     @State private var note: String? = nil
-    /// 0 keeps everything. Expired sets go to the Trash, never straight out.
-    @AppStorage("wtmanager.keptDays") private var keptDays = 0
+    /// 0 keeps everything; thirty days unless chosen otherwise. Expired sets go to the Trash, never straight out.
+    @AppStorage("wtmanager.keptDays") private var keptDays = 30
 
     static var root: URL {
         if let data = ProcessInfo.processInfo.environment["XDG_DATA_HOME"], !data.isEmpty {
@@ -121,6 +121,8 @@ struct KeptFilesView: View {
         let names: [String] = ((try? FileManager.default.contentsOfDirectory(atPath: set.url.path)) ?? [])
             .filter { !$0.hasPrefix(".DS_") }.sorted()
         if names.isEmpty { return set.url.hasDirectoryPath ? "Empty" : "One file" }
+        // Only the record: the work itself is a rescue branch inside the repo.
+        if names == ["RESTORE.txt"] { return "Edits and commits, saved in the repo as a rescue branch" }
         let head: String = names.prefix(3).joined(separator: ", ")
         return names.count > 3 ? head + " and \(names.count - 3) more" : head
     }
@@ -148,13 +150,8 @@ struct KeptFilesView: View {
             Button("Restore…") { restore(set) }.buttonStyle(.wt(.quiet))
             Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([set.url]) }
                 .buttonStyle(.wt(.quiet))
-            Button { pending = set } label: {
-                Image(systemName: "trash").font(.system(size: 12))
-                    .frame(width: 30, height: 30)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.cardFill))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.controlLine, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
+            Button { pending = set } label: { Image(systemName: "trash").font(.system(size: 12)) }
+                .buttonStyle(TrashButtonStyle(side: 30))
             .accessibilityLabel("Move \(set.name) to the Trash")
             .help("Move to the Trash")
         }
@@ -184,6 +181,14 @@ struct KeptFilesView: View {
 
     /// Copies a set into a folder you choose. The kept copy stays where it is.
     private func restore(_ set: KeptSet) {
+        // A rescue is restored with git, and its record says how.
+        let record: URL = set.url.appendingPathComponent("RESTORE.txt")
+        let inside: [String] = ((try? FileManager.default.contentsOfDirectory(atPath: set.url.path)) ?? [])
+            .filter { !$0.hasPrefix(".DS_") }
+        if inside == ["RESTORE.txt"] {
+            NSWorkspace.shared.open(record)
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

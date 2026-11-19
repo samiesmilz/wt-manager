@@ -8,7 +8,7 @@ struct SettingsSheet: View {
     @ObservedObject var store: Store
     @Environment(\.dismiss) private var dismiss
     @State private var roots: [String]
-    @AppStorage("wtmanager.keptDays") private var keptDays = 0
+    @AppStorage("wtmanager.keptDays") private var keptDays = 30
 
     init(store: Store) {
         self.store = store

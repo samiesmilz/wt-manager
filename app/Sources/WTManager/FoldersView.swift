@@ -232,6 +232,7 @@ struct FoldersView: View {
                 }
                 VStack(alignment: .leading, spacing: 10) { hero(caches: caches, safe: safe); actions }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             chips(rows)
         }
         .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 8)
@@ -672,7 +673,7 @@ struct FoldersView: View {
                                 set: { on in if on { selected.insert(row.id) } else { selected.remove(row.id) } }),
                               expanded: open == row.id,
                               toggle: {
-                                  withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
+                                  withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86)) {
                                       open = open == row.id ? nil : row.id
                                   }
                               },
@@ -711,6 +712,7 @@ private struct FolderRow: View {
     let toggle: () -> Void
     let delete: () -> Void
     @State private var hovering = false
+    @State private var confirmingTrash = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -718,7 +720,7 @@ private struct FolderRow: View {
             if expanded {
                 WorktreeDetail(store: store, worktree: row.worktree)
                     .padding(.leading, 29).padding(.top, 2).padding(.bottom, 12)
-                    .transition(.opacity)
+                    .transition(.opacity.combined(with: .offset(y: -6)))
             }
         }
     }
@@ -731,10 +733,12 @@ private struct FolderRow: View {
                     .fill(selected ? Palette.action : Palette.cardFill)
                     .overlay(RoundedRectangle(cornerRadius: 4)
                         .strokeBorder(selected ? Palette.action : Palette.controlLine, lineWidth: 1.5))
-                    .overlay { if selected {
+                    .overlay {
                         Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy))
                             .foregroundStyle(Palette.onAction)
-                    } }
+                            .scaleEffect(selected ? 1 : 0.3).opacity(selected ? 1 : 0)
+                    }
+                    .animation(.spring(response: 0.24, dampingFraction: 0.62), value: selected)
                     .frame(width: 16, height: 16)
                     .opacity(row.deletable ? 1 : 0.4)
                     .padding(4).contentShape(Rectangle())
@@ -792,7 +796,8 @@ private struct FolderRow: View {
                         quick("folder", "Reveal in Finder") { store.reveal(w) }
                     }
                     .padding(.leading, 10).padding(.vertical, 4)
-                    .background(selected ? Color.clear : Palette.cardFill)
+                    .background(selected ? Color.clear : Palette.hoverFill)
+                    .transition(.opacity)
                 }
             }
             // The size, and under it what a build would put back.
@@ -819,13 +824,8 @@ private struct FolderRow: View {
             .frame(width: 92, alignment: .trailing)
             SwiftUI.Group {
                 if v.lossless {
-                    Button(action: delete) {
-                        Image(systemName: "trash").font(.system(size: 13))
-                            .frame(width: 32, height: 32)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.cardFill)
-                                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line, lineWidth: 1)))
-                    }
-                    .buttonStyle(.plain)
+                    Button(action: delete) { Image(systemName: "trash").font(.system(size: 13)) }
+                        .buttonStyle(TrashButtonStyle())
                     .help("Delete this folder (preview first)")
                     .accessibilityLabel("Delete \(row.name)")
                 } else {
@@ -834,7 +834,11 @@ private struct FolderRow: View {
             }
         }
         .padding(.vertical, 12)
-        .background(selected ? Palette.wash(v.tint) : Color.clear)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(selected ? Palette.wash(v.tint) : (hovering ? Palette.hoverFill : Color.clear))
+            .padding(.horizontal, -8))
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(.easeOut(duration: 0.12), value: selected)
         .contentShape(Rectangle())
         .onTapGesture(perform: toggle)
         .onHover { hovering = $0 }
@@ -843,6 +847,9 @@ private struct FolderRow: View {
                 Button("Delete…", action: delete)
             } else if row.anyway {
                 Button("Delete anyway…", action: delete)
+            }
+            if row.deletable && v != .agent {
+                Button("Move to Trash instead…") { confirmingTrash = true }
             }
             if w.reclaimKb > 0 {
                 Button("Clean caches · \(Store.human(w.reclaimKb))…") {
@@ -856,6 +863,12 @@ private struct FolderRow: View {
             Button(expanded ? "Hide details" : "Show details", action: toggle)
             Button("Reveal in Finder") { store.reveal(w) }
             Button("Open in Terminal") { store.openInTerminal(w) }
+        }
+        .confirmationDialog("Move \(row.name) to the Trash?", isPresented: $confirmingTrash, titleVisibility: .visible) {
+            Button("Move to Trash") { store.moveToTrash(w) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The whole folder goes to the Trash as it is, unsaved work included, and git is told it is gone. No space is freed until you empty the Trash. The branch stays.")
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(row.name), \(v.label), \(row.reason)")
