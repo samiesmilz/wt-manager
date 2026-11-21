@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -3886,6 +3887,406 @@ def cmd_prune(args) -> int:
     return 1 if failed else 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Running: what is listening, and for which worktree
+#
+# "Which of my dev servers is on :3000, and is it the one in this folder?" is
+# asked with `lsof` and answered with `kill` several times a day. Everything
+# here reads three tables (who listens, who sits where, who started whom) and
+# never calls `gather()`: the answer has to arrive in well under a second, and
+# it must not wait behind a census of every repo.
+#
+# A process id is not an identity. The kernel reuses them, so the only thing
+# `stop` will signal is a pid whose command and start time still match what
+# the caller was shown, and whose working directory is inside a worktree.
+# ─────────────────────────────────────────────────────────────────────────────
+
+ENV_FILES = (".env", ".env.local")
+ENV_PREFIX = ".env.development"
+ENV_TEMPLATES = (".example", ".sample", ".template", ".dist")
+ENV_PARENTS = ("apps", "packages")
+
+# What may be stopped along with a listener: the things that start dev servers
+# and restart them when they die. An interactive shell, an editor or a coding
+# agent sitting in the same folder is none of these, and is never signalled.
+RUNNERS = {"node", "npm", "pnpm", "yarn", "bun", "bunx", "npx", "deno", "turbo",
+           "nx", "make", "just", "cargo", "uv", "poetry", "ruby", "bundle",
+           "foreman", "overmind", "go", "air", "watchexec", "nodemon", "tsx"}
+SHELLS = {"sh", "bash", "zsh", "dash", "fish"}
+# A coding agent listens on a port too. It is shown, because it is there, and
+# never offered a Stop: ending it mid-session is not "stopping a dev server".
+SESSIONS = {"claude", "codex"}
+STOP_WAIT = 3.0
+
+
+@dataclass
+class Proc:
+    pid: int
+    ppid: int
+    state: str
+    started: str        # `ps -o lstart`, whitespace-normalised: half of an identity
+    command: str
+
+
+def parse_listeners(out: str) -> Dict[int, List[int]]:
+    """`lsof -iTCP -sTCP:LISTEN -Fpn` -> {pid: [ports]}."""
+    found: Dict[int, List[int]] = {}
+    pid: Optional[int] = None
+    for line in out.splitlines():
+        if line.startswith("p") and line[1:].isdigit():
+            pid = int(line[1:])
+        elif line.startswith("n") and pid is not None:
+            port = line.rsplit(":", 1)[-1]
+            if port.isdigit() and int(port) not in found.setdefault(pid, []):
+                found[pid].append(int(port))
+    return {p: sorted(v) for p, v in found.items() if v}
+
+
+def parse_cwds(out: str) -> Dict[int, str]:
+    """`lsof -a -d cwd -Fpn` -> {pid: working directory}."""
+    found: Dict[int, str] = {}
+    pid: Optional[int] = None
+    for line in out.splitlines():
+        if line.startswith("p") and line[1:].isdigit():
+            pid = int(line[1:])
+        elif line.startswith("n/") and pid is not None:
+            found[pid] = line[1:]
+    return found
+
+
+def parse_ps(out: str) -> Dict[int, Proc]:
+    """`ps -o pid=,ppid=,stat=,lstart=,comm=` -> {pid: Proc}."""
+    found: Dict[int, Proc] = {}
+    for line in out.splitlines():
+        f = line.split(None, 8)
+        if len(f) < 9 or not f[0].isdigit() or not f[1].isdigit():
+            continue
+        comm = f[8].strip()
+        name = os.path.basename(comm) if comm.startswith("/") else comm
+        found[int(f[0])] = Proc(int(f[0]), int(f[1]), f[2], " ".join(f[3:8]), name)
+    return found
+
+
+def process_table(pids: Optional[Sequence[int]] = None) -> Dict[int, Proc]:
+    # LC_ALL=C: `lstart` is locale-formatted, and it is compared as a string.
+    scope = ["-p", ",".join(str(p) for p in pids)] if pids else ["-ax"]
+    _, out, _ = sh(["ps", *scope, "-o", "pid=,ppid=,stat=,lstart=,comm="],
+                   timeout=8, env={"LC_ALL": "C"})
+    return parse_ps(out)
+
+
+def process_cwds(pids: Sequence[int]) -> Dict[int, str]:
+    if not pids:
+        return {}
+    _, out, _ = sh(["lsof", "-a", "-d", "cwd", "-p", ",".join(str(p) for p in pids), "-Fpn"],
+                   timeout=8)
+    return parse_cwds(out)
+
+
+def alive(p: Optional[Proc]) -> bool:
+    return p is not None and not p.state.startswith("Z")
+
+
+def runner_name(command: str) -> str:
+    """`npm exec some-tool` and `-zsh` both name a program in their first word."""
+    first = command.split(None, 1)[0] if command.strip() else ""
+    return os.path.basename(first)
+
+
+def wraps_a_command(pid: int) -> bool:
+    """A shell that exists to run one command line (`sh -c "next dev"`).
+
+    The shell someone is typing into has no `-c`, and a login shell is spelled
+    `-zsh`; neither is ever part of what `stop` signals.
+    """
+    _, out, _ = sh(["ps", "-p", str(pid), "-o", "args="], timeout=4)
+    parts = out.split()
+    return len(parts) > 1 and bool(re.match(r"^-[a-z]*c$", parts[1]))
+
+
+def restart_chain(pid: int, table: Dict[int, Proc], cwds: Dict[int, str], root: str,
+                  wraps=wraps_a_command, depth: int = 6) -> List[Proc]:
+    """The parents that would bring a stopped listener straight back.
+
+    `pnpm dev` is a `node` that runs `sh -c` that runs the `node` holding the
+    port; signal only the last and the first starts another. The walk goes up
+    only while each parent is a known runner (or a one-command shell) whose
+    own working directory is still inside the same worktree, so it stops at
+    the terminal, the editor or the agent that launched the lot.
+    """
+    chain: List[Proc] = []
+    cur = table.get(pid)
+    while cur is not None and len(chain) < depth:
+        parent = table.get(cur.ppid)
+        if not alive(parent) or parent.pid <= 1:
+            break
+        where = cwds.get(parent.pid)
+        if not where or not within(root, where):
+            break
+        name = runner_name(parent.command)
+        if name.startswith("-"):
+            break
+        if name in SHELLS:
+            if not wraps(parent.pid):
+                break
+        elif name not in RUNNERS and not name.startswith("python"):
+            break
+        chain.append(parent)
+        cur = parent
+    return chain
+
+
+def within(root: str, candidate: str) -> bool:
+    """Like `inside`, but the root itself counts: a server started at the top
+    of a worktree is in that worktree."""
+    r, c = os.path.realpath(root), os.path.realpath(candidate)
+    return c == r or c.startswith(r + os.sep)
+
+
+_toplevels: Dict[str, Optional[dict]] = {}
+
+
+def worktree_of(cwd: str) -> Optional[dict]:
+    """The deepest worktree containing `cwd`, by asking git from inside it."""
+    if cwd in _toplevels:
+        return _toplevels[cwd]
+    found: Optional[dict] = None
+    if os.path.isdir(cwd):
+        rc, out, _ = git(["rev-parse", "--path-format=absolute", "--show-toplevel",
+                          "--git-common-dir", "--abbrev-ref", "HEAD"], cwd=cwd, timeout=5)
+        lines = out.splitlines()
+        if rc != 0 and len(lines) >= 2:       # an unborn branch still has a toplevel
+            lines = lines[:2] + ["HEAD"]
+        if len(lines) >= 3 and lines[0]:
+            top = os.path.realpath(lines[0])
+            common = os.path.realpath(lines[1])
+            found = {"path": top, "gitdir": common,
+                     "branch": None if lines[2] == "HEAD" else lines[2],
+                     "primary": os.path.isdir(os.path.join(top, ".git"))}
+    _toplevels[cwd] = found
+    return found
+
+
+def known_gitdirs(cfg: dict, here: bool) -> Optional[set]:
+    """The repos being watched, or None when every repo counts.
+
+    With roots configured, a server only belongs to a worktree of a repo
+    under them: the same list the rest of the app shows. With none (or
+    `--here`) there is no list to be outside of.
+    """
+    roots = [] if here else (cfg.get("roots") or [])
+    if not roots:
+        if here:
+            cd = common_dir(os.getcwd())
+            return {os.path.realpath(cd).lower()} if cd else set()
+        return None
+    return {os.path.realpath(g).lower() for g in find_repos(roots)}
+
+
+def env_names(folder: str) -> List[str]:
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    return sorted(n for n in names
+                  if (n in ENV_FILES or n.startswith(ENV_PREFIX))
+                  and not n.endswith(ENV_TEMPLATES)
+                  and os.path.isfile(os.path.join(folder, n)))
+
+
+def env_presence(worktree: str, main: Optional[str]) -> List[dict]:
+    """Which env files each app folder has. Names only: nothing is opened.
+
+    A new worktree does not inherit ignored files, so "the server starts and
+    every request fails" is very often a `.env.local` that exists in the main
+    checkout and not here. That is the one thing reported as `missing`.
+    """
+    folders = [""]
+    for parent in ENV_PARENTS:
+        for base in ([worktree] + ([main] if main else [])):
+            try:
+                subs = sorted(os.listdir(os.path.join(base, parent)))
+            except OSError:
+                continue
+            for s in subs:
+                rel = os.path.join(parent, s)
+                if rel not in folders and os.path.isfile(os.path.join(base, rel, "package.json")):
+                    folders.append(rel)
+    report: List[dict] = []
+    for rel in folders:
+        here = env_names(os.path.join(worktree, rel))
+        there = env_names(os.path.join(main, rel)) if main else []
+        missing = [n for n in there if n not in here]
+        if here or missing:
+            report.append({"folder": rel, "present": here, "missing": missing})
+    return report
+
+
+def main_of(wt: dict) -> Optional[str]:
+    if wt["primary"] or os.path.basename(wt["gitdir"]) != ".git":
+        return None
+    return os.path.dirname(wt["gitdir"])
+
+
+def running(cfg: dict, here: bool = False) -> dict:
+    if not have("lsof"):
+        return {"version": VERSION, "worktrees": [], "other": [],
+                "error": "lsof is not available, so listening ports cannot be read"}
+    rc, out, err = sh(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"], timeout=8)
+    listeners = parse_listeners(out)
+    # lsof exits 1 for "nothing matched" as well as for failure.
+    if rc != 0 and not listeners and err and "timed out" in err:
+        return {"version": VERSION, "worktrees": [], "other": [], "error": "lsof timed out"}
+    table = process_table()
+    wanted = set(listeners)
+    for pid in listeners:                       # and whoever might restart them
+        cur, hops = table.get(pid), 0
+        while cur is not None and cur.ppid > 1 and hops < 6:
+            wanted.add(cur.ppid)
+            cur, hops = table.get(cur.ppid), hops + 1
+    cwds = process_cwds(sorted(wanted))
+    known = known_gitdirs(cfg, here)
+
+    groups: Dict[str, dict] = {}
+    other: List[dict] = []
+    for pid in sorted(listeners):
+        proc = table.get(pid)
+        if not alive(proc):
+            continue
+        cwd = cwds.get(pid, "")
+        wt = worktree_of(cwd) if cwd else None
+        if wt and known is not None and wt["gitdir"].lower() not in known:
+            wt = None
+        row = {"pid": pid, "command": proc.command, "started": proc.started,
+               "ports": listeners[pid], "cwd": cwd}
+        if not wt:
+            other.append(row)
+            continue
+        row["folder"] = os.path.relpath(os.path.realpath(cwd), wt["path"])
+        if row["folder"] == ".":
+            row["folder"] = ""
+        row["stoppable"] = runner_name(proc.command) not in SESSIONS
+        row["also"] = [{"pid": p.pid, "command": p.command, "started": p.started}
+                       for p in restart_chain(pid, table, cwds, wt["path"])]
+        g = groups.get(wt["path"])
+        if g is None:
+            main = main_of(wt)
+            repo = os.path.basename(os.path.dirname(wt["gitdir"])) \
+                if os.path.basename(wt["gitdir"]) == ".git" else os.path.basename(wt["gitdir"])
+            g = groups[wt["path"]] = {
+                "path": wt["path"], "name": os.path.basename(wt["path"]), "repo": repo,
+                "branch": wt["branch"], "primary": wt["primary"],
+                "env": env_presence(wt["path"], main), "servers": []}
+        g["servers"].append(row)
+    for g in groups.values():
+        g["servers"].sort(key=lambda r: r["ports"][0])
+    other.sort(key=lambda r: r["ports"][0])
+    return {"version": VERSION, "error": None, "other": other,
+            "worktrees": sorted(groups.values(), key=lambda g: (g["repo"].lower(), g["name"].lower()))}
+
+
+def cmd_ports(args, cfg: dict) -> int:
+    report = running(cfg, here=args.here)
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+    if report["error"]:
+        print(f"{C.red}{report['error']}{C.off}")
+        return 1
+    if not report["worktrees"] and not report["other"]:
+        print(f"{C.dim}Nothing is listening.{C.off}")
+        return 0
+    for g in report["worktrees"]:
+        print(f"{C.bold}{g['repo']}/{g['name']}{C.off} {C.dim}{g['branch'] or 'detached'}{C.off}")
+        for s in g["servers"]:
+            ports = " ".join(f":{p}" for p in s["ports"])
+            print(f"  {ports:<12} {s['command']:<16} {C.dim}{s['folder'] or '.'}  pid {s['pid']}{C.off}")
+        for e in g["env"]:
+            if e["missing"]:
+                print(f"  {C.yellow}{e['folder'] or '.'} is missing {', '.join(e['missing'])}{C.off}")
+    if report["other"]:
+        print(f"{C.dim}Not in a worktree{C.off}")
+        for s in report["other"]:
+            ports = " ".join(f":{p}" for p in s["ports"])
+            print(f"  {ports:<12} {s['command']:<16} {C.dim}pid {s['pid']}{C.off}")
+    return 0
+
+
+def cmd_stop(args, cfg: dict) -> int:
+    """End one listener, and the runners that would restart it.
+
+    SIGTERM, then a few seconds of looking. What is still there afterwards is
+    reported rather than escalated: SIGKILL gives a process no chance to put
+    its lock files and child processes away, so it is a second decision
+    (`--force`), never a silent follow-up.
+    """
+    def finish(status: str, reason: str = "", stopped=(), remaining=()) -> int:
+        body = {"status": status, "reason": reason,
+                "stopped": [{"pid": p.pid, "command": p.command} for p in stopped],
+                "remaining": [{"pid": p.pid, "command": p.command} for p in remaining]}
+        if args.json:
+            print(json.dumps(body, indent=2))
+        elif status == "stopped":
+            print(f"{C.green}stopped{C.off} " + ", ".join(f"{p.command} ({p.pid})" for p in stopped))
+        elif status == "gone":
+            print(f"{C.dim}process {args.pid} had already ended.{C.off}")
+        else:
+            print(f"{C.red if status == 'refused' else C.yellow}{status}{C.off} {C.dim}{reason}{C.off}")
+        return 0 if status in ("stopped", "gone") else 1
+
+    table = process_table()
+    target = table.get(args.pid)
+    if not alive(target):
+        return finish("gone")
+    if args.pid <= 1 or args.pid == os.getpid():
+        return finish("refused", "that is not a process this tool stops")
+    if target.started != " ".join(args.started.split()) or target.command != args.command:
+        return finish("refused", f"process {args.pid} is now {target.command}, started "
+                                 f"{target.started} — not the one you were shown")
+    if runner_name(target.command) in SESSIONS:
+        return finish("refused", f"{target.command} is an agent session, not a dev server; "
+                                 f"end it from its own window")
+    ancestors: List[int] = []
+    cur = target
+    while cur is not None and cur.ppid > 1 and len(ancestors) < 6:
+        ancestors.append(cur.ppid)
+        cur = table.get(cur.ppid)
+    cwds = process_cwds([args.pid] + ancestors)
+    cwd = cwds.get(args.pid, "")
+    wt = worktree_of(cwd) if cwd else None
+    known = known_gitdirs(cfg, args.here)
+    if not wt or (known is not None and wt["gitdir"].lower() not in known):
+        return finish("refused", f"{target.command} ({args.pid}) is not running inside a worktree")
+
+    # Parents first: a runner that outlives its child starts another.
+    doomed = list(reversed(restart_chain(args.pid, table, cwds, wt["path"]))) + [target]
+    sig = signal.SIGKILL if args.force else signal.SIGTERM
+    for p in doomed:
+        try:
+            os.kill(p.pid, sig)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            return finish("refused", f"not permitted to signal {p.command} ({p.pid})")
+
+    def still(now: Dict[int, Proc]) -> List[Proc]:
+        return [p for p in doomed if alive(now.get(p.pid)) and now[p.pid].started == p.started]
+
+    deadline = time.time() + STOP_WAIT
+    left = doomed
+    while True:
+        left = still(process_table([p.pid for p in doomed]))
+        if not left or time.time() >= deadline:
+            break
+        time.sleep(0.15)
+    gone = [p for p in doomed if p not in left]
+    if left:
+        return finish("still_running",
+                      "did not exit when asked" + ("" if args.force else "; --force ends it without asking"),
+                      stopped=gone, remaining=left)
+    return finish("stopped", stopped=gone)
+
+
 def cmd_doctor(wts: List[Worktree]) -> int:
     """Show how each repo's base was resolved. A base you can see is correctable."""
     by_repo: Dict[str, List[Worktree]] = {}
@@ -4345,6 +4746,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("doctor", parents=[after],
                    help="explain base-branch resolution per repo")
 
+    sub.add_parser("ports", parents=[after],
+                   help="dev servers listening right now, by worktree")
+    st = sub.add_parser("stop", parents=[after],
+                        help="stop one listening process inside a worktree")
+    st.add_argument("--pid", type=int, required=True)
+    st.add_argument("--started", required=True, metavar="WHEN",
+                    help="the start time `ports` reported for it; a reused pid will not match")
+    st.add_argument("--command", required=True, metavar="NAME",
+                    help="the command `ports` reported for it")
+    st.add_argument("--force", action="store_true",
+                    help="SIGKILL instead of SIGTERM, for one that ignored the first ask")
+
     ag = sub.add_parser("agent", parents=[after],
                         help="one JSON envelope for an ambient client")
     ag.add_argument("--no-size", action="store_true", help="skip measuring disk")
@@ -4394,6 +4807,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cmd_unlock(args)
     if args.cmd == "prune":
         return cmd_prune(args)
+    if args.cmd == "ports":
+        return cmd_ports(args, cfg)
+    if args.cmd == "stop":
+        return cmd_stop(args, cfg)
     # Only for folders you named: a sweep that fetched every repo it knows
     # would turn a five-second question into a minute of network.
     if args.cmd == "reap" and getattr(args, "path", None) \

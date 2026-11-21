@@ -2957,3 +2957,221 @@ class LockAndPrune(unittest.TestCase):
         rc, _ = self.run_cmd(T.cmd_prune, path=[self.fx.main], yes=True)
         self.assertEqual(rc, 0)
         self.assertFalse(listed())
+
+
+LISTEN = "import socket,sys,time\ns=socket.socket()\ns.bind(('127.0.0.1',0))\ns.listen(1)\n" \
+         "print(s.getsockname()[1],flush=True)\ntime.sleep(120)\n"
+DEAF = "import signal,sys,time\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n" \
+       "print('ready',flush=True)\ntime.sleep(120)\n"
+IDLE = "import time\nprint('ready',flush=True)\ntime.sleep(120)\n"
+
+
+class Running(unittest.TestCase):
+    """What is listening, where, and what `stop` is allowed to signal."""
+
+    def setUp(self):
+        isolate_caches(self)
+        T._toplevels.clear()
+        self.fx = Fixture()
+        self.addCleanup(self.fx.close)
+        self.wt = self.fx.worktree("r", "feat/r")
+        self.cfg = dict(T.DEFAULT_CONFIG, roots=[self.fx.root])
+
+    def child(self, code, cwd):
+        p = subprocess.Popen([sys.executable, "-c", code], cwd=cwd,
+                             stdout=subprocess.PIPE, universal_newlines=True)
+        def end():
+            p.kill(); p.wait(); p.stdout.close()
+        self.addCleanup(end)
+        return p, p.stdout.readline().strip()
+
+    def stop(self, pid, started, command, force=False):
+        args = argparse.Namespace(pid=pid, started=started, command=command,
+                                  force=force, json=True, here=False)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = T.cmd_stop(args, self.cfg)
+        return rc, json.loads(out.getvalue())
+
+    # ── reading the three tables ────────────────────────────────────────────
+
+    def test_listeners_are_read_per_process_with_each_port_once(self):
+        out = "p701\nf12\nn*:51791\nf13\nn*:51791\nf18\nn[::1]:3000\np745\nf36\nn127.0.0.1:9277\np9\nf1\nn*:*\n"
+        self.assertEqual(T.parse_listeners(out), {701: [3000, 51791], 745: [9277]})
+
+    def test_working_directories_are_read_per_process(self):
+        out = "p16009\nfcwd\nn/Users/a/dev/shop\np17353\nfcwd\nn/Users/a/dev/shop wt/apps/web\n"
+        self.assertEqual(T.parse_cwds(out), {16009: "/Users/a/dev/shop",
+                                             17353: "/Users/a/dev/shop wt/apps/web"})
+
+    def test_ps_rows_keep_a_start_time_and_a_short_command(self):
+        out = ("16009 16008 S    Fri Nov 20 17:15:48 2026     /Applications/A B.app/Contents/MacOS/tool\n"
+               "17353 17246 S+   Thu Nov  5 01:02:03 2026     node\n"
+               "  222   111 Z    Thu Nov  5 01:02:03 2026     <defunct>\n"
+               "garbage\n")
+        t = T.parse_ps(out)
+        self.assertEqual(t[16009].command, "tool")
+        self.assertEqual(t[17353].started, "Thu Nov 5 01:02:03 2026")
+        self.assertEqual((t[17353].ppid, t[17353].command), (17246, "node"))
+        self.assertFalse(T.alive(t[222]))
+        self.assertEqual(len(t), 3)
+
+    # ── which worktree a process belongs to ─────────────────────────────────
+
+    def test_a_folder_inside_a_linked_worktree_maps_to_that_worktree(self):
+        sub = os.path.join(self.wt, "apps", "web")
+        os.makedirs(sub)
+        got = T.worktree_of(sub)
+        self.assertEqual(got["path"], os.path.realpath(self.wt))
+        self.assertEqual(got["branch"], "feat/r")
+        self.assertFalse(got["primary"])
+        self.assertEqual(T.main_of(got), os.path.realpath(self.fx.main))
+        self.assertTrue(T.worktree_of(self.fx.main)["primary"])
+
+    def test_a_folder_outside_any_repo_maps_to_nothing(self):
+        d = tempfile.mkdtemp(prefix="wt-manager-plain-")
+        self.addCleanup(shutil.rmtree, d, True)
+        self.assertIsNone(T.worktree_of(d))
+
+    # ── env files: names, never contents ────────────────────────────────────
+
+    def test_env_files_the_main_checkout_has_and_the_worktree_lacks_are_missing(self):
+        for base in (self.fx.main, self.wt):
+            os.makedirs(os.path.join(base, "apps", "web"))
+            open(os.path.join(base, "apps", "web", "package.json"), "w").close()
+            os.makedirs(os.path.join(base, "apps", "notes"))      # no package.json: not an app
+        for name in (".env.local", ".env.development.local", ".env.development.example"):
+            with open(os.path.join(self.fx.main, "apps", "web", name), "w") as fh:
+                fh.write("SECRET=do-not-read\n")
+        open(os.path.join(self.fx.main, "apps", "notes", ".env"), "w").close()
+        open(os.path.join(self.wt, ".env"), "w").close()
+        got = T.env_presence(self.wt, self.fx.main)
+        self.assertEqual(got, [
+            {"folder": "", "present": [".env"], "missing": []},
+            {"folder": os.path.join("apps", "web"), "present": [],
+             "missing": [".env.development.local", ".env.local"]}])
+        self.assertNotIn("do-not-read", json.dumps(got))
+
+    # ── what goes down with a listener ──────────────────────────────────────
+
+    def chain(self, parents, cwds, wraps=lambda pid: True):
+        table = {10: T.Proc(10, 9, "S", "t", "node")}
+        table.update({p.pid: p for p in parents})
+        cwds = {10: "/w/apps/web", **cwds}
+        with mock.patch.object(T.os.path, "realpath", side_effect=lambda p: p):
+            return [p.pid for p in T.restart_chain(10, table, cwds, "/w", wraps=wraps)]
+
+    def test_the_runners_that_would_restart_a_server_stop_with_it(self):
+        parents = [T.Proc(9, 8, "S", "t", "sh"), T.Proc(8, 7, "S", "t", "node"),
+                   T.Proc(7, 6, "S", "t", "-zsh"), T.Proc(6, 1, "S", "t", "Terminal")]
+        self.assertEqual(self.chain(parents, {9: "/w/apps/web", 8: "/w", 7: "/w", 6: "/"}), [9, 8])
+
+    def test_a_shell_someone_is_typing_into_is_never_part_of_it(self):
+        parents = [T.Proc(9, 8, "S", "t", "zsh")]
+        self.assertEqual(self.chain(parents, {9: "/w"}, wraps=lambda pid: False), [])
+
+    def test_an_agent_or_editor_in_the_same_folder_is_never_part_of_it(self):
+        parents = [T.Proc(9, 8, "S", "t", "claude"), T.Proc(8, 1, "S", "t", "node")]
+        self.assertEqual(self.chain(parents, {9: "/w", 8: "/w"}), [])
+
+    def test_a_runner_sitting_outside_the_worktree_is_left_alone(self):
+        parents = [T.Proc(9, 8, "S", "t", "pnpm")]
+        self.assertEqual(self.chain(parents, {9: "/elsewhere"}), [])
+        self.assertEqual(self.chain(parents, {9: "/w-other"}), [])
+
+    # ── the real thing ──────────────────────────────────────────────────────
+
+    def test_a_listening_process_is_listed_under_its_worktree(self):
+        sub = os.path.join(self.wt, "apps", "web")
+        os.makedirs(sub)
+        p, port = self.child(LISTEN, sub)
+        plain = tempfile.mkdtemp(prefix="wt-manager-plain-")
+        self.addCleanup(shutil.rmtree, plain, True)
+        q, other_port = self.child(LISTEN, plain)
+        report = T.running(self.cfg)
+        self.assertIsNone(report["error"])
+        mine = [g for g in report["worktrees"] if g["path"] == os.path.realpath(self.wt)]
+        self.assertEqual(len(mine), 1, report)
+        self.assertEqual(mine[0]["branch"], "feat/r")
+        row = [s for s in mine[0]["servers"] if s["pid"] == p.pid][0]
+        self.assertEqual(row["ports"], [int(port)])
+        self.assertEqual(row["folder"], os.path.join("apps", "web"))
+        self.assertTrue(row["stoppable"])
+        self.assertEqual([r["ports"] for r in report["other"] if r["pid"] == q.pid],
+                         [[int(other_port)]])
+
+    def test_a_repo_outside_the_watched_folders_is_not_a_known_worktree(self):
+        p, _ = self.child(LISTEN, self.wt)
+        elsewhere = tempfile.mkdtemp(prefix="wt-manager-roots-")
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        report = T.running(dict(self.cfg, roots=[elsewhere]))
+        self.assertEqual(report["worktrees"], [])
+        self.assertIn(p.pid, [r["pid"] for r in report["other"]])
+
+    def test_stop_ends_the_process_it_was_shown(self):
+        p, _ = self.child(IDLE, self.wt)
+        me = T.process_table([p.pid])[p.pid]
+        rc, body = self.stop(p.pid, me.started, me.command)
+        self.assertEqual((rc, body["status"]), (0, "stopped"), body)
+        self.assertEqual([s["pid"] for s in body["stopped"]], [p.pid])
+        self.assertEqual(p.wait(timeout=5), -15)
+
+    def test_stop_refuses_a_pid_that_now_belongs_to_something_else(self):
+        p, _ = self.child(IDLE, self.wt)
+        me = T.process_table([p.pid])[p.pid]
+        for started, command in (("Mon Jan 1 00:00:00 2001", me.command), (me.started, "next-server")):
+            rc, body = self.stop(p.pid, started, command)
+            self.assertEqual((rc, body["status"]), (1, "refused"), body)
+        self.assertIsNone(p.poll(), "a refusal signals nothing")
+
+    def test_stop_refuses_a_process_outside_every_worktree(self):
+        plain = tempfile.mkdtemp(prefix="wt-manager-plain-")
+        self.addCleanup(shutil.rmtree, plain, True)
+        p, _ = self.child(IDLE, plain)
+        me = T.process_table([p.pid])[p.pid]
+        rc, body = self.stop(p.pid, me.started, me.command, force=True)
+        self.assertEqual((rc, body["status"]), (1, "refused"), body)
+        self.assertIn("not running inside a worktree", body["reason"])
+        self.assertIsNone(p.poll())
+
+    def test_stop_never_signals_the_test_runners_own_parents(self):
+        # The child's parent is this test process, whose cwd is not the worktree
+        # and whose name is no runner: only the child may be named.
+        p, _ = self.child(IDLE, self.wt)
+        me = T.process_table([p.pid])[p.pid]
+        _, body = self.stop(p.pid, me.started, me.command)
+        self.assertNotIn(os.getpid(), [s["pid"] for s in body["stopped"]])
+
+    def test_one_that_ignores_the_ask_is_reported_and_only_force_kills_it(self):
+        p, _ = self.child(DEAF, self.wt)
+        me = T.process_table([p.pid])[p.pid]
+        with mock.patch.object(T, "STOP_WAIT", 0.5):
+            rc, body = self.stop(p.pid, me.started, me.command)
+        self.assertEqual((rc, body["status"]), (1, "still_running"), body)
+        self.assertEqual([s["pid"] for s in body["remaining"]], [p.pid])
+        self.assertIsNone(p.poll())
+        rc, body = self.stop(p.pid, me.started, me.command, force=True)
+        self.assertEqual((rc, body["status"]), (0, "stopped"), body)
+        self.assertEqual(p.wait(timeout=5), -9)
+
+    def test_one_that_already_ended_is_not_an_error(self):
+        p, _ = self.child(IDLE, self.wt)
+        me = T.process_table([p.pid])[p.pid]
+        p.kill(); p.wait()
+        rc, body = self.stop(p.pid, me.started, me.command)
+        self.assertEqual((rc, body["status"]), (0, "gone"))
+
+    def test_an_agent_session_is_never_stopped(self):
+        p, _ = self.child(IDLE, self.wt)
+        me = T.process_table([p.pid])[p.pid]
+        with mock.patch.object(T, "SESSIONS", {me.command}):
+            rc, body = self.stop(p.pid, me.started, me.command, force=True)
+        self.assertEqual((rc, body["status"]), (1, "refused"), body)
+        self.assertIsNone(p.poll())
+
+    def test_the_verbs_answer_without_reading_every_repo(self):
+        with mock.patch.object(T, "gather", side_effect=AssertionError("gather was called")), \
+                mock.patch.object(T, "load_config", return_value=self.cfg), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(T.main(["ports", "--json"]), 0)
+        self.assertIn("worktrees", json.loads(out.getvalue()))
