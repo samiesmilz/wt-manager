@@ -370,6 +370,10 @@ struct ChipBar: View {
         out.append(Chip(title: "Locations", dot: nil, on: store.page == .locations) {
             store.locationFilter = nil; store.page = .locations
         })
+        let live: Int = store.runningCount
+        out.append(Chip(title: live > 0 ? "Running \(live)" : "Running", dot: live > 0 ? Palette.reclaim : nil,
+                        on: store.page == .running) { store.page = .running })
+        out.append(Chip(title: "Compare", dot: nil, on: store.page == .compare) { store.page = .compare })
         out.append(Chip(title: "Kept files", dot: nil, on: store.page == .kept) { store.page = .kept })
         out.append(Chip(title: "Mascots", dot: nil, on: store.page == .mascots) { store.page = .mascots })
         out.append(Chip(title: "Settings", dot: nil, on: false) { store.showingSettings = true })

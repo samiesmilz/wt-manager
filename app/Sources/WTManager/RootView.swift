@@ -100,6 +100,8 @@ struct RootView: View {
             switch store.page {
             case .folders: FoldersView(store: store, open: openRow ?? store.focusPath)
             case .locations: LocationsView(store: store)
+            case .running: RunningView(store: store)
+            case .compare: DesignCompareView(store: store)
             case .kept: KeptFilesView()
             case .mascots: MascotsView(store: store)
             }
@@ -147,6 +149,13 @@ struct Sidebar: View {
                   on: store.page == .locations || (store.page == .folders && store.locationFilter != nil)) {
                 store.locationFilter = nil
                 store.page = .locations
+            }
+            entry("Running", "dot.radiowaves.left.and.right", store.runningCount > 0 ? "\(store.runningCount)" : nil,
+                  tint: Palette.reclaim, on: store.page == .running) {
+                store.page = .running
+            }
+            entry("Design compare", "rectangle.split.2x1", nil, tint: Palette.muted, on: store.page == .compare) {
+                store.page = .compare
             }
             entry("Kept files", "archivebox", nil, tint: Palette.muted, on: store.page == .kept) {
                 store.page = .kept
@@ -370,6 +379,8 @@ struct Header: View {
             let places = Set(store.folderRows.map(store.location(of:))).count
             if places > 0 { return Store.count(places, "place") + (places == 1 ? " holds" : " hold") + " your worktrees" }
         }
+        if store.page == .running, let running = store.running { return running.headline }
+        if store.page == .compare { return "A design beside the running page" }
         return env.headline
     }
 

@@ -109,7 +109,7 @@ final class Store: ObservableObject {
     /// ⌘F. The filter lives on the folder list, so asking for it there.
     func focusTheFilter() { page = .folders; focusFilter += 1 }
 
-    enum Page { case folders, locations, kept, mascots }
+    enum Page { case folders, locations, running, compare, kept, mascots }
     /// The sidebar's third filter: who made the folder, nil for all.
     @Published var madeByFilter: String?
     static let makers: [String] = ["Claude Code", "Codex", "By hand"]
@@ -237,6 +237,7 @@ final class Store: ObservableObject {
         refresh(measureDisk: false) { [weak self] in
             self?.refresh(measureDisk: true)
         }
+        refreshRunning()
         Pulse.shared.start()
         if automaticUpdates { updates.check() }
         timers.append(Timer.scheduledTimer(withTimeInterval: Engine.fastInterval, repeats: true) { [weak self] _ in
@@ -275,6 +276,7 @@ final class Store: ObservableObject {
     /// moment someone looks at the window is the moment that matters, and
     /// counts cost about eight seconds, so looking at it is the trigger.
     func catchUp(staleAfter: TimeInterval = 15) {
+        refreshRunning()
         guard Date().timeIntervalSince(countedAt) > staleAfter else { return }
         refreshWhenIdle(measureDisk: false)
     }
@@ -359,6 +361,80 @@ final class Store: ObservableObject {
         }
     }
 
+
+    /// The Design compare page's state. Here so the pair on screen survives
+    /// a visit to another page.
+    let compare = CompareModel()
+
+    // MARK: - running
+
+    /// What is listening right now. Read on its own channel, so it never
+    /// waits behind a counts or disk pass.
+    @Published private(set) var running: RunningEnvelope?
+    @Published private(set) var runningError: String?
+    /// Servers a stop has been sent for and not yet answered.
+    @Published private(set) var stopping: Set<String> = []
+    /// What the last stop did, and the server it could not end, if any.
+    @Published var stopOutcome: (result: StopResult, server: RunningServer)?
+    private var readingRunning = false
+
+    /// Dev servers in worktrees: the sidebar's count.
+    var runningCount: Int { running?.serverCount ?? 0 }
+
+    /// The full scan's figure for a worktree, which knows about its PR's
+    /// target; the Running read measures against the repo's usual base.
+    func behind(of path: String) -> Int? {
+        envelope?.worktrees.first { $0.path == path }?.behind
+    }
+
+    func refreshRunning() {
+        guard !readingRunning, !runningIsFixture else { return }
+        readingRunning = true
+        engine.live(["--json", "ports"]) { [weak self] result in
+            guard let self else { return }
+            self.readingRunning = false
+            switch result {
+            case .success(let data):
+                if let env = try? JSONDecoder().decode(RunningEnvelope.self, from: data) {
+                    self.running = env
+                    self.runningError = env.error
+                } else {
+                    self.runningError = "The list of running servers could not be read."
+                }
+            case .failure(let error):
+                self.runningError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Ask the engine to stop one server. It checks again that the pid is
+    /// still the process shown here before it signals anything.
+    func stop(_ server: RunningServer, force: Bool = false) {
+        guard !stopping.contains(server.id) else { return }
+        stopping.insert(server.id)
+        stopOutcome = nil
+        engine.live(server.stopArguments(force: force)) { [weak self] result in
+            guard let self else { return }
+            self.stopping.remove(server.id)
+            switch result {
+            case .success(let data):
+                if let answer = try? JSONDecoder().decode(StopResult.self, from: data) {
+                    self.stopOutcome = (answer, server)
+                } else {
+                    self.runningError = "The engine's answer to the stop could not be read."
+                }
+            case .failure(let error):
+                self.runningError = error.localizedDescription
+            }
+            self.refreshRunning()
+        }
+    }
+
+    /// Hand the store a running list directly, for rendering without an engine.
+    /// After this the live read is off: a fixture must not be replaced by
+    /// whatever happens to be listening on the machine drawing it.
+    func load(running env: RunningEnvelope) { running = env; runningIsFixture = true }
+    private var runningIsFixture = false
 
     /// Hand the store an envelope directly, for rendering without an engine.
     func load(_ env: Envelope) {

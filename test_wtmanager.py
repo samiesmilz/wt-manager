@@ -3093,12 +3093,19 @@ class Running(unittest.TestCase):
         mine = [g for g in report["worktrees"] if g["path"] == os.path.realpath(self.wt)]
         self.assertEqual(len(mine), 1, report)
         self.assertEqual(mine[0]["branch"], "feat/r")
+        self.assertEqual((mine[0]["behind"], mine[0]["base"]), (0, "origin/main"))
         row = [s for s in mine[0]["servers"] if s["pid"] == p.pid][0]
         self.assertEqual(row["ports"], [int(port)])
         self.assertEqual(row["folder"], os.path.join("apps", "web"))
         self.assertTrue(row["stoppable"])
         self.assertEqual([r["ports"] for r in report["other"] if r["pid"] == q.pid],
                          [[int(other_port)]])
+
+    def test_behind_counts_what_the_base_gained_as_of_the_last_fetch(self):
+        self.fx.commit(self.fx.main)
+        git("push", "-q", "origin", "main", cwd=self.fx.main)
+        wt = T.worktree_of(self.wt)
+        self.assertEqual(T.behind_base(wt, "repo", self.cfg), (1, "origin/main"))
 
     def test_a_repo_outside_the_watched_folders_is_not_a_known_worktree(self):
         p, _ = self.child(LISTEN, self.wt)

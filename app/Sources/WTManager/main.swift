@@ -551,6 +551,20 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
     // comfortable width is not done.
     let lim = AppDelegate.limits(for: NSScreen.main, contentNeeds: 620)
     let sizes = [("", lim.ideal), ("-min", lim.min)]
+    // The checkout's own fixtures, found from this file: the harness only
+    // ever runs from a checkout.
+    let docs = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("docs")
+    var runningFixture = false
+    if let data = try? Data(contentsOf: docs.appendingPathComponent("running-envelope.json")),
+       let running = try? JSONDecoder().decode(RunningEnvelope.self, from: data) {
+        store.load(running: running)
+        runningFixture = true
+    }
+    let compareDesign = NSImage(contentsOf: docs.appendingPathComponent("compare-design.png"))
+    let compareCapture = NSImage(contentsOf: docs.appendingPathComponent("compare-capture.png"))
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
         NSApp.appearance = NSAppearance(named: appearance)
         if mergeOnly {
@@ -607,6 +621,31 @@ func snapshot(into dir: String, envelopePath: String?, foldersOnly: Bool = false
             draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
                  size: CGSize(width: size.width, height: 1500), appearance: appearance,
                  to: "\(name)-mascots-tall\(suffix).png")
+            // What is running, and a design beside its page: both from saved
+            // fixtures, never from this machine's ports or a live web view.
+            if runningFixture {
+                store.page = .running
+                draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                     size: size, appearance: appearance, to: "\(name)-running\(suffix).png")
+                store.page = .compare
+                for mode in CompareModel.Mode.allCases {
+                    store.compare.loadFixture(design: compareDesign, capture: compareCapture,
+                                              worktree: "/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer",
+                                              port: 3000, path: "/", width: 390, mode: mode)
+                    draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                         size: CGSize(width: size.width, height: max(size.height, 1180)), appearance: appearance,
+                         to: "\(name)-compare-\(mode.rawValue)\(suffix).png")
+                }
+                store.compare.loadFixture(device: CaptureDevice(kind: .simulator, id: "0000-FIXTURE", name: "iPhone 17 Pro"),
+                                          design: compareDesign, capture: compareCapture)
+                draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                     size: size, appearance: appearance, to: "\(name)-compare-device\(suffix).png")
+                store.compare.loadFixture(design: nil, capture: nil,
+                                          worktree: "/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer",
+                                          port: 3000, path: "/checkout", width: 390, mode: .sideBySide)
+                draw(RootView(store: store).background(Color(nsColor: .windowBackgroundColor)),
+                     size: size, appearance: appearance, to: "\(name)-compare-empty\(suffix).png")
+            }
             store.page = .folders
             // One place picked in the sidebar: the page must show its folders.
             if let place = store.locations.first(where: { $0.id != Store.elsewhere && $0.count == 2 }) {
@@ -824,6 +863,76 @@ func checkDelete(into dir: String, path: String) -> Int32 {
     return ok ? 0 : 1
 }
 
+/// `--check-stop PORT`: the Running page's own read and stop, end to end, on
+/// one real server: the store asks the engine what is listening, finds the
+/// port under a worktree, stops it the way the Stop button does, and checks
+/// the next read no longer lists it.
+@MainActor
+func checkStop(port: Int) -> Int32 {
+    _ = NSApplication.shared
+    let store = Store(mascot: nil)
+    func wait(_ seconds: Double = 20, until done: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !done() && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        return done()
+    }
+    var ok = true
+    func check(_ cond: Bool, _ what: String) { print((cond ? "ok   " : "FAIL ") + what); ok = ok && cond }
+    func find() -> (RunningWorktree, RunningServer)? {
+        for wt in store.running?.worktrees ?? [] {
+            if let s = wt.servers.first(where: { $0.ports.contains(port) }) { return (wt, s) }
+        }
+        return nil
+    }
+    store.refreshRunning()
+    check(wait { store.running != nil || store.runningError != nil }, "the store read what is running")
+    guard let (wt, server) = find() else {
+        print("FAIL nothing in a worktree listens on :\(port)" + (store.runningError.map { " (\($0))" } ?? ""))
+        return 1
+    }
+    print("     \(server.command) \(server.portLabel) in \(wt.name)/\(server.folder), \(wt.behindLabel() ?? "no base")")
+    check(server.stoppable, "it is offered a Stop")
+    store.stop(server)
+    check(store.stopping.contains(server.id), "the row shows it is stopping")
+    check(wait { store.stopOutcome != nil }, "the engine answered")
+    check(store.stopOutcome?.result.ended == true, "it stopped: " + (store.stopOutcome?.result.sentence ?? "no answer"))
+    check(wait { store.stopping.isEmpty && find() == nil }, "the next read no longer lists :\(port)")
+    return ok ? 0 : 1
+}
+
+/// `--check-capture DIR URL`: the Design compare page's own capture, on a real
+/// page, at each of its widths, without a person at the window. The snapshot
+/// harness draws that page from saved images because a web view does not
+/// rasterise offscreen; this is the half it cannot cover.
+@MainActor
+func checkCapture(into dir: String, url: String) -> Int32 {
+    _ = NSApplication.shared
+    guard let page = URL(string: url) else { print("FAIL not a URL: \(url)"); return 1 }
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let camera = WebCapture()
+    var ok = true
+    for width in ComparePair.widths {
+        var result: Result<NSImage, Error>?
+        camera.capture(page, width: width) { result = $0 }
+        let deadline = Date().addingTimeInterval(40)
+        while result == nil && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        switch result {
+        case .success(let image):
+            let px = CompareModel.pixels(image)
+            let file = URL(fileURLWithPath: dir).appendingPathComponent("capture-\(width).png")
+            let wrote = (try? CompareModel.png(image)?.write(to: file)) != nil
+            let right = Int(image.size.width.rounded()) == width
+            print((wrote && right ? "ok   " : "FAIL ") + "\(width)pt: \(Int(image.size.width))x\(Int(image.size.height))pt, \(Int(px.width))x\(Int(px.height))px")
+            ok = ok && wrote && right
+        case .failure(let error):
+            print("FAIL \(width)pt: \(error.localizedDescription)"); ok = false
+        case nil:
+            print("FAIL \(width)pt: no answer"); ok = false
+        }
+    }
+    return ok ? 0 : 1
+}
+
 /// `--snapshot-show DIR ENVELOPE PATH`: the window after another page asks to
 /// show one worktree, the way the Folders arrow and the at-risk rows do.
 @MainActor
@@ -855,6 +964,27 @@ func snapshotShow(into dir: String, envelopePath: String, path: String) {
 // Top-level code already runs on the main thread; Swift 6 just needs telling.
 MainActor.assumeIsolated {
     let args = CommandLine.arguments
+    if let i = args.firstIndex(of: "--check-stop"), i + 1 < args.count, let port = Int(args[i + 1]) {
+        exit(checkStop(port: port))
+    }
+    if let i = args.firstIndex(of: "--check-devices"), i + 1 < args.count {
+        // Every booted simulator and connected device, photographed once.
+        let found = DeviceCapture.list()
+        try? FileManager.default.createDirectory(atPath: args[i + 1], withIntermediateDirectories: true)
+        print(found.isEmpty ? "     no booted simulator or connected device" : "     found " + found.map(\.name).joined(separator: ", "))
+        var ok = true
+        for (n, device) in found.enumerated() {
+            let png = DeviceCapture.screenshot(device)
+            let size = png.flatMap { NSImage(data: $0) }.map { CompareModel.pixels($0) }
+            print((png == nil ? "FAIL " : "ok   ") + device.name + (size.map { ": \(Int($0.width))x\(Int($0.height))px" } ?? ": no screen"))
+            if let png { try? png.write(to: URL(fileURLWithPath: args[i + 1]).appendingPathComponent("device-\(n).png")) }
+            ok = ok && png != nil
+        }
+        exit(ok ? 0 : 1)
+    }
+    if let i = args.firstIndex(of: "--check-capture"), i + 2 < args.count {
+        exit(checkCapture(into: args[i + 1], url: args[i + 2]))
+    }
     if let i = args.firstIndex(of: "--snapshot-feedback"), i + 1 < args.count {
         snapshot(into: args[i + 1], envelopePath: nil, feedbackOnly: true)
         exit(0)

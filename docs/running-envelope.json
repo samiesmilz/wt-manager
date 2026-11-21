@@ -1,0 +1,70 @@
+{
+  "version": "0.13.0",
+  "error": null,
+  "worktrees": [
+    {
+      "path": "/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer",
+      "name": "cart-drawer",
+      "repo": "storefront-web",
+      "branch": "worktree-cart-drawer",
+      "primary": false,
+      "behind": 3,
+      "base": "origin/main",
+      "env": [
+        {"folder": "apps/web", "present": [".env.local"], "missing": []},
+        {"folder": "apps/admin", "present": [".env.local"], "missing": []},
+        {"folder": "apps/docs", "present": [], "missing": [".env.local"]}
+      ],
+      "servers": [
+        {"pid": 4101, "command": "node", "started": "Fri Nov 20 09:14:02 2026", "ports": [3000],
+         "cwd": "/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer/apps/web", "folder": "apps/web",
+         "stoppable": true,
+         "also": [{"pid": 4099, "command": "sh", "started": "Fri Nov 20 09:14:01 2026"},
+                  {"pid": 4090, "command": "node", "started": "Fri Nov 20 09:14:00 2026"}]},
+        {"pid": 4188, "command": "node", "started": "Fri Nov 20 09:20:41 2026", "ports": [6006],
+         "cwd": "/Users/me/dev/storefront-web/.claude/worktrees/cart-drawer/apps/web", "folder": "apps/web",
+         "stoppable": true, "also": []}
+      ]
+    },
+    {
+      "path": "/Users/me/dev/storefront-web/.claude/worktrees/bright-running-fox",
+      "name": "bright-running-fox",
+      "repo": "storefront-web",
+      "branch": "worktree-bright-running-fox",
+      "primary": false,
+      "behind": 0,
+      "base": "origin/main",
+      "env": [
+        {"folder": "apps/web", "present": [".env.local"], "missing": []}
+      ],
+      "servers": [
+        {"pid": 5210, "command": "node", "started": "Fri Nov 20 10:02:17 2026", "ports": [3001],
+         "cwd": "/Users/me/dev/storefront-web/.claude/worktrees/bright-running-fox/apps/web", "folder": "apps/web",
+         "stoppable": true, "also": []},
+        {"pid": 5180, "command": "claude", "started": "Fri Nov 20 10:01:50 2026", "ports": [59895],
+         "cwd": "/Users/me/dev/storefront-web/.claude/worktrees/bright-running-fox", "folder": "",
+         "stoppable": false, "also": []}
+      ]
+    },
+    {
+      "path": "/Users/me/dev/mobile-app",
+      "name": "mobile-app",
+      "repo": "mobile-app",
+      "branch": "main",
+      "primary": true,
+      "behind": 0,
+      "base": "origin/main",
+      "env": [
+        {"folder": "", "present": [".env", ".env.local"], "missing": []}
+      ],
+      "servers": [
+        {"pid": 6033, "command": "node", "started": "Thu Nov 19 16:40:09 2026", "ports": [8081],
+         "cwd": "/Users/me/dev/mobile-app", "folder": "", "stoppable": true, "also": []}
+      ]
+    }
+  ],
+  "other": [
+    {"pid": 800, "command": "ControlCenter", "started": "Wed Nov 18 06:00:00 2026", "ports": [5000, 7000], "cwd": "/"},
+    {"pid": 912, "command": "postgres", "started": "Wed Nov 18 06:01:12 2026", "ports": [5432], "cwd": "/Users/me/Library/Application Support/Postgres/var-16"}
+  ]
+}

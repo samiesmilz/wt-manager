@@ -16,7 +16,13 @@ final class Engine {
 
     private let queue = DispatchQueue(label: "wtmanager.engine", qos: .utility)
     private let child = EngineChild()
-    func shutdown() { child.shutdown() }
+    /// A second channel, used only for what is running right now. The first
+    /// is serial on purpose and can be held for two minutes by a disk pass;
+    /// "is my server up" asked behind that is answered about a different
+    /// minute. Nothing on this one is slow, and nothing on it deletes files.
+    private let liveQueue = DispatchQueue(label: "wtmanager.engine.live", qos: .userInitiated)
+    private let liveChild = EngineChild()
+    func shutdown() { child.shutdown(); liveChild.shutdown() }
     private(set) var lastReclaimKb: Int = 0
 
     /// Login items have a small PATH. Pick an absolute interpreter shared by
@@ -151,6 +157,42 @@ final class Engine {
                     // and exits 3, and a warning on stderr must not hide it.
                     let both = [text, errText].filter { !$0.isEmpty }.joined(separator: "\n")
                     completion(.failure(Err(both.isEmpty ? "exited \(task.terminationStatus)" : both)))
+                }
+            }
+        }
+    }
+
+    /// Runs `ports` or `stop` and hands back what it printed, whatever it
+    /// exited with: a refusal is an answer, written as JSON with exit 1.
+    func live(_ args: [String], completion: @escaping (Result<Data, Error>) -> Void) {
+        liveQueue.async {
+            guard let script = self.scriptURL, let python = self.pythonURL else {
+                DispatchQueue.main.async { completion(.failure(Err("The engine or Python 3 could not be found."))) }
+                return
+            }
+            let task = Process()
+            task.executableURL = python
+            task.arguments = [script.path, "--color=never"] + args
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = (["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin"]
+                + [env["PATH"] ?? ""]).joined(separator: ":")
+            task.environment = env
+            let out = Pipe(), err = Pipe()
+            task.standardOutput = out
+            task.standardError = err
+            do { try self.liveChild.launch(task) } catch {
+                DispatchQueue.main.async { completion(.failure(error)) }
+                return
+            }
+            defer { self.liveChild.finished() }
+            let (data, errData) = Self.drain(out, err)
+            task.waitUntilExit()
+            DispatchQueue.main.async {
+                if data.isEmpty {
+                    let msg = String(data: errData, encoding: .utf8) ?? ""
+                    completion(.failure(Err(msg.isEmpty ? "exited \(task.terminationStatus)" : String(msg.suffix(300)))))
+                } else {
+                    completion(.success(data))
                 }
             }
         }

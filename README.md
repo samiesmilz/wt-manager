@@ -159,6 +159,32 @@ Updates are **announced, not silently installed**. To update a downloaded app, q
 
 Turn automatic checks off in **Appearance → Check updates automatically**. Checks contact GitHub's public release API without an authentication token or repository data. GitHub receives ordinary network metadata such as your IP address and the installed app version. Offline or failed checks are shown honestly when requested manually; they do not erase a previously discovered update.
 
+## What is running
+
+**Running** lists every dev server listening on this Mac, under the worktree it was started in: its port, its command, and the folder inside the worktree (`apps/web`) it runs from. **Open** opens `http://localhost:<port>`; **Stop** names every process it will signal and asks first. Each worktree also shows how far behind its base it is, as of the last fetch (the app does not fetch to find out), and which app folders have their env files. A file the main checkout has and the worktree lacks is marked **missing**, which is the usual reason a fresh worktree's server starts and then fails every request.
+
+Stop is deliberate about what it touches:
+
+- It sends SIGTERM to the listener and to the runners that would restart it (`pnpm`, `npm`, a one-command `sh -c`), walking up only while each parent sits inside the same worktree. The shell you are typing into, your editor and a coding agent are never signalled.
+- A process id is not trusted on its own. The engine re-reads the process and refuses unless its command and start time are the ones the page showed, and its working directory is inside a worktree.
+- One that ignores the request is reported as still running. **Force stop** (SIGKILL) is a second, separate confirmation.
+- A coding agent's own port is listed and has no Stop. Listeners outside every worktree (apps, system services, databases) are listed under **Not in a worktree** so a port clash can be explained, and cannot be stopped from here.
+
+The page checks every few seconds while it is on screen and not otherwise, on its own channel, so it never waits behind a scan or a disk measurement.
+
+## Design compare
+
+**Design compare** puts a design image beside the page your dev server is really serving. Pick a running server and a path, pick a width (390, 600, 900 or 1440), and **Capture**: the page is loaded from `localhost` in a hidden web view at that width and photographed top to bottom. Drop, paste or choose the design image. Then look at the two **side by side**, drag a **slider** across them, lay the design over the page as an **overlay** with adjustable opacity, or see the **difference** (black where they agree).
+
+Both images are scaled to the same width before they are compared; when their proportions differ, the page says by how much instead of stretching either one. Each pair is kept per worktree, path and width, so coming back to a page shows its last design and capture.
+
+- Capture needs no Screen Recording permission: it is the app's own web view, not a picture of your screen.
+- A page behind a login is captured as whoever is signed in. **Sign in…** opens the same page in a window so you can do that yourself; the capture never fills in a form.
+- Only local images are used as designs. There is no design-tool integration and no network call.
+- A capture is at most 12,000pt tall, and a page shorter than 900pt is captured at 900pt, the height of the view it was loaded in.
+
+**Simulator or device** compares a design with a phone screen instead: pick a booted iOS simulator or a connected Android device, name the screen it is showing (`checkout`, `settings`) so each screen keeps its own design, and Capture. The screen comes from `xcrun simctl io … screenshot` or `adb exec-out screencap`, so this needs no Screen Recording permission either. An Android device has to be authorised for debugging; one that is `unauthorized` or `offline` is not listed.
+
 ## The same tool in your terminal
 
 For a source installation, the CLI is linked automatically. For a downloaded app, optionally link its embedded engine:
@@ -179,6 +205,7 @@ wt-manager doctor              # explain base resolution and forge access
 wt-manager --json              # machine-readable inventory
 wt-manager clean               # preview rebuildable-output cleanup
 wt-manager reap                # preview eligible worktree removal
+wt-manager ports               # dev servers listening now, by worktree
 ```
 
 Explicitly act on a checkout after reviewing it:
@@ -186,6 +213,13 @@ Explicitly act on a checkout after reviewing it:
 ```sh
 wt-manager clean --path /path/to/worktree --yes
 wt-manager reap --path /path/to/worktree --yes
+```
+
+Stop one server that `ports` listed. The start time and command are part of the request, so a pid that has since been reused is refused:
+
+```sh
+wt-manager ports --json
+wt-manager stop --pid 4101 --started "Fri Nov 20 09:14:02 2026" --command node
 ```
 
 For scripts, bind confirmation to the preview hash with `--json` and `--plan HASH`. Read `wt-manager --help`, `wt-manager clean --help`, and `wt-manager reap --help` for the complete options, including advanced overrides. The app uses the conservative defaults.
@@ -203,6 +237,10 @@ wt-manager config --clear-cache
 - **Git repositories:** local refs, status, worktree metadata, and directory sizes. wt-manager performs `git fetch` only when you turn on **Check the remote first** in Settings (or pass `reap --fetch`), and then once per repo, capped at a few seconds, before a delete review. It changes no branch's history; with **Delete its branch too** on, a branch that merged or has no commit of its own is deleted with its folder, and the review names it first.
 - **GitHub PRs:** optional queries through `gh`. Multiple signed-in accounts are tried per repository without changing your active CLI account. Without `gh`, local Git inventory still works.
 - **Update checks:** the public release endpoint for this project. No scanned paths, branch names, disk measurements, reward data, or PR data are included in update requests.
+- **Running processes:** the Running page reads which of your processes are listening on a TCP port, their working directories, start times and parent processes, with `lsof` and `ps`. It reads the *names* of env files (`.env`, `.env.local`, `.env.development*`) to say whether they are present, and never opens one. Nothing is signalled until you confirm a Stop.
+- **Local pages:** Design compare loads `http://localhost:<port>` pages in a web view inside the app, hidden for a capture and visible for **Sign in…**. It keeps that web view's cookies so a sign-in lasts, and loads nothing you did not point it at.
+- **Simulators and devices:** in Design compare's device mode, `xcrun simctl` and `adb` are asked which simulators are booted and which devices are connected, and for one screenshot when you press Capture.
+- **Design images and captures:** copied into Application Support (`wt-manager/compare/`) and never sent anywhere.
 - **Local settings:** watched folders/base pins under `~/.config/wt-manager/`; caches under `~/.cache/wt-manager/`; preserved files under `~/.local/share/wt-manager/kept/`; native appearance, rewards, and measurements in app preferences. Custom images live in Application Support.
 
 Counts refresh about every five minutes, disk measurements about hourly. Opening the window catches up on stale counts. Cached sizes can lag changes outside the app; Refresh requests a full measurement. Duplicate/shared repository content means summed checkout estimates are not an exact measure of unique physical bytes.
@@ -234,6 +272,14 @@ python3 -m unittest -q test_wtmanager
 swift test --package-path app
 make bundle
 make snapshots
+```
+
+`make snapshots` draws Running and Design compare from `docs/running-envelope.json` and two fixture images, never from this machine's ports or a live page. Two checks cover what that cannot, against a server you start yourself inside a worktree:
+
+```sh
+app/.build/debug/WTManager --check-stop 8765                         # read it, stop it, see it gone
+app/.build/debug/WTManager --check-capture /tmp/out http://localhost:8765/   # capture at all four widths
+app/.build/debug/WTManager --check-devices /tmp/out                          # photograph each booted simulator or device
 ```
 
 The native render harness covers light/dark appearance, normal/minimum window sizes, setup, every section, safety/refusal states, progress, success, and partial failures. Documentation screenshots use fictional projects. Accessibility support includes named controls, keyboard shortcuts, persistent text results, and Reduce Motion; a complete VoiceOver certification has not been performed.

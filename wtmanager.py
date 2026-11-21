@@ -4122,6 +4122,20 @@ def env_presence(worktree: str, main: Optional[str]) -> List[dict]:
     return report
 
 
+def behind_base(wt: dict, repo: str, cfg: dict) -> Tuple[Optional[int], str]:
+    """Commits the base has that this worktree does not, as of the last fetch.
+
+    Read without the forge, so a branch whose PR targets something other than
+    the repo's usual base is measured against the usual one here. A client
+    holding the full scan's figure should prefer it.
+    """
+    base, _ = resolve_base(wt["gitdir"], repo, wt["branch"], cfg, None)
+    if not base:
+        return None, ""
+    rc, out, _ = git(["rev-list", "--count", f"HEAD..{base}"], cwd=wt["path"], timeout=5)
+    return (int(out) if rc == 0 and out.isdigit() else None), base
+
+
 def main_of(wt: dict) -> Optional[str]:
     if wt["primary"] or os.path.basename(wt["gitdir"]) != ".git":
         return None
@@ -4177,6 +4191,7 @@ def running(cfg: dict, here: bool = False) -> dict:
                 "path": wt["path"], "name": os.path.basename(wt["path"]), "repo": repo,
                 "branch": wt["branch"], "primary": wt["primary"],
                 "env": env_presence(wt["path"], main), "servers": []}
+            g["behind"], g["base"] = behind_base(wt, repo, cfg)
         g["servers"].append(row)
     for g in groups.values():
         g["servers"].sort(key=lambda r: r["ports"][0])
